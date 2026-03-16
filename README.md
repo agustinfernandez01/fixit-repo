@@ -26,5 +26,24 @@ fixit-repo/
 └── README.md
 ```
 
+## Como correr localmente
 
+Backend (API):
+
+´´´
+cd src
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+´´´
+→ API: http://127.0.0.1:8000 | Docs: http://127.0.0.1:8000/docs
+
+Frontend (Client):
+
+´´´
+cd client
+npm install
+npm run dev
+´´´
+
+→ App: http://localhost:5173
 
