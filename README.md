@@ -4,24 +4,27 @@ Proyecto para cliente, ecommerce + sistema de stock, ventas y mini mercado: fron
 
 ## Estructura del repositorio
 
-raucan-repo/
-├── client/          # Frontend (React + Vite + TS)
-│   └── src/
-│       ├── components/   # Componentes reutilizables
-│       ├── pages/       # Páginas/vistas
-│       ├── services/    # Llamadas a la API (api.ts)
-│       ├── hooks/       # Hooks de React
-│       └── types/       # Tipos TypeScript (Producto, etc.)
-├── src/             # Backend + API (Python + FastAPI)
-│   └── app/
-│       ├── main.py      # Entrada, CORS, rutas
-│       ├── db.py        # Conexión a la base de datos
-│       ├── routers/     # Rutas (endpoints por recurso)
-│       ├── services/    # Lógica de negocio
-│       ├── models/      # Modelos de base de datos (ORM)
-│       └── schemas/     # Schemas Pydantic
-└── README.md
+```
+fixit-repo/
 
+├── client/                     # Frontend (React + Vite + TypeScript)
+│   ├── src/
+│   │   ├── components/         # Componentes reutilizables
+│   │   ├── pages/              # Páginas / vistas
+│   │   ├── services/           # Llamadas a la API
+│   │   ├── hooks/              # Hooks de React
+│   │   └── types/              # Tipos TypeScript
+
+├── src/                        # Backend (Python + FastAPI)
+│   ├── app/
+│   │   ├── main.py             # Entrada de la API
+│   │   ├── routers/            # Endpoints
+│   │   ├── services/           # Lógica de negocio
+│   │   ├── models/             # Modelos ORM
+│   │   └── schemas/            # Schemas Pydantic
+
+└── README.md
+```
 
 
 
