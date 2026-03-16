@@ -1,12 +1,8 @@
 # Fix It - Ecommerce y sistema de stock
----
 
 Proyecto para cliente, ecommerce + sistema de stock, ventas y mini mercado: frontend (React + Vite + TypeScript) y backend/API (Python + FastAPI)
 
----
-
 ## Estructura del repositorio
----
 
 raucan-repo/
 ├── client/          # Frontend (React + Vite + TS)
