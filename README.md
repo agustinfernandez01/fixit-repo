@@ -1,1 +1,3 @@
-# fixit-repo
+Fix It - Ecommerce y sistema de stock
+
+
