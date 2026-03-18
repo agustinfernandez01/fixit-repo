@@ -14,3 +14,4 @@ class Usuarios(Base):
     id_rol = Column(Integer, ForeignKey("roles.id"))
 
     rol = relationship("Roles", back_populates="usuarios")
+    sesiones_login = relationship("SesionesLogin", back_populates="usuario")

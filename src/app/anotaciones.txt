@@ -14,3 +14,17 @@ canje
 
 .\venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
+
+JWT (bien entendido)
+
+Expiración
+
+Refresh Token
+
+Implementación en FastAPI
+
+Frontend (React)
+
+Seguridad
+
+Cache (como extra)
