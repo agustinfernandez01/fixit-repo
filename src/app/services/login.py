@@ -5,6 +5,7 @@ from app.schemas.login import Token, LoginRequest, LoginResponse
 import bcrypt
 import jwt
 from datetime import datetime, timedelta
+from app.config import SECRET_KEY
 
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ALGORITHM="HS256"

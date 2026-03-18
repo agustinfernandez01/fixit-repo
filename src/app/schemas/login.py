@@ -4,7 +4,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     nombre : str
-    rol : str
+    rol : int
 
 class LoginRequest(BaseModel):
     email: str

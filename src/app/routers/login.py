@@ -3,11 +3,12 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.services.login import logueo
 from app.schemas.login import LoginRequest , LoginResponse
+import traceback
 
-router = APIRouter
+router = APIRouter()
 
 @router.post("/post", response_model=LoginResponse)
-def login_auth(db: Session , request: LoginRequest):
+def login_auth(request: LoginRequest,db: Session = Depends(get_db)):
     try:
         resultado_logueo = logueo(db,request)
         if not resultado_logueo:
