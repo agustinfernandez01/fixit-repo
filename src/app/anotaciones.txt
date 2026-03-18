@@ -1,0 +1,16 @@
+yo :
+
+autenticación / usuarios
+catálogo de productos
+carrito / compra / pedido / pago
+
+
+matias :
+
+inventario de equipos
+marketplace de usados
+reparaciones
+canje
+
+.\venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
