@@ -1,99 +1,113 @@
-from sqlalchemy.orm import Session
-from app.models.usuarios import Usuarios
-from app.schemas.usuarios import UsuarioCreate, UsuarioResponse, UsuarioPut, UsuarioPatch
-import bcrypt
+from datetime import datetime, timezone
 from typing import Optional
 
-#GET - Obtener todos los usuarios
-def get_usuarios(db: Session) -> list[UsuarioResponse]:
-    return db.query(Usuarios).all()
+import bcrypt
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
-#GET - Obtener usuario por id
-def get_usuario_by_id (db: Session, id: int) -> UsuarioResponse:
-    return db.query(Usuarios).filter(Usuarios.id == id).first()
+from app.models.rol import Usuario
+from app.schemas.usuarios import UsuarioCreate, UsuarioPatch, UsuarioPut, UsuarioResponse
 
-#GET - Obtener usuario por filtros
+
+def _hash_password(plain: str) -> str:
+    h = bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt())
+    return h.decode("utf-8") if isinstance(h, bytes) else h
+
+
+def get_usuarios(db: Session) -> list[Usuario]:
+    return db.query(Usuario).all()
+
+
+def get_usuario_by_id(db: Session, id_usuario: int) -> Usuario | None:
+    return db.query(Usuario).filter(Usuario.id_usuario == id_usuario).first()
+
+
 def get_usuario_filtered(
     db: Session,
-    id: Optional[int] = None,
+    id_usuario: Optional[int] = None,
     email: Optional[str] = None,
     nombre: Optional[str] = None,
     apellido: Optional[str] = None,
     telefono: Optional[str] = None,
 ):
-    query = db.query(Usuarios)
-
-    if id is not None:
-        query = query.filter(Usuarios.id == id)
+    query = db.query(Usuario)
+    if id_usuario is not None:
+        query = query.filter(Usuario.id_usuario == id_usuario)
     if email is not None:
-        query = query.filter(Usuarios.email == email)
+        query = query.filter(Usuario.email == email)
     if nombre is not None:
-        query = query.filter(Usuarios.nombre == nombre)
+        query = query.filter(Usuario.nombre == nombre)
     if apellido is not None:
-        query = query.filter(Usuarios.apellido == apellido)
+        query = query.filter(Usuario.apellido == apellido)
     if telefono is not None:
-        query = query.filter(Usuarios.telefono == telefono)
-
+        query = query.filter(Usuario.telefono == telefono)
     return query.all()
 
-#POST - Crear usuario
-def post_usuario(db: Session, usuario: UsuarioCreate) -> UsuarioResponse:
-    # Hashear la contraseña
-    password_hash = bcrypt.hashpw(usuario.password_hash.encode('utf-8'), bcrypt.gensalt())
-    # Crear el usuario
-    nuevo_usuario = Usuarios(nombre=usuario.nombre, apellido=usuario.apellido, telefono=usuario.telefono, email=usuario.email, password_hash=password_hash, id_rol=usuario.id_rol)
-    db.add(nuevo_usuario)
+
+def post_usuario(db: Session, usuario: UsuarioCreate) -> Usuario:
+    nuevo = Usuario(
+        nombre=usuario.nombre,
+        apellido=usuario.apellido,
+        telefono=usuario.telefono,
+        email=usuario.email,
+        password_hash=_hash_password(usuario.password_hash),
+        id_rol=usuario.id_rol,
+        activo=True,
+        fecha_creacion=datetime.now(timezone.utc),
+    )
+    db.add(nuevo)
     db.commit()
-    db.refresh(nuevo_usuario)
-    return nuevo_usuario
+    db.refresh(nuevo)
+    return nuevo
 
-#PUT - Actualizar usuario (completo)
-def put_usuario_completo(db: Session, id: int, usuario: UsuarioPut) -> UsuarioResponse:
-    # Hashear la contraseña
-    password_hash = bcrypt.hashpw(usuario.password_hash.encode('utf-8'), bcrypt.gensalt())
-    # Verificar si el usuario existe
-    usuario_actualizado = get_usuario_by_id(db, id)
-    if not usuario_actualizado:
-        raise errors.UsuarioNoEncontradoError(f"Usuario con id {id} no encontrado")
-    usuario_actualizado.nombre = usuario.nombre
-    usuario_actualizado.apellido = usuario.apellido
-    usuario_actualizado.telefono = usuario.telefono
-    usuario_actualizado.email = usuario.email
-    usuario_actualizado.password_hash = password_hash
+
+def put_usuario_completo(db: Session, id_usuario: int, usuario: UsuarioPut) -> Usuario:
+    u = get_usuario_by_id(db, id_usuario)
+    if not u:
+        raise HTTPException(status_code=404, detail=f"Usuario con id {id_usuario} no encontrado")
+    u.nombre = usuario.nombre
+    u.apellido = usuario.apellido
+    u.telefono = usuario.telefono
+    u.email = usuario.email
+    u.password_hash = _hash_password(usuario.password_hash)
     db.commit()
-    db.refresh(usuario_actualizado)
-    return usuario_actualizado
+    db.refresh(u)
+    return u
 
-#patch - Actualizar usuario (parcial)
-def patch_usuario(db: Session, id: int, usuario: UsuarioPatch) -> UsuarioResponse:
-    # Verificar si el usuario existe
-    usuario_actualizado = get_usuario_by_id(db, id)
-    if not usuario_actualizado:
-        raise errors.UsuarioNoEncontradoError(f"Usuario con id {id} no encontrado")
-    # Verificar si se proporcionaron datos para actualizar
-    if not any([usuario.nombre, usuario.apellido, usuario.telefono, usuario.email, usuario.password_hash]):
-        raise errors.UsuarioNoActualizadoError(f"No se proporcionaron datos para actualizar")
 
+def patch_usuario(db: Session, id_usuario: int, usuario: UsuarioPatch) -> Usuario:
+    u = get_usuario_by_id(db, id_usuario)
+    if not u:
+        raise HTTPException(status_code=404, detail=f"Usuario con id {id_usuario} no encontrado")
+    if not any(
+        [
+            usuario.nombre is not None,
+            usuario.apellido is not None,
+            usuario.telefono is not None,
+            usuario.email is not None,
+            usuario.password_hash is not None,
+        ]
+    ):
+        raise HTTPException(status_code=400, detail="No se proporcionaron datos para actualizar")
     if usuario.nombre is not None:
-        usuario_actualizado.nombre = usuario.nombre
+        u.nombre = usuario.nombre
     if usuario.apellido is not None:
-        usuario_actualizado.apellido = usuario.apellido
+        u.apellido = usuario.apellido
     if usuario.telefono is not None:
-        usuario_actualizado.telefono = usuario.telefono
+        u.telefono = usuario.telefono
     if usuario.email is not None:
-        usuario_actualizado.email = usuario.email
+        u.email = usuario.email
     if usuario.password_hash is not None:
-        # Hashear la contraseña
-        usuario_actualizado.password_hash = bcrypt.hashpw(usuario.password_hash.encode('utf-8'), bcrypt.gensalt())
+        u.password_hash = _hash_password(usuario.password_hash)
     db.commit()
-    db.refresh(usuario_actualizado)
-    return usuario_actualizado
+    db.refresh(u)
+    return u
 
-#DELETE - Eliminar usuario
-def delete_usuario(db: Session, id: int) -> bool:
-    usuario_a_eliminar = get_usuario_by_id(db, id)
-    if not usuario_a_eliminar:
-        raise errors.UsuarioNoEncontradoError(f"Usuario con id {id} no encontrado")
-    db.delete(usuario_a_eliminar)
+
+def delete_usuario(db: Session, id_usuario: int) -> bool:
+    u = get_usuario_by_id(db, id_usuario)
+    if not u:
+        raise HTTPException(status_code=404, detail=f"Usuario con id {id_usuario} no encontrado")
+    db.delete(u)
     db.commit()
     return True

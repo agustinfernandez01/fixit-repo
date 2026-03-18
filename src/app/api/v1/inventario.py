@@ -6,7 +6,7 @@ No incluye: catálogo productos, pedidos ni pagos (los hace el compañero).
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
 from app.models import (
@@ -23,6 +23,7 @@ from app.schemas.inventario import (
     EquipoCreate,
     EquipoUpdate,
     EquipoResponse,
+    EquipoConModeloResponse,
     EquipoUsadoDetalleCreate,
     EquipoUsadoDetalleUpdate,
     EquipoUsadoDetalleResponse,
@@ -87,13 +88,20 @@ def borrar_modelo(id_modelo: int, db: Session = Depends(get_db)):
     return None
 
 
-@router.get("/equipos", response_model=list[EquipoResponse])
+@router.get("/equipos", response_model=list[EquipoConModeloResponse])
 def listar_equipos(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    return db.query(Equipo).offset(skip).limit(limit).all()
+    """Lista equipos trayendo en la misma consulta el modelo (join)."""
+    return (
+        db.query(Equipo)
+        .options(joinedload(Equipo.modelo))
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.post("/equipos", response_model=EquipoResponse, status_code=status.HTTP_201_CREATED)
@@ -108,9 +116,15 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
     return obj
 
 
-@router.get("/equipos/{id_equipo}", response_model=EquipoResponse)
+@router.get("/equipos/{id_equipo}", response_model=EquipoConModeloResponse)
 def obtener_equipo(id_equipo: int, db: Session = Depends(get_db)):
-    obj = db.query(Equipo).filter(Equipo.id_equipo == id_equipo).first()
+    """Obtiene un equipo con su modelo en la misma consulta (join)."""
+    obj = (
+        db.query(Equipo)
+        .options(joinedload(Equipo.modelo))
+        .filter(Equipo.id_equipo == id_equipo)
+        .first()
+    )
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
     return obj

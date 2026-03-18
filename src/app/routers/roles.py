@@ -10,10 +10,7 @@ router = APIRouter()
 @router.get("/get", response_model=list[RolesResponse])
 def listar_roles(db: Session = Depends(get_db)):
     try:
-        rol = get_roles(db)
-        if not rol:
-            raise HTTPException(status_code=404, detail="Rol no encontrado")
-        return rol
+        return get_roles(db)
     except HTTPException:
         raise
     except Exception as e:

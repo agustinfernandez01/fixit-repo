@@ -1,12 +1,11 @@
-from pydantic import BaseModel
+from typing import Optional
 
-class RolesBase(BaseModel):
-    id : int
+from pydantic import BaseModel, ConfigDict
+
+
+class RolesResponse(BaseModel):
+    id_rol: int
     nombre: str
+    descripcion: Optional[str] = None
 
-class RolesCreate(RolesBase):
-    pass
-
-class RolesResponse(RolesBase):
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

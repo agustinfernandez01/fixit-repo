@@ -62,6 +62,14 @@ class EquipoResponse(EquipoBase):
         from_attributes = True
 
 
+# Equipo con modelo anidado (una consulta trae equipo + modelo)
+class EquipoConModeloResponse(EquipoResponse):
+    modelo: ModeloEquipoResponse
+
+    class Config:
+        from_attributes = True
+
+
 # Depósitos
 class DepositoBase(BaseModel):
     nombre: str

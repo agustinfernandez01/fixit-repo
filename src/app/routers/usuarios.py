@@ -1,4 +1,12 @@
-from app.services.usuarios import get_usuarios, post_usuario, get_usuario_filtered, get_usuario_by_id, put_usuario_completo, patch_usuario
+from app.services.usuarios import (
+    delete_usuario,
+    get_usuario_by_id,
+    get_usuario_filtered,
+    get_usuarios,
+    patch_usuario,
+    post_usuario,
+    put_usuario_completo,
+)
 from app.schemas.usuarios import UsuarioCreate, UsuarioResponse, UsuarioPut, UsuarioPatch   
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -13,6 +21,8 @@ router = APIRouter()
 def obtener_usuario_por_id(id: int, db: Session = Depends(get_db)):
     try:
         usuario = get_usuario_by_id(db, id)
+        if not usuario:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
         return usuario
     except HTTPException:
         raise
