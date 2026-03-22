@@ -8,9 +8,9 @@ class SesionesLogin(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     id_usuario = Column(Integer, ForeignKey("usuarios.id"))
-    token_sesion = Column(String(255), index=True)
     fecha_inicio = Column(DateTime, default=datetime.now)
     fecha_expiracion = Column(DateTime, default=datetime.now)
+    revocada = Column(Bool, default=false)
 
     usuario = relationship("Usuarios", back_populates="sesiones_login")
     
