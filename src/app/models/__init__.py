@@ -6,9 +6,9 @@
 # Resto de modelos → nuestros módulos (inventario equipos, marketplace, reparaciones, canje).
 #
 from app.models.rol import Rol, Usuario, SesionLogin
-from app.models.equipo import ModeloEquipo, Equipo, EquipoUsadoDetalle
+from app.models.equipos import ModeloEquipo, Equipos, EquipoUsadoDetalle
 from app.models.deposito import Deposito, EquipoDeposito
-from app.models.producto import CategoriaProducto, Producto
+from app.models.productos import CategoriaProducto, Productos
 from app.models.pedido import Pedido, DetallePedido, Pago
 from app.models.reparacion import TipoReparacion, Reparacion
 from app.models.canje import EquipoOfrecidoCanje, SolicitudCanje
@@ -19,12 +19,12 @@ __all__ = [
     "Usuario",
     "SesionLogin",
     "ModeloEquipo",
-    "Equipo",
+    "Equipos",
     "EquipoUsadoDetalle",
     "Deposito",
     "EquipoDeposito",
     "CategoriaProducto",
-    "Producto",
+    "Productos",
     "Pedido",
     "DetallePedido",
     "Pago",

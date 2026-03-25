@@ -6,21 +6,21 @@ from app.db import Base
 class ModeloEquipo(Base):
     __tablename__ = "modelos_equipo"
 
-    id_modelo = Column(Integer, primary_key=True, autoincrement=True)
+    id= Column(Integer, primary_key=True, autoincrement=True)
     nombre_modelo = Column(String(100), nullable=False)
     capacidad_gb = Column(Integer, nullable=True)
     color = Column(String(50), nullable=True)
-    descripcion = Column(Text, nullable=True)
     activo = Column(Boolean, default=True)
 
     equipos = relationship("Equipo", back_populates="modelo")
 
 
-class Equipo(Base):
+class Equipos(Base):
     __tablename__ = "equipos"
 
-    id_equipo = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     id_modelo = Column(Integer, ForeignKey("modelos_equipo.id_modelo"), nullable=False)
+    id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)  
     imei = Column(String(20), nullable=True, unique=True)
     tipo_equipo = Column(String(50), nullable=True)  # nuevo, usado
     estado_comercial = Column(String(50), nullable=True)  # disponible, vendido, reservado, etc.
@@ -30,6 +30,7 @@ class Equipo(Base):
     modelo = relationship("ModeloEquipo", back_populates="equipos")
     detalle_usado = relationship("EquipoUsadoDetalle", back_populates="equipo", uselist=False)
     depositos = relationship("EquipoDeposito", back_populates="equipo")
+    productos = relationship("Productos", back_populates="equipo")  # Relación con Producto para equipos usados
 
 
 class EquipoUsadoDetalle(Base):
