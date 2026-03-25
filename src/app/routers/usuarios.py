@@ -54,11 +54,16 @@ def listar_usuarios(
 
         if not usuarios:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
         return usuarios
+
+    except HTTPException:
+        raise
+
     except Exception as e:
         print(f"Error al listar usuarios: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
       
 
 #POST - Crear usuario

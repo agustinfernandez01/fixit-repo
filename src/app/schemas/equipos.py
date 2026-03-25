@@ -3,6 +3,7 @@ from typing import Optional
 import datetime
 
 class ModeloEquipoBase(BaseModel):
+    id: int
     nombre_modelo: str
     capacidad_gb: int
     color: str

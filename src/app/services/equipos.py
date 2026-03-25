@@ -1,6 +1,7 @@
+from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models import Equipos, ModelosEquipo
-from app.schemas import EquipoCreate, EquipoPatch, EquipoResponse, ModeloEquipoCreate, ModeloEquipoPatch, ModeloEquipoResponse
+from app.schemas import EquipoCreate, EquipoPatch, EquipoResponse, ModeloEquipoCreate, ModeloEquipoPatch, ModeloEquipoResponse , ModeloEquipoSimple
 from typing import List, Optional
 
 ## ------------ MODELOS DE EQUIPO ------------ ##
@@ -10,6 +11,20 @@ def get_modelos(db:Session):
 
 def get_modelo_by_id(db:Session, id_modelo:int):
     return db.query(ModelosEquipo).filter(ModelosEquipo.id_modelo == id_modelo).first()
+
+def get_modelos_filtered(db:Session, nombre_modelo: Optional[str] = None, capacidad_gb: Optional[int] = None, color: Optional[str] = None, activo: Optional[bool] = None):
+    query = db.query(ModelosEquipo)
+    
+    if nombre_modelo is not None:
+        query = query.filter(ModelosEquipo.nombre_modelo.ilike(f"%{nombre_modelo}%"))
+    if capacidad_gb is not None:
+        query = query.filter(ModelosEquipo.capacidad_gb == capacidad_gb)
+    if color is not None:
+        query = query.filter(ModelosEquipo.color.ilike(f"%{color}%"))
+    if activo is not None:
+        query = query.filter(ModelosEquipo.activo == activo)
+    
+    return query.all()
 
 def create_modelo(db:Session, modelo:ModeloEquipoCreate):
     db_modelo = ModelosEquipo(
@@ -23,7 +38,7 @@ def create_modelo(db:Session, modelo:ModeloEquipoCreate):
     db.refresh(db_modelo)
     return db_modelo
 
-def update_modelo(db:Session, id_modelo:int, modelo_patch:ModeloEquipoPatch):
+def patch_modelo(db:Session, id_modelo:int, modelo_patch:ModeloEquipoPatch):
     db_modelo = get_modelo_by_id(db, id_modelo)
     if not db_modelo:
         return None
@@ -52,8 +67,72 @@ def delete_modelo(db:Session, id_modelo:int):
 
 ## ------------ EQUIPOS ------------ ##
 
-def get_equipos_filtered(db:Session):
+def get_equipos(db:Session):
     return db.query(Equipos).all()
 
 def get_equipo_by_id(db:Session, id_equipo:int):
     return db.query(Equipos).filter(Equipos.id == id_equipo).first()
+
+def get_equipos_filtered(
+    db:Session, 
+    id_modelo: Optional[int] = None, 
+    imei: Optional[str] = None, 
+    tipo_equipo: Optional[str] = None, 
+    estado_comercial: Optional[str] = None, 
+    fecha_ingreso: Optional[datetime.datetime] = None, 
+    activo: Optional[bool] = None):
+    
+    query = db.query(Equipos)
+    
+    if id_modelo is not None:
+        query = query.filter(Equipos.id_modelo == id_modelo)
+    if imei is not None:
+        query = query.filter(Equipos.imei.ilike(f"%{imei}%"))
+    if tipo_equipo is not None:
+        query = query.filter(Equipos.tipo_equipo.ilike(f"%{tipo_equipo}%"))
+    if estado_comercial is not None:
+        query = query.filter(Equipos.estado_comercial.ilike(f"%{estado_comercial}%"))
+    if fecha_ingreso is not None:
+        query = query.filter(Equipos.fecha_ingreso == fecha_ingreso)
+    if activo is not None:
+        query = query.filter(Equipos.activo == activo)
+    
+    return query.all()
+
+def create_equipo(db:Session, equipo:EquipoCreate):
+    db_equipo = Equipos(
+        id_modelo=equipo.id_modelo,
+        id_producto=equipo.id_producto,
+        imei=equipo.imei,
+        tipo_equipo=equipo.tipo_equipo,
+        estado_comercial=equipo.estado_comercial,
+        fecha_ingreso=equipo.fecha_ingreso,
+        activo=equipo.activo
+    )
+    db.add(db_equipo)
+    db.commit()
+    db.refresh(db_equipo)
+    return db_equipo
+
+def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch):
+    db_equipo = get_equipo_by_id(db, id_equipo)
+    if not db_equipo:
+        return None
+
+    update_data = equipo_patch.dict(exclude_unset=True)
+
+    for key, value in update_data.items():
+        setattr(db_equipo, key, value)
+
+    db.commit()
+    db.refresh(db_equipo)
+    return db_equipo
+
+def delete_equipo(db:Session, id_equipo:int):
+    db_equipo = get_equipo_by_id(db, id_equipo)
+    if not db_equipo:
+        return None
+    
+    db.delete(db_equipo)
+    db.commit()
+    return db_equipo

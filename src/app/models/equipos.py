@@ -26,6 +26,7 @@ class Equipos(Base):
     estado_comercial = Column(String(50), nullable=True)  # disponible, vendido, reservado, etc.
     fecha_ingreso = Column(DateTime, nullable=True)
     activo = Column(Boolean, default=True)
+    
 
     modelo = relationship("ModeloEquipo", back_populates="equipos")
     detalle_usado = relationship("EquipoUsadoDetalle", back_populates="equipo", uselist=False)
