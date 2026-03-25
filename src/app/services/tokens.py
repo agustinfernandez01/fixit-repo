@@ -22,19 +22,12 @@ def crear_access_token(usuario : UsuarioToken):
 
     payload = {
         "sub": str(usuario.id),
-<<<<<<< HEAD
-        "nombre": usuario.nombre +" "+usuario.apellido,
-        "rol":usuario.rol,
-        "type": "access",
-        "expire": expire
-=======
         "email": usuario.email,
         "nombre": usuario.nombre,
         "apellido": usuario.apellido,
         "rol":usuario.rol,
         "type": "access",
         "exp": expire,
->>>>>>> origin/agustin
     }
 
     access_token = jwt.encode(payload,SECRET_KEY,algorithm=ALGORITHM)
