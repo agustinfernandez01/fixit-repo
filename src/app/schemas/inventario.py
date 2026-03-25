@@ -39,6 +39,7 @@ class EquipoBase(BaseModel):
     tipo_equipo: Optional[str] = None
     estado_comercial: Optional[str] = None
     activo: bool = True
+    id_producto: Optional[int] = None  # FK opcional al catálogo de productos
 
 
 class EquipoCreate(EquipoBase):
@@ -52,6 +53,7 @@ class EquipoUpdate(BaseModel):
     estado_comercial: Optional[str] = None
     fecha_ingreso: Optional[datetime] = None
     activo: Optional[bool] = None
+    id_producto: Optional[int] = None
 
 
 class EquipoResponse(EquipoBase):

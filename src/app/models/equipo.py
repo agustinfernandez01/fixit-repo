@@ -26,8 +26,10 @@ class Equipo(Base):
     estado_comercial = Column(String(50), nullable=True)  # disponible, vendido, reservado, etc.
     fecha_ingreso = Column(DateTime, nullable=True)
     activo = Column(Boolean, default=True)
+    id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=True)
 
     modelo = relationship("ModeloEquipo", back_populates="equipos")
+    producto = relationship("Producto", backref="equipos")
     detalle_usado = relationship("EquipoUsadoDetalle", back_populates="equipo", uselist=False)
     depositos = relationship("EquipoDeposito", back_populates="equipo")
 
