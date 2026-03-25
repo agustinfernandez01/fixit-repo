@@ -22,9 +22,9 @@ def crear_access_token(usuario : UsuarioToken):
 
     payload = {
         "sub": str(usuario.id),
-        "email": usuario.email,
-        "rol":usuario.rol
-        "type": "access"
+        "nombre": usuario.nombre +" "+usuario.apellido,
+        "rol":usuario.rol,
+        "type": "access",
         "expire": expire
     }
 

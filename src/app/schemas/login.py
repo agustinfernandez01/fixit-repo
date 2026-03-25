@@ -2,9 +2,7 @@ from pydantic import BaseModel
 
 class Token(BaseModel):
     access_token: str
-    token_type: str
-    nombre : str
-    rol : int
+    refresh_token: str
 
 class LoginRequest(BaseModel):
     email: str
