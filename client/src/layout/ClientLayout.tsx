@@ -4,6 +4,7 @@ import { clearAuthTokens, getAccessToken } from '../lib/auth'
 const NAV_LINKS = [
 	{ to: '/', label: 'Inicio' },
 	{ to: '/marketplace', label: 'Usados' },
+	{ to: '/reparaciones', label: 'Reparaciones' },
 	{ to: '/publicar', label: 'Vender' },
 ]
 

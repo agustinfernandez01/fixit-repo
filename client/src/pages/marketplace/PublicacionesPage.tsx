@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { mediaUrl } from '../../services/api'
 import type { Publicacion } from '../../types/marketplace'
-import { marketplaceApi } from '../../services/marketplaceApi'
+import { marketplaceApi, uploadMarketplaceFoto } from '../../services/marketplaceApi'
 
 const ESTADOS = [
   '',
@@ -54,6 +54,35 @@ export function PublicacionesPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [filtroEstado, setFiltroEstado] = useState<string>('')
   const [form, setForm] = useState(emptyForm)
+  const [uploadingFotos, setUploadingFotos] = useState(false)
+  const [uploadingCount, setUploadingCount] = useState(0)
+
+  async function handleUploadFotos(files: FileList | null) {
+    if (!files?.length) return
+    setError(null)
+    setUploadingFotos(true)
+    setUploadingCount(files.length)
+    try {
+      const urls: string[] = []
+      for (const f of Array.from(files)) {
+        const url = await uploadMarketplaceFoto(f)
+        urls.push(url)
+      }
+      setForm((prev) => {
+        const current = prev.fotos_lines
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean)
+        const next = [...current, ...urls]
+        return { ...prev, fotos_lines: next.join('\n') }
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al subir fotos')
+    } finally {
+      setUploadingFotos(false)
+      setUploadingCount(0)
+    }
+  }
 
   const load = useCallback(async () => {
     setError(null)
@@ -341,14 +370,38 @@ export function PublicacionesPage() {
               />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              URLs de fotos (una por línea; ej. /uploads/abc.jpg)
-              <textarea
-                value={form.fotos_lines}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, fotos_lines: e.target.value }))
-                }
-                placeholder={'/uploads/ejemplo.jpg'}
-              />
+              Fotos
+              <div style={{ marginTop: '0.5rem' }}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  disabled={uploadingFotos}
+                  onChange={(e) => void handleUploadFotos(e.target.files)}
+                />
+                <div className="msg-muted" style={{ marginTop: '0.35rem' }}>
+                  {uploadingFotos
+                    ? `Subiendo ${uploadingCount} foto(s)…`
+                    : 'También podés subir fotos desde acá (JPG/PNG/WebP, hasta 5 MB c/u).'}
+                </div>
+                {form.fotos_lines.trim() ? (
+                  <div className="msg-muted" style={{ marginTop: '0.35rem' }}>
+                    {form.fotos_lines
+                      .split('\n')
+                      .map((s) => s.trim())
+                      .filter(Boolean).length}{' '}
+                    foto(s) cargadas.
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ marginLeft: '0.5rem' }}
+                      onClick={() => setForm((f) => ({ ...f, fotos_lines: '' }))}
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </label>
           </div>
           <div className="toolbar" style={{ marginTop: '0.75rem' }}>

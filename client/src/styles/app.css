@@ -512,11 +512,12 @@ table.data tbody tr:hover td {
 
 /* ——— Home admin (dashboard) ——— */
 .admin-dashboard {
-  max-width: 720px;
+  max-width: 1100px;
 }
 
 .admin-dashboard-hero {
-  margin-bottom: 2rem;
+  margin-bottom: 2.25rem;
+  padding: 1.1rem 0 1.25rem;
 }
 
 .admin-dashboard-badge {
@@ -525,7 +526,7 @@ table.data tbody tr:hover td {
   margin-bottom: 1rem;
   border-radius: 999px;
   border: 1px solid var(--app-border);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.9);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -535,8 +536,8 @@ table.data tbody tr:hover td {
 
 .admin-dashboard-title {
   margin: 0 0 0.65rem;
-  font-size: clamp(1.5rem, 3.5vw, 1.85rem);
-  font-weight: 600;
+  font-size: clamp(1.75rem, 4.2vw, 2.2rem);
+  font-weight: 650;
   letter-spacing: -0.03em;
   color: var(--app-text-strong);
   line-height: 1.2;
@@ -555,7 +556,7 @@ table.data tbody tr:hover td {
 }
 
 .admin-dashboard-section-title {
-  margin: 0 0 0.85rem;
+  margin: 0 0 0.95rem;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -572,9 +573,14 @@ table.data tbody tr:hover td {
   grid-template-columns: 1fr;
 }
 
+.admin-dashboard-grid > li {
+  display: flex;
+}
+
 @media (min-width: 640px) {
   .admin-dashboard-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
   }
 }
 
@@ -582,13 +588,17 @@ table.data tbody tr:hover td {
   display: flex;
   align-items: flex-start;
   gap: 1rem;
-  padding: 1.15rem 1.2rem;
-  border: 1px solid var(--app-border);
-  border-radius: 16px;
+  padding: 1.2rem 1.25rem;
+  border: 1px solid rgba(232, 232, 234, 0.9);
+  border-radius: 18px;
   background: #fff;
   text-decoration: none;
   color: inherit;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.04),
+    0 18px 40px rgba(0, 0, 0, 0.03);
+  min-height: 118px;
+  width: 100%;
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease,
@@ -598,17 +608,19 @@ table.data tbody tr:hover td {
 .admin-module-card:hover {
   border-color: #d4d4d8;
   box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.06),
-    0 0 0 1px rgba(0, 0, 0, 0.02);
-  transform: translateY(-1px);
+    0 6px 26px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.02),
+    0 20px 50px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
 }
 
 .admin-module-icon-wrap {
   flex-shrink: 0;
   width: 52px;
   height: 52px;
-  border-radius: 14px;
-  background: var(--app-muted-bg);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f5f5f6, #ffffff);
+  border: 1px solid rgba(232, 232, 234, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -633,12 +645,20 @@ table.data tbody tr:hover td {
   font-size: 1.05rem;
   color: var(--app-text-strong);
   letter-spacing: -0.02em;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .admin-module-desc {
   font-size: 0.875rem;
   color: var(--app-muted);
   line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .admin-module-arrow {
