@@ -23,13 +23,13 @@ class DetallePedido(Base):
 
     id_detalle = Column(Integer, primary_key=True, autoincrement=True)
     id_pedido = Column(Integer, ForeignKey("pedidos.id_pedido"), nullable=False)
-    id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
+    id_producto = Column(Integer, ForeignKey("productos.id"), nullable=False)
     cantidad = Column(Integer, nullable=False)
     precio_unitario = Column(Numeric(12, 2), nullable=False)
     subtotal = Column(Numeric(12, 2), nullable=True)
 
     pedido = relationship("Pedido", back_populates="detalle")
-    producto = relationship("Producto", backref="detalles_pedido")
+    producto = relationship("Productos", backref="detalles_pedido")
 
 
 class Pago(Base):

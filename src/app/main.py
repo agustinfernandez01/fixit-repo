@@ -1,11 +1,13 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
+from app.config import UPLOAD_DIR
 from app.db import Base, engine
 import app.models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.api.v1 import api_router
-from app.routers import roles, usuarios
+from app.routers import login, logout, refresh, roles, usuarios
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,7 @@ app = FastAPI(
 @app.on_event("startup")
 def crear_tablas_si_hay_db():
     """Crea las tablas solo si la conexión a MySQL funciona (ej. DB_PASSWORD en .env)."""
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas creadas o ya existentes en la base de datos.")
@@ -33,6 +36,16 @@ def crear_tablas_si_hay_db():
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(roles.router, prefix="/roles", tags=["Roles"])
 app.include_router(usuarios.router, prefix="/usuarios", tags=["Usuarios"])
+app.include_router(login.router, prefix="/login", tags=["Logueo"])
+app.include_router(refresh.router, prefix="/refresh", tags=["Refresh"])
+app.include_router(logout.router, prefix="/logout", tags=["Logout"])
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory=str(UPLOAD_DIR)),
+    name="uploads",
+)
+
 
 @app.get("/")
 def root():

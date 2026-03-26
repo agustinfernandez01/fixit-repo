@@ -1,3 +1,5 @@
+@import 'tailwindcss';
+
 :root {
   --app-bg: #ffffff;
   --app-surface: #fafafa;
@@ -7,6 +9,9 @@
   --app-muted: #6b6b76;
   --app-muted-bg: #f4f4f6;
   --app-ink: #0a0c10;
+  /* layout/AdminLayout (panel admin) */
+  --border: #e8e8ea;
+  --text-h: #0a0c10;
 
   font-family: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   font-size: 16px;
@@ -31,6 +36,12 @@ body {
 
 #root {
   min-height: 100svh;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
 }
 
 code {

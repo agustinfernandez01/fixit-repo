@@ -25,18 +25,4 @@ class Usuario(Base):
     fecha_creacion = Column(DateTime, nullable=True)
 
     rol = relationship("Rol", backref="usuarios")
-
-
-class SesionLogin(Base):
-    __tablename__ = "sesiones_login"
-
-    id_sesion = Column(Integer, primary_key=True, autoincrement=True)
-    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
-    token_sesion = Column(String(255), nullable=False)
-    fecha_inicio = Column(DateTime, nullable=False)
-    fecha_expiracion = Column(DateTime, nullable=False)
-    ip = Column(String(45), nullable=True)
-    dispositivo = Column(String(255), nullable=True)
-    activo = Column(Boolean, default=True)
-
-    usuario = relationship("Usuario", backref="sesiones")
+    sesiones_login = relationship("SesionesLogin", back_populates="usuario")

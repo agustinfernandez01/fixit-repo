@@ -35,7 +35,7 @@ class SolicitudCanje(Base):
     id_equipo_ofrecido = Column(
         Integer, ForeignKey("equipos_ofrecidos_canje.id_equipo_ofrecido"), nullable=False
     )
-    id_producto_interes = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
+    id_producto_interes = Column(Integer, ForeignKey("productos.id"), nullable=False)
     valor_estimado = Column(Numeric(12, 2), nullable=True)
     diferencia_a_pagar = Column(Numeric(12, 2), nullable=True)
     estado = Column(String(50), nullable=True)
@@ -43,4 +43,4 @@ class SolicitudCanje(Base):
 
     usuario = relationship("Usuario", backref="solicitudes_canje")
     equipo_ofrecido = relationship("EquipoOfrecidoCanje", back_populates="solicitudes")
-    producto_interes = relationship("Producto", backref="solicitudes_canje")
+    producto_interes = relationship("Productos", backref="solicitudes_canje")
