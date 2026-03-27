@@ -19,7 +19,7 @@ class EquipoDeposito(Base):
     __tablename__ = "equipo_deposito"
 
     id_equipo_deposito = Column(Integer, primary_key=True, autoincrement=True)
-    id_equipo = Column(Integer, ForeignKey("equipos.id_equipo"), nullable=False)
+    id_equipo = Column(Integer, ForeignKey("equipos.id"), nullable=False)
     id_deposito = Column(Integer, ForeignKey("depositos.id_deposito"), nullable=False)
     fecha_asignacion = Column(DateTime, nullable=True)
 

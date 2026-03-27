@@ -29,4 +29,29 @@ Seguridad
 
 Cache (como extra)
 
-QUEDA POR HACER (TOKENS) : PROTEGER RUTAS
+
+funcionamiento tokens
+
+LOGIN
+→ se crea sesión en DB
+→ se dan access + refresh
+
+REQUESTS
+→ usan access (rápido, sin DB)
+
+ACCESS EXPIRE
+→ se usa refresh
+
+REFRESH
+→ backend valida:
+   1. el token (JWT)
+   2. la sesión (DB)
+
+→ si todo ok → nuevo access
+
+LOGOUT
+→ se revoca sesión en DB
+→ el refresh deja de servir
+
+
+# Verficiar cuantos equipos estan activos, si no hay activos se inhabilita

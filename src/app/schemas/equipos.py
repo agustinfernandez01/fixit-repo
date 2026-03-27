@@ -1,22 +1,31 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 import datetime
 
 class ModeloEquipoBase(BaseModel):
     id: int
     nombre_modelo: str
-    capacidad_gb: int
+    capacidad_gb: Optional[int] = None
     color: str
     activo: Optional[bool] = True
     
 class ModeloEquipoResponse(ModeloEquipoBase):
     pass
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def normalizar_color(cls, value):
+        if value is None:
+            return "Sin color"
+        texto = str(value).strip()
+        return texto or "Sin color"
+
     class Config:
-        orm_mode = True    
+        from_attributes = True
     
 class ModeloEquipoCreate(BaseModel):
     nombre_modelo: str
-    capacidad_gb: int
+    capacidad_gb: Optional[int] = None
     color: str
     activo : bool = True
         
@@ -25,41 +34,59 @@ class ModeloEquipoPatch(BaseModel):
     capacidad_gb: Optional[int] = None
     color: Optional[str] = None
     activo: Optional[bool] = None
-
-class ModeloEquipoSimple(BaseModel):
-    id_modelo: int
-    nombre_modelo: str
-    capacidad_gb: int
-    color: str
     
+class ModeloEquipoSimple(BaseModel):
+    id: int
+    nombre_modelo: str
+    capacidad_gb: Optional[int] = None
+    color: str
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def normalizar_color(cls, value):
+        if value is None:
+            return "Sin color"
+        texto = str(value).strip()
+        return texto or "Sin color"
+
     class Config:
-        orm_mode = True
+        from_attributes = True
         
 # -------------------------------------------------------
 
 class EquipoBase(BaseModel):
     id : int
-    id_modelo: ModeloEquipoSimple
-    id_producto: int
-    imei: str
-    tipo_equipo: str
-    estado_comercial: str
-    fecha_ingreso: datetime
-    activo: bool = True
-    
-class EquipoResponse(EquipoBase):
-    pass
-
-    class Config:
-        orm_mode = True
-        
-class EquipoCreate(BaseModel):
     id_modelo: int
     id_producto: int
     imei: str
     tipo_equipo: str
     estado_comercial: str
     fecha_ingreso: datetime.datetime
+    activo: bool = True
+    
+class EquipoResponse(BaseModel):
+    id: int
+    id_producto: int
+    imei: str
+    tipo_equipo: str
+    estado_comercial: str
+    fecha_ingreso: datetime.datetime
+    activo: bool = True
+    modelo: ModeloEquipoSimple
+
+    class Config:
+        from_attributes = True
+
+#ingreso del equipo al sistema , se crea un producto asociado al equipo, y se asigna el id del producto al equipo
+class EquipoCreate(BaseModel):
+    id_modelo: int
+    id_categoria: int
+    imei: str
+    descripcion: str
+    tipo_equipo: str
+    estado_comercial: str
+    precio: float
+    fecha_ingreso: datetime.date
     activo: bool = True
     
 class EquipoPatch(BaseModel):

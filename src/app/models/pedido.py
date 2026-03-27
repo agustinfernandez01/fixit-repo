@@ -7,7 +7,7 @@ class Pedido(Base):
     __tablename__ = "pedidos"
 
     id_pedido = Column(Integer, primary_key=True, autoincrement=True)
-    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     fecha_pedido = Column(DateTime, nullable=True)
     estado = Column(String(50), nullable=True)  # pendiente, confirmado, enviado, entregado, cancelado
     total = Column(Numeric(12, 2), nullable=True)
@@ -23,13 +23,13 @@ class DetallePedido(Base):
 
     id_detalle = Column(Integer, primary_key=True, autoincrement=True)
     id_pedido = Column(Integer, ForeignKey("pedidos.id_pedido"), nullable=False)
-    id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
+    id_producto = Column(Integer, ForeignKey("productos.id"), nullable=False)
     cantidad = Column(Integer, nullable=False)
     precio_unitario = Column(Numeric(12, 2), nullable=False)
     subtotal = Column(Numeric(12, 2), nullable=True)
 
     pedido = relationship("Pedido", back_populates="detalle")
-    producto = relationship("Producto", backref="detalles_pedido")
+    producto = relationship("Productos", backref="detalles_pedido")
 
 
 class Pago(Base):

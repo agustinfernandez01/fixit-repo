@@ -3,10 +3,9 @@ import logging
 from fastapi import FastAPI
 
 from app.db import Base, engine
-from app.routers import roles, usuarios , login , refresh , logout
+from app.routers import roles, usuarios, login, refresh, logout, equipos
 import app.models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.api.v1 import api_router
-from app.routers import roles, usuarios
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ app.include_router(usuarios.router, prefix="/usuarios", tags=["Usuarios"])
 app.include_router(login.router, prefix="/login", tags=["Logueo"])
 app.include_router(refresh.router, prefix="/refresh", tags=["Refresh"])
 app.include_router(logout.router, prefix="/logout", tags=["Logout"])
-
+app.include_router(equipos.router, prefix="/equipos", tags=["Equipos"])
 
 @app.get("/")
 def root():

@@ -1,7 +1,9 @@
 from datetime import datetime
+from pymysql import IntegrityError
 from sqlalchemy.orm import Session
-from app.models import Equipos, ModelosEquipo
-from app.schemas import EquipoCreate, EquipoPatch, EquipoResponse, ModeloEquipoCreate, ModeloEquipoPatch, ModeloEquipoResponse , ModeloEquipoSimple
+from app.models.equipos import Equipos, ModelosEquipo
+from app.models.productos import Productos
+from app.schemas.equipos import EquipoCreate, EquipoPatch, EquipoResponse, ModeloEquipoCreate, ModeloEquipoPatch
 from typing import List, Optional
 
 ## ------------ MODELOS DE EQUIPO ------------ ##
@@ -9,8 +11,8 @@ from typing import List, Optional
 def get_modelos(db:Session):
     return db.query(ModelosEquipo).all()
 
-def get_modelo_by_id(db:Session, id_modelo:int):
-    return db.query(ModelosEquipo).filter(ModelosEquipo.id_modelo == id_modelo).first()
+def get_modelo_by_id(db:Session, id_buscar:int):
+    return db.query(ModelosEquipo).filter(ModelosEquipo.id == id_buscar).first()
 
 def get_modelos_filtered(db:Session, nombre_modelo: Optional[str] = None, capacidad_gb: Optional[int] = None, color: Optional[str] = None, activo: Optional[bool] = None):
     query = db.query(ModelosEquipo)
@@ -70,7 +72,7 @@ def delete_modelo(db:Session, id_modelo:int):
 def get_equipos(db:Session):
     return db.query(Equipos).all()
 
-def get_equipo_by_id(db:Session, id_equipo:int):
+def get_equipo_by_id(db: Session, id_equipo: int):
     return db.query(Equipos).filter(Equipos.id == id_equipo).first()
 
 def get_equipos_filtered(
@@ -99,21 +101,71 @@ def get_equipos_filtered(
     
     return query.all()
 
-def create_equipo(db:Session, equipo:EquipoCreate):
-    db_equipo = Equipos(
-        id_modelo=equipo.id_modelo,
-        id_producto=equipo.id_producto,
-        imei=equipo.imei,
-        tipo_equipo=equipo.tipo_equipo,
-        estado_comercial=equipo.estado_comercial,
-        fecha_ingreso=equipo.fecha_ingreso,
-        activo=equipo.activo
-    )
-    db.add(db_equipo)
-    db.commit()
-    db.refresh(db_equipo)
-    return db_equipo
+# El proceso de creación de un equipo implica crear un producto asociado al equipo, y luego crear el equipo con el id del producto creado. Esto se debe a que cada equipo registrado en el sistema debe tener un producto asociado para poder ser vendido o gestionado dentro del catálogo de productos.
+def create_equipo(db: Session, equipo: EquipoCreate):
+    try:
+        buscar_modelo = get_modelo_by_id(db, equipo.id_modelo)
+        if not buscar_modelo:
+            raise ValueError("El modelo no existe")
 
+        imei_existente = db.query(Equipos).filter(Equipos.imei == equipo.imei).first()
+        if imei_existente:
+            raise ValueError("El IMEI ya existe en inventario")
+
+        color_modelo = (buscar_modelo.color or "Sin color").strip()
+        capacidad_modelo = (
+            f"{buscar_modelo.capacidad_gb}GB"
+            if buscar_modelo.capacidad_gb is not None
+            else "s/capacidad"
+        )
+        nombre_producto = f"{buscar_modelo.nombre_modelo} - {capacidad_modelo} - {color_modelo}"
+
+        producto_catalogo = (
+            db.query(Productos)
+            .filter(
+                Productos.id_categoria == equipo.id_categoria,
+                Productos.nombre == nombre_producto,
+            )
+            .first()
+        )
+
+        if not producto_catalogo:
+            producto_catalogo = Productos(
+                id_categoria=equipo.id_categoria,
+                nombre=nombre_producto,
+                descripcion=equipo.descripcion,
+                precio=equipo.precio,
+                activo=True,
+            )
+            db.add(producto_catalogo)
+            db.flush()
+        else:
+            if not producto_catalogo.activo:
+                producto_catalogo.activo = True
+
+        nuevo_equipo = Equipos(
+            id_modelo=equipo.id_modelo,
+            id_producto=producto_catalogo.id,
+            imei=equipo.imei,
+            tipo_equipo=equipo.tipo_equipo,
+            estado_comercial=equipo.estado_comercial,
+            fecha_ingreso=equipo.fecha_ingreso,
+            activo=True,
+        )
+
+        db.add(nuevo_equipo)
+        db.commit()
+        db.refresh(nuevo_equipo)
+
+        return nuevo_equipo
+
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Error de integridad en base de datos. Verificá IMEI o relaciones únicas.")
+    except Exception:
+        db.rollback()
+        raise
+    
 def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch):
     db_equipo = get_equipo_by_id(db, id_equipo)
     if not db_equipo:
@@ -127,6 +179,9 @@ def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch):
     db.commit()
     db.refresh(db_equipo)
     return db_equipo
+
+
+
 
 def delete_equipo(db:Session, id_equipo:int):
     db_equipo = get_equipo_by_id(db, id_equipo)

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.models.rol import Rol
+from app.models.roles import Rol
 from app.schemas.roles import RolesResponse
 
 

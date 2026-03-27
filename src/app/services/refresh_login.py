@@ -1,6 +1,6 @@
-from app.models import usuarios as model_usuarios
-from app.models import sesiones_login as model_sesiones
-from app.schemas.login import Token, LoginRequest, LoginResponse
+from app.models.usuarios import Usuario as model_usuarios
+from app.models.sesiones_login import SesionesLogin as model_sesiones
+from app.schemas.login import LoginResponse
 from datetime import datetime, timedelta, timezone
 from app.config import SECRET_KEY
 from app.services.tokens import crear_access_token, crear_refresh_token, hash_token , verficar_access_token, verificar_refresh_token , verify_hashed_token

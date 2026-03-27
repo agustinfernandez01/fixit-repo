@@ -1,6 +1,6 @@
 import bcrypt
 import jwt
-from datetime import datetime, timedelta, ut
+from datetime import datetime, timedelta
 import uuid
 from app.config import SECRET_KEY
 

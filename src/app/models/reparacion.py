@@ -17,7 +17,7 @@ class Reparacion(Base):
     __tablename__ = "reparaciones"
 
     id_reparacion = Column(Integer, primary_key=True, autoincrement=True)
-    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     modelo = Column(String(100), nullable=True)
     capacidad_gb = Column(Integer, nullable=True)
     color = Column(String(50), nullable=True)

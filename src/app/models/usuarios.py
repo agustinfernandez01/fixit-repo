@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from app.db import Base
 
-class Usuarios(Base):
+class Usuario(Base):
     __tablename__ = "usuarios"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -13,5 +13,5 @@ class Usuarios(Base):
     password_hash = Column(String(100))
     id_rol = Column(Integer, ForeignKey("roles.id"))
 
-    rol = relationship("Roles", back_populates="usuarios")
+    rol = relationship("Rol", back_populates="usuarios")
     sesiones_login = relationship("SesionesLogin", back_populates="usuario")

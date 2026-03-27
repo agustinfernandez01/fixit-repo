@@ -3,6 +3,8 @@ import os
 
 load_dotenv()
 
+SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret_change_me")
+
 # Si DATABASE_URL está definida, se usa. Si no, se construye desde variables.
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:

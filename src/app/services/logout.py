@@ -1,5 +1,5 @@
-from services.tokens import verificar_refresh_token
-from app.models import sesiones_login as model_sesiones
+from app.services.tokens import verificar_refresh_token
+from app.models.sesiones_login import SesionesLogin as model_sesiones
 from sqlalchemy.orm import Session
 
 def logout(db: Session, refresh_token: str):

@@ -1,8 +1,8 @@
 import uuid
 from sqlalchemy.orm import Session
 from app.models.sesiones_login import SesionesLogin as model_sesiones
-from app.models.usuarios import Usuarios as model_usuarios
-from app.schemas.login import Token, LoginRequest, LoginResponse
+from app.models.usuarios import Usuario as model_usuarios
+from app.schemas.login import LoginRequest, LoginResponse
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from app.config import SECRET_KEY

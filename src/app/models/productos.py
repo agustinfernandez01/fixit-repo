@@ -11,7 +11,7 @@ class CategoriaProducto(Base):
     descripcion = Column(Text, nullable=True)
     activo = Column(Boolean, default=True)
 
-    productos = relationship("Producto", back_populates="categoria")
+    productos = relationship("Productos", back_populates="categoria")
 
 
 class Productos(Base):
@@ -21,8 +21,8 @@ class Productos(Base):
     nombre = Column(String(255), nullable=False)
     descripcion = Column(Text, nullable=True)
     precio = Column(Numeric(12, 2), nullable=False)
-    id_categoria = Column(Integer, ForeignKey("categoria_producto.id_categoria"), nullable=False)
+    id_categoria = Column(Integer, ForeignKey("categoria_producto.id"), nullable=False)
     activo = Column(Boolean, default=True)
     
     categoria = relationship("CategoriaProducto", back_populates="productos")
-    equipos = relationship("Equipos", back_populates="productos", uselist=False)  
+    equipo = relationship("Equipo", back_populates="productos", uselist=False)
