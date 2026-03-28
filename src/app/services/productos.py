@@ -41,3 +41,4 @@ def desactivar_productos_si_no_hay_equipos_activos(db: Session, id_modelo: int) 
         producto.activo = False
 
     return True
+

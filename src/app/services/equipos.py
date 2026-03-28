@@ -5,6 +5,7 @@ from app.models.equipos import Equipos, ModelosEquipo
 from app.models.productos import Productos
 from app.schemas.equipos import EquipoCreate, EquipoPatch, EquipoResponse, ModeloEquipoCreate, ModeloEquipoPatch
 from typing import List, Optional
+from app.services.productos import desactivar_productos_si_no_hay_equipos_activos
 
 ## ------------ MODELOS DE EQUIPO ------------ ##
 
@@ -171,23 +172,49 @@ def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch):
     if not db_equipo:
         return None
 
-    update_data = equipo_patch.dict(exclude_unset=True)
+    id_modelo_anterior = db_equipo.id_modelo
+    activo_anterior = db_equipo.activo
+
+    update_data = equipo_patch.model_dump(exclude_unset=True)
 
     for key, value in update_data.items():
         setattr(db_equipo, key, value)
+
+    paso_de_activo_a_inactivo = (
+        "activo" in update_data
+        and activo_anterior is True
+        and db_equipo.activo is False
+    )
+
+    cambio_de_modelo = (
+        "id_modelo" in update_data
+        and update_data["id_modelo"] != id_modelo_anterior
+    )
+
+    if paso_de_activo_a_inactivo or cambio_de_modelo:
+        desactivar_productos_si_no_hay_equipos_activos(db, id_modelo_anterior)
 
     db.commit()
     db.refresh(db_equipo)
     return db_equipo
 
-
-
-
-def delete_equipo(db:Session, id_equipo:int):
+def delete_equipo_logico(db: Session, id_equipo: int):
     db_equipo = get_equipo_by_id(db, id_equipo)
     if not db_equipo:
         return None
-    
-    db.delete(db_equipo)
+
+    # Seguridad: si ya está inactivo, no hacemos nada
+    if db_equipo.activo is False:
+        return db_equipo
+
+    id_modelo_anterior = db_equipo.id_modelo
+
+    # Eliminación lógica
+    db_equipo.activo = False
+
+    # Aplicar lógica de negocio
+    desactivar_productos_si_no_hay_equipos_activos(db, id_modelo_anterior)
+
     db.commit()
+    db.refresh(db_equipo)
     return db_equipo
