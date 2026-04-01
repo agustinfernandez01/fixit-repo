@@ -41,4 +41,32 @@ def desactivar_productos_si_no_hay_equipos_activos(db: Session, id_modelo: int) 
         producto.activo = False
 
     return True
+# Verificar si hay equipos activos, si hay se activa el producto
+def activar_productos_si_hay_equipos_activos(db: Session, id_modelo: int) -> bool:
+    equipo_activo = (
+        db.query(Equipos)
+        .filter(
+            Equipos.id_modelo == id_modelo,
+            Equipos.activo.is_(True)
+        )
+        .first()
+    )
 
+    if not equipo_activo:
+        return False
+
+    productos_asociados = (
+        db.query(Productos)
+        .join(Equipos, Equipos.id_producto == Productos.id)
+        .filter(Equipos.id_modelo == id_modelo)
+        .distinct()
+        .all()
+    )
+
+    if not productos_asociados:
+        return False
+
+    for producto in productos_asociados:
+        producto.activo = True
+
+    return True

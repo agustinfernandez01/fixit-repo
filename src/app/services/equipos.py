@@ -5,7 +5,7 @@ from app.models.equipos import Equipos, ModelosEquipo
 from app.models.productos import Productos
 from app.schemas.equipos import EquipoCreate, EquipoPatch, EquipoResponse, ModeloEquipoCreate, ModeloEquipoPatch
 from typing import List, Optional
-from app.services.productos import desactivar_productos_si_no_hay_equipos_activos
+from app.services.productos import desactivar_productos_si_no_hay_equipos_activos, activar_productos_si_hay_equipos_activos 
 
 ## ------------ MODELOS DE EQUIPO ------------ ##
 
@@ -140,9 +140,6 @@ def create_equipo(db: Session, equipo: EquipoCreate):
             )
             db.add(producto_catalogo)
             db.flush()
-        else:
-            if not producto_catalogo.activo:
-                producto_catalogo.activo = True
 
         nuevo_equipo = Equipos(
             id_modelo=equipo.id_modelo,
@@ -155,6 +152,10 @@ def create_equipo(db: Session, equipo: EquipoCreate):
         )
 
         db.add(nuevo_equipo)
+
+        # Reactivar productos asociados si corresponde
+        activar_productos_si_hay_equipos_activos(db, equipo.id_modelo)
+
         db.commit()
         db.refresh(nuevo_equipo)
 
@@ -186,13 +187,24 @@ def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch):
         and db_equipo.activo is False
     )
 
+    paso_de_inactivo_a_activo = (
+        "activo" in update_data
+        and activo_anterior is False
+        and db_equipo.activo is True
+    )
+
     cambio_de_modelo = (
         "id_modelo" in update_data
         and update_data["id_modelo"] != id_modelo_anterior
     )
 
+    # Revisar el modelo viejo
     if paso_de_activo_a_inactivo or cambio_de_modelo:
         desactivar_productos_si_no_hay_equipos_activos(db, id_modelo_anterior)
+
+    # Revisar el modelo nuevo
+    if paso_de_inactivo_a_activo or cambio_de_modelo:
+        activar_productos_si_hay_equipos_activos(db, db_equipo.id_modelo)
 
     db.commit()
     db.refresh(db_equipo)

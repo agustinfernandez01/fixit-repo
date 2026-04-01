@@ -26,3 +26,4 @@ class Productos(Base):
     
     categoria = relationship("CategoriaProducto", back_populates="productos")
     equipo = relationship("Equipo", back_populates="productos", uselist=False)
+    accesorios = relationship("Accesorios", back_populates="productos")

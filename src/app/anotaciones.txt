@@ -15,21 +15,6 @@ canje
 .\venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
 
-JWT (bien entendido)
-
-Expiración
-
-Refresh Token
-
-Implementación en FastAPI
-
-Frontend (React)
-
-Seguridad
-
-Cache (como extra)
-
-
 funcionamiento tokens
 
 LOGIN
@@ -54,4 +39,10 @@ LOGOUT
 → el refresh deja de servir
 
 
-# Verficiar cuantos equipos estan activos, si no hay activos se inhabilita
+## QUE HACER
+
+en create equipo
+#VERIFICAR DESPUES SI NOMBRE_PRODUCTO COINCIDA SIEMPRE CON EL NOMBRE DE PRODUCTO QUE SE ESTA BUSCANDO
+
+en patch y create
+#AGREGAR FUNCION PARA ACTIVAR PRODUCTO SI SE AGREGA UNO QUE ESTABA DESACTIVADO
