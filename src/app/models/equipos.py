@@ -23,13 +23,17 @@ class Equipo(Base):
     id_modelo = Column(Integer, ForeignKey("modelos_equipo.id"), nullable=False)
     id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
     imei = Column(String(20), nullable=True, unique=True)
-    tipo_equipo = Column(String(50), nullable=True)  # nuevo, usado
-    estado_comercial = Column(String(50), nullable=True)  # disponible, vendido, reservado, etc.
+    tipo_equipo = Column(String(50), nullable=True)
+    estado_comercial = Column(String(50), nullable=True)
     fecha_ingreso = Column(DateTime, nullable=True)
     activo = Column(Boolean, default=True)
+    id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
 
     modelo = relationship("ModeloEquipo", back_populates="equipos")
-    detalle_usado = relationship("EquipoUsadoDetalle", back_populates="equipo", uselist=False)
+    producto = relationship("Productos", back_populates="equipo", uselist=False)
+    detalle_usado = relationship(
+        "EquipoUsadoDetalle", back_populates="equipo", uselist=False
+    )
     depositos = relationship("EquipoDeposito", back_populates="equipo")
     productos = relationship("Productos", back_populates="equipo")
 

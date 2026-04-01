@@ -23,7 +23,7 @@ class Productos(Base):
     precio = Column(Numeric(12, 2), nullable=False)
     id_categoria = Column(Integer, ForeignKey("categoria_producto.id"), nullable=False)
     activo = Column(Boolean, default=True)
-    
+
     categoria = relationship("CategoriaProducto", back_populates="productos")
     equipo = relationship("Equipo", back_populates="productos", uselist=False)
     accesorios = relationship("Accesorios", back_populates="productos")

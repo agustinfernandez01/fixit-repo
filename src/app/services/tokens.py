@@ -2,6 +2,8 @@ import bcrypt
 import jwt
 from datetime import datetime, timedelta
 import uuid
+from datetime import datetime, timedelta, timezone
+
 from app.config import SECRET_KEY
 
 ALGORITHM = "HS256"
@@ -16,33 +18,35 @@ class UsuarioToken():
     rol: str
     exp: datetime
 
-def crear_access_token(usuario : UsuarioToken):
-    now = datetime.utcnow()
+def crear_access_token(usuario):
+    """Acepta el modelo ORM `Usuario` (rol cargado opcional)."""
+    now = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    rol_nombre = usuario.rol.nombre if getattr(usuario, "rol", None) else ""
 
     payload = {
         "sub": str(usuario.id),
         "email": usuario.email,
         "nombre": usuario.nombre,
         "apellido": usuario.apellido,
-        "rol":usuario.rol,
+        "rol": rol_nombre,
         "type": "access",
         "exp": expire,
     }
 
-    access_token = jwt.encode(payload,SECRET_KEY,algorithm=ALGORITHM)
+    access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
     return access_token, expire
 
 def crear_refresh_token(usuario, session_id):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
     payload = {
-        "sub": str(usuario.id_usuario),  # ID del usuario
-        "session_id": session_id,        # ID de la sesión en DB
-        "type": "refresh",               # tipo de token
-        "exp": expire                    # expiración
+        "sub": str(usuario.id),
+        "session_id": session_id,
+        "type": "refresh",
+        "exp": expire,
     }
 
     refresh_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)

@@ -1,9 +1,14 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
-from sqlalchemy.orm import relationship
-from app.db import Base
 from datetime import datetime
 
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
+from app.db import Base
+
+
 class SesionesLogin(Base):
+    """Sesiones de refresh token (una fila por sesión de login)."""
+
     __tablename__ = "sesiones_login"
 
     id_sesion = Column(String(36), primary_key=True, index=True)

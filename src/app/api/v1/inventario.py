@@ -58,7 +58,7 @@ def crear_modelo(payload: ModeloEquipoCreate, db: Session = Depends(get_db)):
 
 @router.get("/modelos/{id_modelo}", response_model=ModeloEquipoResponse)
 def obtener_modelo(id_modelo: int, db: Session = Depends(get_db)):
-    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id_modelo == id_modelo).first()
+    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
     return obj
@@ -66,7 +66,7 @@ def obtener_modelo(id_modelo: int, db: Session = Depends(get_db)):
 
 @router.patch("/modelos/{id_modelo}", response_model=ModeloEquipoResponse)
 def actualizar_modelo(id_modelo: int, payload: ModeloEquipoUpdate, db: Session = Depends(get_db)):
-    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id_modelo == id_modelo).first()
+    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
 
@@ -80,7 +80,7 @@ def actualizar_modelo(id_modelo: int, payload: ModeloEquipoUpdate, db: Session =
 
 @router.delete("/modelos/{id_modelo}", status_code=status.HTTP_204_NO_CONTENT)
 def borrar_modelo(id_modelo: int, db: Session = Depends(get_db)):
-    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id_modelo == id_modelo).first()
+    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
     db.delete(obj)

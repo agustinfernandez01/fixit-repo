@@ -27,3 +27,13 @@ class ProductoPatch(BaseModel):
     id_categoria: Optional[int] = None
     activo: Optional[bool] = None
     
+class ProductoResponse(BaseModel):
+    id: int
+    nombre: str
+    descripcion: str
+    precio: float
+    id_categoria: int
+    activo: bool
+    
+    class Config:
+        orm_mode = True

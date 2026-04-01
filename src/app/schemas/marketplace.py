@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
 
 
 class PublicacionBase(BaseModel):
@@ -16,10 +16,14 @@ class PublicacionBase(BaseModel):
     descripcion: Optional[str] = None
     precio_publicado: Optional[Decimal] = None
     estado: Optional[str] = None
+    fotos_urls: Optional[List[str]] = None
 
 
 class PublicacionCreate(PublicacionBase):
-    id_usuario: int
+    """Si enviás `Authorization: Bearer` (access), `id_usuario` se toma del token.
+    Si no hay token, debe indicarse `id_usuario` en el cuerpo (p. ej. panel admin)."""
+
+    id_usuario: Optional[int] = None
     fecha_publicacion: Optional[datetime] = None
 
 
@@ -36,6 +40,7 @@ class PublicacionUpdate(BaseModel):
     precio_publicado: Optional[Decimal] = None
     estado: Optional[str] = None
     fecha_publicacion: Optional[datetime] = None
+    fotos_urls: Optional[List[str]] = None
 
 
 class PublicacionResponse(PublicacionBase):

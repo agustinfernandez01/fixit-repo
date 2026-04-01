@@ -1,9 +1,14 @@
+from pathlib import Path
+
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret_change_me")
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = BASE_DIR / "uploads"
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
 
 # Si DATABASE_URL está definida, se usa. Si no, se construye desde variables.
 DATABASE_URL = os.getenv("DATABASE_URL")

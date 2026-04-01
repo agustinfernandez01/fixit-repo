@@ -18,7 +18,7 @@ uvicorn app.main:app --reload
 funcionamiento tokens
 
 LOGIN
-→ se crea sesión en DB
+→ se crea sesión en Db
 → se dan access + refresh
 
 REQUESTS

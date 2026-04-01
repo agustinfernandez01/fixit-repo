@@ -1,11 +1,14 @@
 """
 Módulo Marketplace de usados: publicaciones y revisión de publicaciones.
 """
+import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.config import UPLOAD_DIR
+from app.deps.auth import get_optional_user_id_from_access_token
 from app.db import get_db
 from app.models import Publicacion, RevisionPublicacion
 from app.schemas.marketplace import (
@@ -18,6 +21,35 @@ from app.schemas.marketplace import (
 )
 
 router = APIRouter()
+
+_MAX_FOTO_BYTES = 5 * 1024 * 1024
+_FOTO_CT = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+
+
+@router.post("/upload-foto")
+async def subir_foto_marketplace(file: UploadFile = File(...)):
+    """Sube una imagen y devuelve la URL pública bajo /uploads/…"""
+    ct = file.content_type or ""
+    if ct not in _FOTO_CT:
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se permiten imágenes JPEG, PNG o WebP.",
+        )
+    raw = await file.read()
+    if len(raw) > _MAX_FOTO_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail="La imagen no puede superar 5 MB.",
+        )
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{uuid.uuid4().hex}{_FOTO_CT[ct]}"
+    path = UPLOAD_DIR / name
+    path.write_bytes(raw)
+    return {"url": f"/uploads/{name}"}
 
 
 @router.get("/publicaciones", response_model=list[PublicacionResponse])
@@ -38,8 +70,19 @@ def listar_publicaciones(
     response_model=PublicacionResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def crear_publicacion(payload: PublicacionCreate, db: Session = Depends(get_db)):
+def crear_publicacion(
+    payload: PublicacionCreate,
+    db: Session = Depends(get_db),
+    id_desde_token: int | None = Depends(get_optional_user_id_from_access_token),
+):
     data = payload.model_dump()
+    if id_desde_token is not None:
+        data["id_usuario"] = id_desde_token
+    elif data.get("id_usuario") is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Iniciá sesión o indicá id_usuario en el cuerpo (admin).",
+        )
     if data.get("fecha_publicacion") is None:
         data["fecha_publicacion"] = datetime.now(timezone.utc)
     if data.get("estado") is None:

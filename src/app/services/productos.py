@@ -3,6 +3,10 @@ from app.models.productos import Productos
 from app.models.equipos import Equipos
 from app.schemas.productos import ProductoCreate, ProductoPatch, ProductoBase
 
+#get - listar productos
+def get_productos(db: Session) -> list[Productos]:
+    return db.query(Productos).all()
+
 def create_producto(db: Session, producto: Productos) -> Productos:
     db.add(producto)
     db.flush()

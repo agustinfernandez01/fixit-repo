@@ -1,0 +1,67 @@
+/**
+ * Base URL vacía en dev: Vite reenvía `/api` al backend (vite.config).
+ * En producción: `VITE_API_BASE=https://tu-api.com`
+ */
+/** Errores 422 de FastAPI: lista de { loc, msg, type } */
+function formatFastApiValidation(
+  items: Array<{ loc?: unknown[]; msg?: string }>,
+): string {
+  return items
+    .map((item) => {
+      const loc = Array.isArray(item.loc)
+        ? item.loc.filter((x) => x !== 'body' && x !== 'query').join('.')
+        : ''
+      const msg = item.msg ?? 'Error de validación'
+      return loc ? `${loc}: ${msg}` : msg
+    })
+    .join(' · ')
+}
+
+/** URL absoluta para /uploads/... (proxy en dev o VITE_API_BASE en prod). */
+export function mediaUrl(path: string | null | undefined): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  const base = import.meta.env.VITE_API_BASE ?? ''
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+export function apiUrl(path: string): string {
+  const base = import.meta.env.VITE_API_BASE ?? ''
+  const p = path.startsWith('/') ? path : `/${path}`
+  return `${base}${p}`
+}
+
+export async function fetchJson<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const res = await fetch(apiUrl(path), {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...init?.headers,
+    },
+  })
+  if (res.status === 204) {
+    return undefined as T
+  }
+  const text = await res.text()
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const j = JSON.parse(text) as { detail?: string | unknown }
+      if (typeof j.detail === 'string') {
+        detail = j.detail
+      } else if (Array.isArray(j.detail)) {
+        detail = formatFastApiValidation(j.detail)
+      } else if (j.detail) {
+        detail = JSON.stringify(j.detail)
+      }
+    } catch {
+      if (text) detail = text
+    }
+    throw new Error(detail || `HTTP ${res.status}`)
+  }
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
+}

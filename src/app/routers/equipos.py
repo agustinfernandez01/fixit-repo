@@ -1,12 +1,26 @@
-from fastapi import APIRouter, Depends, exceptions
+from fastapi import APIRouter, Depends, exceptions, HTTPException
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.services.equipos import create_equipo
+from app.services.equipos import create_equipo, get_equipos
 from app.schemas.equipos import EquipoCreate, EquipoResponse
 import traceback
 
 router = APIRouter()
 
+
+#GET - Listar equipos
+@router.get("/get", response_model=list[EquipoResponse])
+def listar_equipos(db: Session = Depends(get_db)):
+    try:
+        return get_equipos(db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error al listar equipos: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+#POST - Crear equipo
 @router.post("/post", response_model=EquipoResponse)
 def create_equipo_endpoint(equipo: EquipoCreate, db: Session = Depends(get_db)):
     try:

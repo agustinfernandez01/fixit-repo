@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UsuarioCreate(BaseModel):
@@ -29,7 +29,7 @@ class UsuarioPatch(BaseModel):
 
 
 class UsuarioResponse(BaseModel):
-    id_usuario: int
+    id_usuario: int = Field(validation_alias="id")
     nombre: str
     apellido: str
     email: str

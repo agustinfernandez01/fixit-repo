@@ -8,8 +8,10 @@
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
 from app.models.equipos import ModeloEquipo, Equipo, Equipos, EquipoUsadoDetalle
+from app.models.sesiones_login import SesionesLogin as SesionLogin
 from app.models.deposito import Deposito, EquipoDeposito
 from app.models.productos import CategoriaProducto, Productos
+from app.models.accesorios import Accesorios  # noqa: F401 - debe cargarse tras Productos para resolver relationship
 from app.models.pedido import Pedido, DetallePedido, Pago
 from app.models.reparacion import TipoReparacion, Reparacion
 from app.models.canje import EquipoOfrecidoCanje, SolicitudCanje
@@ -26,6 +28,7 @@ __all__ = [
     "EquipoDeposito",
     "CategoriaProducto",
     "Productos",
+    "Accesorios",
     "Pedido",
     "DetallePedido",
     "Pago",

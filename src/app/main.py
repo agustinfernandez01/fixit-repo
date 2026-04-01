@@ -1,9 +1,11 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
+from app.config import UPLOAD_DIR
 from app.db import Base, engine
-from app.routers import roles, usuarios, login, refresh, logout, equipos
+from app.routers import roles, usuarios, login, refresh, logout, equipos, productos
 import app.models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.api.v1 import api_router
 
@@ -18,14 +20,23 @@ app = FastAPI(
 @app.on_event("startup")
 def crear_tablas_si_hay_db():
     """Crea las tablas solo si la conexión a MySQL funciona (ej. DB_PASSWORD en .env)."""
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas creadas o ya existentes en la base de datos.")
     except Exception as e:
+        err = str(e)
+        hint = ""
+        if "cryptography" in err.lower():
+            hint = (
+                " Instala el paquete en el mismo Python que usa uvicorn: "
+                "`python -m pip install cryptography` (o `pip install -r app/requirements.txt` desde la carpeta `src`)."
+            )
         logger.warning(
             "No se pudo conectar a la base de datos. Revisa .env (DB_PASSWORD, DB_NAME). "
-            "La API arranca igual; los endpoints que usen DB fallarán hasta que configures MySQL. Error: %s",
+            "La API arranca igual; los endpoints que usen DB fallarán hasta que configures MySQL. Error: %s%s",
             e,
+            hint,
         )
 
 
@@ -37,6 +48,14 @@ app.include_router(login.router, prefix="/login", tags=["Logueo"])
 app.include_router(refresh.router, prefix="/refresh", tags=["Refresh"])
 app.include_router(logout.router, prefix="/logout", tags=["Logout"])
 app.include_router(equipos.router, prefix="/equipos", tags=["Equipos"])
+app.include_router(productos.router, prefix="/productos", tags=["Productos"])
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory=str(UPLOAD_DIR)),
+    name="uploads",
+)
+
 
 @app.get("/")
 def root():

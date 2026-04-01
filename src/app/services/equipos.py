@@ -1,16 +1,22 @@
+from sqlalchemy.orm import Session
 from datetime import datetime
 from pymysql import IntegrityError
-from sqlalchemy.orm import Session
 from app.models.equipos import Equipos, ModelosEquipo
 from app.models.productos import Productos
-from app.schemas.equipos import EquipoCreate, EquipoPatch, EquipoResponse, ModeloEquipoCreate, ModeloEquipoPatch
-from typing import List, Optional
+from typing import Optional
 from app.services.productos import desactivar_productos_si_no_hay_equipos_activos, activar_productos_si_hay_equipos_activos 
+from app.models import Equipo, ModeloEquipo
+from app.schemas.equipos import (
+    EquipoCreate,
+    EquipoPatch,
+    EquipoResponse,
+    ModeloEquipoCreate,
+    ModeloEquipoPatch,
+    ModeloEquipoResponse,
+)
 
 ## ------------ MODELOS DE EQUIPO ------------ ##
 
-def get_modelos(db:Session):
-    return db.query(ModelosEquipo).all()
 
 def get_modelo_by_id(db:Session, id_buscar:int):
     return db.query(ModelosEquipo).filter(ModelosEquipo.id == id_buscar).first()
@@ -29,12 +35,19 @@ def get_modelos_filtered(db:Session, nombre_modelo: Optional[str] = None, capaci
     
     return query.all()
 
-def create_modelo(db:Session, modelo:ModeloEquipoCreate):
-    db_modelo = ModelosEquipo(
+
+def get_modelo_by_id(db: Session, id_modelo: int) -> Optional[ModeloEquipo]:
+    return (
+        db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
+    )
+
+
+def create_modelo(db: Session, modelo: ModeloEquipoCreate) -> ModeloEquipo:
+    db_modelo = ModeloEquipo(
         nombre_modelo=modelo.nombre_modelo,
         capacidad_gb=modelo.capacidad_gb,
         color=modelo.color,
-        activo=modelo.activo
+        activo=modelo.activo,
     )
     db.add(db_modelo)
     db.commit()
@@ -45,7 +58,7 @@ def patch_modelo(db:Session, id_modelo:int, modelo_patch:ModeloEquipoPatch):
     db_modelo = get_modelo_by_id(db, id_modelo)
     if not db_modelo:
         return None
-    
+
     if modelo_patch.nombre_modelo is not None:
         db_modelo.nombre_modelo = modelo_patch.nombre_modelo
     if modelo_patch.capacidad_gb is not None:
@@ -54,19 +67,21 @@ def patch_modelo(db:Session, id_modelo:int, modelo_patch:ModeloEquipoPatch):
         db_modelo.color = modelo_patch.color
     if modelo_patch.activo is not None:
         db_modelo.activo = modelo_patch.activo
-    
+
     db.commit()
     db.refresh(db_modelo)
     return db_modelo
 
-def delete_modelo(db:Session, id_modelo:int):
+
+def delete_modelo(db: Session, id_modelo: int) -> Optional[ModeloEquipo]:
     db_modelo = get_modelo_by_id(db, id_modelo)
     if not db_modelo:
         return None
-    
+
     db.delete(db_modelo)
     db.commit()
     return db_modelo
+
 
 ## ------------ EQUIPOS ------------ ##
 
@@ -103,7 +118,7 @@ def get_equipos_filtered(
     return query.all()
 
 # El proceso de creación de un equipo implica crear un producto asociado al equipo, y luego crear el equipo con el id del producto creado. Esto se debe a que cada equipo registrado en el sistema debe tener un producto asociado para poder ser vendido o gestionado dentro del catálogo de productos.
-def create_equipo(db: Session, equipo: EquipoCreate):
+def create_equipo(db: Session, equipo: EquipoCreate) -> EquipoResponse:
     try:
         buscar_modelo = get_modelo_by_id(db, equipo.id_modelo)
         if not buscar_modelo:
@@ -168,7 +183,7 @@ def create_equipo(db: Session, equipo: EquipoCreate):
         db.rollback()
         raise
     
-def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch):
+def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch) -> EquipoResponse:
     db_equipo = get_equipo_by_id(db, id_equipo)
     if not db_equipo:
         return None
@@ -210,7 +225,7 @@ def patch_equipo(db: Session, id_equipo: int, equipo_patch: EquipoPatch):
     db.refresh(db_equipo)
     return db_equipo
 
-def delete_equipo_logico(db: Session, id_equipo: int):
+def delete_equipo_logico(db: Session, id_equipo: int) -> EquipoResponse:
     db_equipo = get_equipo_by_id(db, id_equipo)
     if not db_equipo:
         return None

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 const PHONES = [
   {
@@ -135,12 +136,18 @@ export default function Home() {
             compromise.
           </p>
           <div className="flex flex-wrap gap-3">
-            <button className="rounded-full bg-gray-900 px-7 py-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-gray-700">
-              Explore lineup
-            </button>
-            <button className="rounded-full border border-gray-200 px-7 py-3 text-sm font-medium text-gray-500 transition-colors duration-150 hover:border-gray-400 hover:text-gray-900">
-              Compare models
-            </button>
+            <Link
+              to="/marketplace"
+              className="rounded-full bg-gray-900 px-7 py-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-gray-700"
+            >
+              Ver usados
+            </Link>
+            <Link
+              to="/publicar"
+              className="rounded-full border border-gray-200 px-7 py-3 text-sm font-medium text-gray-500 transition-colors duration-150 hover:border-gray-400 hover:text-gray-900"
+            >
+              Vender mi celular
+            </Link>
           </div>
 
           <div className="mt-12 flex gap-8 border-t border-gray-100 pt-8">
