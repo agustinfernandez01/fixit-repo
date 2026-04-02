@@ -15,3 +15,5 @@ class Usuario(Base):
 
     rol = relationship("Rol", back_populates="usuarios")
     sesiones_login = relationship("SesionesLogin", back_populates="usuario")
+    carrito = relationship("Carrito", back_populates="usuario")
+    pedido = relationship("Pedido", back_populates="usuario")

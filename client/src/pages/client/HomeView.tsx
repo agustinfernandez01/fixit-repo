@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { motion, useReducedMotion, type Variants } from 'framer-motion'
 
 const PHONES = [
   {
@@ -33,6 +34,28 @@ const PHONES = [
     specs: ['6.1″ LCD', '64 MP', '4,000 mAh', 'Snapdragon 7s'],
   },
 ]
+
+const itemReveal: Variants = {
+  hidden: { opacity: 0, y: 24 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.55,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+}
+
+const staggerChildren = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+}
 
 const FEATURES = [
   {
@@ -90,7 +113,7 @@ const FEATURES = [
   },
 ]
 
-function PhoneMockup({ dark = false }: { dark?: boolean }) {
+function PhoneMockup({ dark = false, reduceMotion = false }: { dark?: boolean; reduceMotion?: boolean }) {
   const bg = dark ? 'bg-gray-900' : 'bg-white'
   const border = dark ? 'border-gray-700' : 'border-gray-200'
   const screen = dark ? 'bg-gray-800' : 'bg-gray-100'
@@ -98,8 +121,10 @@ function PhoneMockup({ dark = false }: { dark?: boolean }) {
   const notch = dark ? 'bg-black' : 'bg-gray-200'
 
   return (
-    <div
+    <motion.div
       className={`relative mx-auto flex h-56 w-28 flex-col items-center rounded-[2rem] border border-[1.5px] ${bg} ${border} pb-3 pt-3 shadow-sm`}
+      animate={reduceMotion ? undefined : { y: [0, -6, 0] }}
+      transition={reduceMotion ? undefined : { duration: 5, repeat: Infinity, ease: 'easeInOut' }}
     >
       <div className={`mb-2 h-4 w-12 rounded-full ${notch}`} />
       <div className={`w-[88%] flex-1 space-y-1.5 overflow-hidden rounded-xl ${screen} p-2`}>
@@ -110,32 +135,46 @@ function PhoneMockup({ dark = false }: { dark?: boolean }) {
         <div className={`h-1.5 w-2/3 rounded-full ${bar} opacity-40`} />
       </div>
       <div className={`mt-2 h-1 w-10 rounded-full ${bar}`} />
-    </div>
+    </motion.div>
   )
 }
 
 export default function Home() {
   const [active, setActive] = useState(0)
+  const reduceMotion = useReducedMotion()
 
   return (
     <>
-      <section className="mx-auto grid max-w-6xl items-center gap-16 px-6 pb-24 pt-20 lg:grid-cols-2">
+      <motion.section
+        className="mx-auto grid max-w-6xl items-center gap-16 px-6 pb-24 pt-20 lg:grid-cols-2"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.3 }}
+      >
         <div>
-          <span className="mb-7 inline-block rounded-full border border-gray-200 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gray-400 uppercase">
+          <motion.span
+            className="mb-7 inline-block rounded-full border border-gray-200 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gray-400 uppercase"
+            variants={itemReveal}
+            transition={{ delay: 0 }}
+          >
             2026 Lineup
-          </span>
-          <h1 className="mb-5 text-5xl leading-[1.02] font-black tracking-tight text-gray-900 sm:text-6xl">
-            The future
+          </motion.span>
+          <motion.h1
+            className="mb-5 text-5xl leading-[1.02] font-black tracking-tight text-gray-900 sm:text-6xl"
+            variants={itemReveal}
+            transition={{ delay: 0.08 }}
+          >
+            FIX IT
             <br />
-            <span className="text-gray-300">fits in your</span>
+            <span className="text-gray-300">El futuro en tu</span>
             <br />
-            pocket.
-          </h1>
-          <p className="mb-9 max-w-sm text-base leading-relaxed text-gray-400">
+            bolsillo.
+          </motion.h1>
+          <motion.p className="mb-9 max-w-sm text-base leading-relaxed text-gray-400" variants={itemReveal} transition={{ delay: 0.16 }}>
             Nexus smartphones combine cutting-edge hardware with seamless software—built for people who refuse to
             compromise.
-          </p>
-          <div className="flex flex-wrap gap-3">
+          </motion.p>
+          <motion.div className="flex flex-wrap gap-3" variants={itemReveal} transition={{ delay: 0.24 }}>
             <Link
               to="/marketplace"
               className="rounded-full bg-gray-900 px-7 py-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-gray-700"
@@ -148,9 +187,9 @@ export default function Home() {
             >
               Vender mi celular
             </Link>
-          </div>
+          </motion.div>
 
-          <div className="mt-12 flex gap-8 border-t border-gray-100 pt-8">
+          <motion.div className="mt-12 flex gap-8 border-t border-gray-100 pt-8" variants={itemReveal} transition={{ delay: 0.32 }}>
             {[
               { value: '12M+', label: 'Users worldwide' },
               { value: '4.9★', label: 'Average rating' },
@@ -161,23 +200,35 @@ export default function Home() {
                 <p className="mt-0.5 text-xs text-gray-400">{s.label}</p>
               </div>
             ))}
-          </div>
+          </motion.div>
         </div>
 
-        <div className="flex h-64 items-end justify-center gap-3">
+        <motion.div className="flex h-64 items-end justify-center gap-3" variants={staggerChildren}>
           {[false, true, false].map((dark, i) => (
-            <div
+            <motion.div
               key={i}
               onClick={() => setActive(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  setActive(i)
+                }
+              }}
               className={`cursor-pointer transition-all duration-400 ${
                 i === active ? 'z-10 scale-110 -translate-y-5' : 'scale-90 opacity-40 hover:opacity-60'
               }`}
+              variants={itemReveal}
+              transition={{ delay: i * 0.08 }}
+              whileHover={reduceMotion ? undefined : { y: -10, scale: i === active ? 1.12 : 0.96 }}
+              whileTap={reduceMotion ? undefined : { scale: 0.95 }}
             >
-              <PhoneMockup dark={dark} />
-            </div>
+              <PhoneMockup dark={dark} reduceMotion={reduceMotion ?? false} />
+            </motion.div>
           ))}
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
       <div className="border-t border-gray-100" />
 
@@ -192,14 +243,17 @@ export default function Home() {
           </a>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-3">
+        <motion.div className="grid gap-5 md:grid-cols-3" variants={staggerChildren} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }}>
           {PHONES.map((phone) => (
-            <div
+            <motion.div
               key={phone.id}
               className="group cursor-pointer overflow-hidden rounded-3xl border border-gray-100 bg-white transition-all duration-200 hover:-translate-y-1 hover:border-gray-300 hover:shadow-sm"
+              variants={itemReveal}
+              transition={{ delay: phone.id * 0.08 }}
+              whileHover={reduceMotion ? undefined : { y: -8 }}
             >
               <div className="bg-gray-50 py-10">
-                <PhoneMockup dark={phone.id === 1} />
+                <PhoneMockup dark={phone.id === 1} reduceMotion={reduceMotion ?? false} />
               </div>
 
               <div className="border-t border-gray-100 p-6">
@@ -224,9 +278,9 @@ export default function Home() {
                   Shop now
                 </button>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </section>
 
       <section className="border-t border-gray-100">
@@ -236,36 +290,68 @@ export default function Home() {
             <h2 className="text-3xl font-black tracking-tight text-gray-900">Built different.</h2>
           </div>
 
-          <div className="grid gap-px bg-gray-100 sm:grid-cols-2 lg:grid-cols-4">
+          <motion.div className="grid gap-px bg-gray-100 sm:grid-cols-2 lg:grid-cols-4" variants={staggerChildren} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }}>
             {FEATURES.map((f) => (
-              <div key={f.title} className="bg-white p-7 transition-colors duration-150 hover:bg-gray-50">
+              <motion.div key={f.title} className="bg-white p-7 transition-colors duration-150 hover:bg-gray-50" variants={itemReveal} whileHover={reduceMotion ? undefined : { y: -4 }}>
                 <div className="mb-4 text-gray-400">{f.icon}</div>
                 <h3 className="mb-2 text-sm font-bold text-gray-900">{f.title}</h3>
                 <p className="text-sm leading-relaxed text-gray-400">{f.desc}</p>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
       <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="rounded-3xl bg-gray-900 px-10 py-14 text-center">
-          <span className="mb-6 inline-block rounded-full border border-gray-700 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
+        <motion.div
+          className="rounded-3xl bg-gray-900 px-10 py-14 text-center"
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <motion.span
+            className="mb-6 inline-block rounded-full border border-gray-700 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase"
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={reduceMotion ? { duration: 0 } : { delay: 0.08, duration: 0.45 }}
+          >
             Limited offer
-          </span>
-          <h2 className="mb-3 text-4xl font-black tracking-tight text-white">Trade in & save up to $400</h2>
-          <p className="mx-auto mb-8 max-w-md text-base leading-relaxed text-gray-400">
+          </motion.span>
+          <motion.h2
+            className="mb-3 text-4xl font-black tracking-tight text-white"
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={reduceMotion ? { duration: 0 } : { delay: 0.14, duration: 0.45 }}
+          >
+            Trade in & save up to $400
+          </motion.h2>
+          <motion.p
+            className="mx-auto mb-8 max-w-md text-base leading-relaxed text-gray-400"
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={reduceMotion ? { duration: 0 } : { delay: 0.2, duration: 0.45 }}
+          >
             Bring your old device, get an instant credit toward any Nexus smartphone. No hassle, no waiting.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
+          </motion.p>
+          <motion.div
+            className="flex flex-wrap justify-center gap-3"
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={reduceMotion ? { duration: 0 } : { delay: 0.26, duration: 0.45 }}
+          >
             <button className="rounded-full bg-white px-8 py-3 text-sm font-medium text-gray-900 transition-colors duration-150 hover:bg-gray-100">
               Start trade-in
             </button>
             <button className="rounded-full border border-gray-700 px-8 py-3 text-sm font-medium text-gray-400 transition-colors duration-150 hover:border-gray-500 hover:text-white">
               Learn more
             </button>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </section>
     </>
   )

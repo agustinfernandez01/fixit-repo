@@ -7,6 +7,7 @@
 #
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
+from app.models.carrito import Carrito, CarritoDetalle
 from app.models.equipos import ModeloEquipo, Equipo, Equipos, EquipoUsadoDetalle
 from app.models.sesiones_login import SesionesLogin as SesionLogin
 from app.models.deposito import Deposito, EquipoDeposito
@@ -20,6 +21,8 @@ from app.models.publicacion import Publicacion, RevisionPublicacion
 __all__ = [
     "Rol",
     "Usuario",
+    "Carrito",
+    "CarritoDetalle",
     "ModeloEquipo",
     "Equipo",
     "Equipos",
