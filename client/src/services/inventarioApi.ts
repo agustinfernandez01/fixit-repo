@@ -14,6 +14,7 @@ const q = (skip: number, limit: number) =>
   `?skip=${skip}&limit=${limit}`
 
 export const inventarioApi = {
+
   modelos: {
     list: (skip = 0, limit = 50) =>
       fetchJson<ModeloEquipo[]>(`${P}/modelos${q(skip, limit)}`),
@@ -31,9 +32,10 @@ export const inventarioApi = {
     delete: (id: number) =>
       fetchJson<void>(`${P}/modelos/${id}`, { method: 'DELETE' }),
   },
+
   equipos: {
     list: (skip = 0, limit = 50) =>
-      fetchJson<EquipoConModelo[]>(`${P}/equipos${q(skip, limit)}`),
+      (void skip, void limit, fetchJson<EquipoConModelo[]>(`/equipos/get`)),
     get: (id: number) => fetchJson<EquipoConModelo>(`${P}/equipos/${id}`),
     create: (body: Record<string, unknown>) =>
       fetchJson<Equipo>(`${P}/equipos`, {
@@ -48,6 +50,7 @@ export const inventarioApi = {
     delete: (id: number) =>
       fetchJson<void>(`${P}/equipos/${id}`, { method: 'DELETE' }),
   },
+
   depositos: {
     list: (skip = 0, limit = 50) =>
       fetchJson<Deposito[]>(`${P}/depositos${q(skip, limit)}`),
@@ -65,6 +68,7 @@ export const inventarioApi = {
     delete: (id: number) =>
       fetchJson<void>(`${P}/depositos/${id}`, { method: 'DELETE' }),
   },
+
   equipoDeposito: {
     list: (skip = 0, limit = 50) =>
       fetchJson<EquipoDeposito[]>(`${P}/equipo-deposito${q(skip, limit)}`),
@@ -83,6 +87,7 @@ export const inventarioApi = {
     delete: (id: number) =>
       fetchJson<void>(`${P}/equipo-deposito/${id}`, { method: 'DELETE' }),
   },
+  
   equiposUsadosDetalle: {
     list: (skip = 0, limit = 50) =>
       fetchJson<EquipoUsadoDetalle[]>(

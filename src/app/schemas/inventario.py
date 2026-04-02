@@ -26,7 +26,7 @@ class ModeloEquipoUpdate(BaseModel):
 
 
 class ModeloEquipoResponse(ModeloEquipoBase):
-    id_modelo: int
+    id: int
 
     class Config:
         from_attributes = True
@@ -57,7 +57,7 @@ class EquipoUpdate(BaseModel):
 
 
 class EquipoResponse(EquipoBase):
-    id_equipo: int
+    id: int
     fecha_ingreso: Optional[datetime] = None
 
     class Config:

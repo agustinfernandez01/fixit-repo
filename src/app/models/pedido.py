@@ -13,7 +13,7 @@ class Pedido(Base):
     total = Column(Numeric(12, 2), nullable=True)
     observaciones = Column(Text, nullable=True)
 
-    usuario = relationship("Usuario", backref="pedidos")
+    usuario = relationship("Usuario", back_populates="pedido")
     carrito = relationship("Carrito", back_populates="pedido")
     detalle_pedido = relationship("DetallePedido", back_populates="pedido")
     pagos = relationship("Pago", back_populates="pedido")
@@ -30,7 +30,7 @@ class DetallePedido(Base):
     subtotal = Column(Numeric(12, 2), nullable=True)
 
     pedido = relationship("Pedido", back_populates="detalle_pedido")
-    producto = relationship("Productos", backref="detalles_pedido")
+    producto = relationship("Productos", back_populates="detalle_pedido")
 
 
 class Pago(Base):

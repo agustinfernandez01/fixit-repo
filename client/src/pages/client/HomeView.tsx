@@ -5,7 +5,7 @@ import { motion, useReducedMotion, type Variants } from 'framer-motion'
 const PHONES = [
   {
     id: 1,
-    name: 'Nexus X Ultra',
+    name: 'IPhone 17 Pro ',
     tag: 'Pro Series',
     price: '$1,199',
     badge: 'New',
@@ -15,7 +15,7 @@ const PHONES = [
   },
   {
     id: 2,
-    name: 'Nexus Slim 15',
+    name: 'IPhone 17 Standard',
     tag: 'Design Series',
     price: '$899',
     badge: 'Trending',
@@ -25,9 +25,9 @@ const PHONES = [
   },
   {
     id: 3,
-    name: 'Nexus Core',
-    tag: 'Essential',
-    price: '$549',
+    name: 'IPhone 17 Mini',
+    tag: 'Compact Series',
+    price: '$799',
     badge: 'Best Value',
     accent: 'bg-gray-100',
     accentText: 'text-gray-900',

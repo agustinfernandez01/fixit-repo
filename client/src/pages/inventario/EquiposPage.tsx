@@ -2,7 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import type { EquipoConModelo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
 
-function fmtDate(iso: string | null) {
+type ModeloApi = Partial<ModeloEquipo> & {
+  id?: number
+  id_modelo?: number
+}
+
+type EquipoRow = Partial<EquipoConModelo> & {
+  id?: number
+  id_equipo?: number
+  modelo?: ModeloApi | null
+}
+
+function fmtDate(iso: string | null | undefined) {
   if (!iso) return '—'
   try {
     return new Date(iso).toLocaleString()
@@ -12,7 +23,7 @@ function fmtDate(iso: string | null) {
 }
 
 export function EquiposPage() {
-  const [rows, setRows] = useState<EquipoConModelo[]>([])
+  const [rows, setRows] = useState<EquipoRow[]>([])
   const [modelos, setModelos] = useState<ModeloEquipo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +45,7 @@ export function EquiposPage() {
         inventarioApi.equipos.list(0, 100),
         inventarioApi.modelos.list(0, 100),
       ])
-      setRows(eq)
+      setRows(eq as EquipoRow[])
       setModelos(mo.filter((m) => m.activo))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar')
@@ -47,14 +58,22 @@ export function EquiposPage() {
     void load()
   }, [load])
 
-  function startEdit(e: EquipoConModelo) {
-    setEditingId(e.id_equipo)
+  function startEdit(e: EquipoRow) {
+    const idEquipo = e.id_equipo ?? e.id
+    const idModelo = e.modelo?.id ?? e.modelo?.id_modelo ?? ''
+
+    if (!idEquipo) {
+      setError('No se puede editar: el equipo no tiene ID válido.')
+      return
+    }
+
+    setEditingId(idEquipo)
     setForm({
-      id_modelo: e.id_modelo,
+      id_modelo: idModelo,
       imei: e.imei ?? '',
       tipo_equipo: e.tipo_equipo ?? '',
       estado_comercial: e.estado_comercial ?? '',
-      activo: e.activo,
+      activo: e.activo ?? true,
       id_producto: e.id_producto ?? '',
     })
   }
@@ -141,7 +160,7 @@ export function EquiposPage() {
               >
                 <option value="">Seleccionar…</option>
                 {modelos.map((m) => (
-                  <option key={m.id_modelo} value={m.id_modelo}>
+                  <option key={m.id} value={m.id}>
                     {m.nombre_modelo}
                     {m.capacidad_gb != null ? ` · ${m.capacidad_gb} GB` : ''}
                   </option>
@@ -229,23 +248,35 @@ export function EquiposPage() {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Modelo</th>
+                  <th>ID producto</th>
                   <th>IMEI</th>
                   <th>Tipo</th>
-                  <th>Estado</th>
+                  <th>Estado comercial</th>
                   <th>Ingreso</th>
+                  <th>Activo</th>
+                  <th>Modelo</th>
+                  <th>Capacidad</th>
+                  <th>Color</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id_equipo}>
-                    <td>{r.id_equipo}</td>
-                    <td>{r.modelo?.nombre_modelo ?? r.id_modelo}</td>
+                  <tr key={r.id_equipo ?? r.id}>
+                    <td>{r.id_equipo ?? r.id ?? '—'}</td>
+                    <td>{r.id_producto ?? '—'}</td>
                     <td>{r.imei ?? '—'}</td>
                     <td>{r.tipo_equipo ?? '—'}</td>
                     <td>{r.estado_comercial ?? '—'}</td>
                     <td>{fmtDate(r.fecha_ingreso)}</td>
+                    <td>{r.activo ? 'Sí' : 'No'}</td>
+                    <td>{r.modelo?.nombre_modelo ?? r.modelo?.id ?? '—'}</td>
+                    <td>
+                      {r.modelo?.capacidad_gb != null
+                        ? `${r.modelo.capacidad_gb} GB`
+                        : '—'}
+                    </td>
+                    <td>{r.modelo?.color ?? '—'}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button
                         type="button"
@@ -257,7 +288,14 @@ export function EquiposPage() {
                       <button
                         type="button"
                         className="btn btn-danger btn-sm"
-                        onClick={() => void handleDelete(r.id_equipo)}
+                        onClick={() => {
+                          const idEquipo = r.id_equipo ?? r.id
+                          if (!idEquipo) {
+                            setError('No se puede eliminar: el equipo no tiene ID válido.')
+                            return
+                          }
+                          void handleDelete(idEquipo)
+                        }}
                       >
                         Eliminar
                       </button>

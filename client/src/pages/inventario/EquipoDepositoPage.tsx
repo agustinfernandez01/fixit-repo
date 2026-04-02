@@ -35,8 +35,8 @@ export function EquipoDepositoPage() {
     () =>
       new Map(
         equipos.map((e) => [
-          e.id_equipo,
-          `${e.modelo?.nombre_modelo ?? 'Equipo'} #${e.id_equipo}${
+          e.id ?? e.id_equipo,
+          `${e.modelo?.nombre_modelo ?? 'Equipo'} #${e.id ?? e.id_equipo}${
             e.imei ? ` · ${e.imei}` : ''
           }`,
         ]),
@@ -140,8 +140,8 @@ export function EquipoDepositoPage() {
               >
                 <option value="">Seleccionar…</option>
                 {equipos.map((x) => (
-                  <option key={x.id_equipo} value={x.id_equipo}>
-                    {eqMap.get(x.id_equipo)}
+                  <option key={x.id ?? x.id_equipo} value={x.id ?? x.id_equipo}>
+                    {eqMap.get(x.id ?? x.id_equipo)}
                   </option>
                 ))}
               </select>
