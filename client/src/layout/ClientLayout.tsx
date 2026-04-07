@@ -1,8 +1,12 @@
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { CART_CHANGED_EVENT, type CartChangedDetail } from '../lib/cart'
 import { clearAuthTokens, getAccessToken } from '../lib/auth'
+import { carritoApi } from '../services/carritoApi'
 
 const NAV_LINKS = [
 	{ to: '/', label: 'Inicio' },
+	{ to: '/tienda', label: 'Tienda' },
 	{ to: '/marketplace', label: 'Usados' },
 	{ to: '/reparaciones', label: 'Reparaciones' },
 	{ to: '/publicar', label: 'Vender' },
@@ -12,11 +16,50 @@ export default function ClientLayout() {
 	const location = useLocation()
 	const navigate = useNavigate()
 	const logged = !!getAccessToken()
+	const [cartCount, setCartCount] = useState(0)
+	const [cartReady, setCartReady] = useState(false)
 
 	function handleLogout() {
 		clearAuthTokens()
 		navigate('/', { replace: true })
 	}
+
+	useEffect(() => {
+		let alive = true
+		let initialized = false
+		async function loadCart() {
+			try {
+				if (!initialized) {
+					await carritoApi.ensure(logged)
+					initialized = true
+				}
+				const summary = await carritoApi.summary(logged)
+				if (!alive) return
+				setCartCount(summary.total_unidades)
+				setCartReady(true)
+			} catch {
+				if (!alive) return
+				setCartCount(0)
+				setCartReady(true)
+			}
+		}
+
+		void loadCart()
+		const onChanged = (ev: Event) => {
+			const detail = (ev as CustomEvent<CartChangedDetail>).detail
+			if (detail?.totalUnidades !== undefined) {
+				setCartCount(detail.totalUnidades)
+				setCartReady(true)
+				return
+			}
+			void loadCart()
+		}
+		window.addEventListener(CART_CHANGED_EVENT, onChanged)
+		return () => {
+			alive = false
+			window.removeEventListener(CART_CHANGED_EVENT, onChanged)
+		}
+	}, [logged])
 
 	return (
 		<div className="min-h-screen bg-white font-sans text-gray-900">
@@ -71,9 +114,23 @@ export default function ClientLayout() {
 								Ingresar
 							</Link>
 						)}
-						<button className="rounded-full bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-gray-700">
-							Buy now
-						</button>
+						<Link
+							to="/carrito"
+							className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-700 transition-colors duration-150 hover:border-gray-400 hover:text-gray-900"
+							aria-label="Ver carrito"
+						>
+							<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M2.25 3h1.386a1.125 1.125 0 011.086.852l.364 1.455M7.5 14.25h9.75a2.25 2.25 0 002.25-2.25V8.25A2.25 2.25 0 0017.25 6H5.031" />
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M6.75 6l.75 3.75m0 0L8.25 14.25h9.75" />
+								<circle cx="9.5" cy="19" r="1.5" />
+								<circle cx="17.5" cy="19" r="1.5" />
+							</svg>
+							{cartReady && cartCount > 0 ? (
+								<span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-gray-900 px-1 text-[10px] font-semibold text-white">
+									{cartCount}
+								</span>
+							) : null}
+						</Link>
 						<button className="text-gray-400 hover:text-gray-900 md:hidden">
 							<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />

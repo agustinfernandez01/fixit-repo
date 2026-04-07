@@ -8,6 +8,8 @@ import MarketplaceTiendaPage from './pages/client/MarketplaceTiendaPage'
 import PublicarCelularPage from './pages/client/PublicarCelularPage'
 import LoginPage from './pages/client/LoginPage'
 import ReparacionesPage from './pages/client/ReparacionesPage'
+import TiendaPage from './pages/client/TiendaPage'
+import CarritoPage from './pages/client/CarritoPage'
 import { ModelosPage } from './pages/inventario/ModelosPage'
 import { EquiposPage } from './pages/inventario/EquiposPage'
 import { DepositosPage } from './pages/inventario/DepositosPage'
@@ -22,10 +24,12 @@ export default function App() {
     <Routes>
       <Route path="/" element={<ClientLayout />}>
         <Route index element={<Home />} />
+        <Route path="tienda" element={<TiendaPage />} />
         <Route path="marketplace" element={<MarketplaceTiendaPage />} />
         <Route path="reparaciones" element={<ReparacionesPage />} />
         <Route path="publicar" element={<PublicarCelularPage />} />
         <Route path="login" element={<LoginPage />} />
+        <Route path="carrito" element={<CarritoPage />} />
       </Route>
 
       <Route path="/admin" element={<AdminLayout />}>

@@ -1,9 +1,9 @@
 from decimal import Decimal
 from typing import List, Optional, Tuple
 
-from pymysql import IntegrityError
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.carrito import Carrito, CarritoDetalle
 from app.models.productos import Productos
@@ -49,6 +49,7 @@ def get_or_create_carrito(
 def get_carrito_items(db: Session, id_carrito: int) -> List[CarritoDetalle]:
     return (
         db.query(CarritoDetalle)
+        .options(joinedload(CarritoDetalle.producto))
         .filter(CarritoDetalle.id_carrito == id_carrito)
         .all()
     )

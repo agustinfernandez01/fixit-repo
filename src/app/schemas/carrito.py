@@ -5,6 +5,15 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ProductoCarritoBase(BaseModel):
+    id: int
+    nombre: str
+    precio: Decimal
+    activo: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CarritoBase(BaseModel):
     id: int
     id_usuario: Optional[int] = None
@@ -23,6 +32,7 @@ class CarritoDetalleBase(BaseModel):
     cant: int
     precio_unitario: Decimal
     subtotal: Decimal
+    producto: Optional[ProductoCarritoBase] = None
 
     model_config = ConfigDict(from_attributes=True)
 
