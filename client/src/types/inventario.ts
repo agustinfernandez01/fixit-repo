@@ -13,7 +13,8 @@ export type ModeloEquipo = {
 export type Equipo = {
   id: number
   id_equipo?: number
-  id_producto: number
+  id_modelo?: number | null
+  id_producto: number | null
   imei: string | null
   tipo_equipo: string | null
   estado_comercial: string | null
@@ -26,6 +27,7 @@ export type Equipo = {
     capacidad_gb: number | null
     color: string | null
   }
+  foto_url: string | null
 }
 
 export type EquipoConModelo = Equipo

@@ -5,10 +5,12 @@ from typing import Optional
 class ProductoBase(BaseModel):
     id: int
     nombre: str
-    descripcion: str
+    descripcion: Optional[str] = None
     precio: float
     id_categoria: int
-    activo: bool 
+    activo: bool
+    tipo_producto: Optional[str] = None
+    id_origen: Optional[int] = None
     
     class Config:
         orm_mode = True
@@ -30,10 +32,12 @@ class ProductoPatch(BaseModel):
 class ProductoResponse(BaseModel):
     id: int
     nombre: str
-    descripcion: str
+    descripcion: Optional[str] = None
     precio: float
     id_categoria: int
     activo: bool
+    tipo_producto: Optional[str] = None
+    id_origen: Optional[int] = None
     
     class Config:
         orm_mode = True

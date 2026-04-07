@@ -5,7 +5,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.accesorios import Accesorios
 from app.models.carrito import Carrito, CarritoDetalle
+from app.models.equipos import Equipo
 from app.models.productos import Productos
 from app.schemas.carrito import CarritoResumen
 
@@ -47,12 +49,48 @@ def get_or_create_carrito(
 
 
 def get_carrito_items(db: Session, id_carrito: int) -> List[CarritoDetalle]:
-    return (
+    items = (
         db.query(CarritoDetalle)
         .options(joinedload(CarritoDetalle.producto))
         .filter(CarritoDetalle.id_carrito == id_carrito)
         .all()
     )
+
+    if not items:
+        return items
+
+    product_ids = [d.id_producto for d in items]
+
+    equipos_rows = (
+        db.query(Equipo.id, Equipo.id_producto)
+        .filter(Equipo.id_producto.in_(product_ids))
+        .all()
+    )
+    equipo_por_producto = {id_producto: id_equipo for id_equipo, id_producto in equipos_rows}
+
+    accesorios_rows = (
+        db.query(Accesorios.id, Accesorios.id_producto)
+        .filter(Accesorios.id_producto.in_(product_ids))
+        .all()
+    )
+    accesorio_por_producto = {}
+    for id_accesorio, id_producto in accesorios_rows:
+        if id_producto not in accesorio_por_producto:
+            accesorio_por_producto[id_producto] = id_accesorio
+
+    for detalle in items:
+        if not detalle.producto:
+            continue
+        detalle.producto.tipo_producto = None
+        detalle.producto.id_origen = None
+        if detalle.id_producto in equipo_por_producto:
+            detalle.producto.tipo_producto = "equipo"
+            detalle.producto.id_origen = equipo_por_producto[detalle.id_producto]
+        elif detalle.id_producto in accesorio_por_producto:
+            detalle.producto.tipo_producto = "accesorio"
+            detalle.producto.id_origen = accesorio_por_producto[detalle.id_producto]
+
+    return items
 
 
 def _require_carrito_por_token(db: Session, token: str) -> Carrito:

@@ -15,6 +15,12 @@ function fmtArs(v: string | number | null | undefined) {
   }).format(n)
 }
 
+function tipoLabel(tipo: ProductoCompra['tipo_producto']) {
+  if (tipo === 'equipo') return 'Equipo'
+  if (tipo === 'accesorio') return 'Accesorio'
+  return 'Producto'
+}
+
 export default function TiendaPage() {
   const [items, setItems] = useState<ProductoCompra[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,8 +103,11 @@ export default function TiendaPage() {
                 <div className="border-t border-gray-100 p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
+                      <p className="mb-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 uppercase">
+                        {tipoLabel(p.tipo_producto)}
+                      </p>
                       <h2 className="text-lg font-bold text-gray-900">{p.nombre}</h2>
-                      <p className="mt-1 text-sm text-gray-400">{p.descripcion}</p>
+                      <p className="mt-1 text-sm text-gray-400">{p.descripcion ?? 'Sin descripción'}</p>
                     </div>
                     <p className="text-lg font-black text-gray-900">{fmtArs(p.precio)}</p>
                   </div>

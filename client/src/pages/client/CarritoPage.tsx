@@ -16,6 +16,12 @@ function fmtArs(v: string | number | null | undefined) {
   }).format(n)
 }
 
+function tipoLabel(tipo: 'equipo' | 'accesorio' | null | undefined) {
+  if (tipo === 'equipo') return 'Equipo'
+  if (tipo === 'accesorio') return 'Accesorio'
+  return 'Producto'
+}
+
 export default function CarritoPage() {
   const [summary, setSummary] = useState<CarritoResumen | null>(null)
   const [loading, setLoading] = useState(true)
@@ -150,6 +156,9 @@ export default function CarritoPage() {
                       <div>
                         <p className="text-[11px] tracking-widest text-gray-300 uppercase">
                           {producto?.nombre ?? `Producto #${item.id_producto}`}
+                        </p>
+                        <p className="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 uppercase">
+                          {tipoLabel(producto?.tipo_producto)}
                         </p>
                         <h2 className="mt-1 text-lg font-bold text-gray-900">
                           {producto?.nombre ?? 'Producto sin nombre'}

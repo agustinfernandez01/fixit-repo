@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EquipoConModelo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
+import { mediaUrl } from '../../services/api'
 
 type ModeloApi = Partial<ModeloEquipo> & {
   id?: number
@@ -10,6 +11,7 @@ type ModeloApi = Partial<ModeloEquipo> & {
 type EquipoRow = Partial<EquipoConModelo> & {
   id?: number
   id_equipo?: number
+  id_modelo?: number
   modelo?: ModeloApi | null
 }
 
@@ -28,6 +30,7 @@ export function EquiposPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [fotoFile, setFotoFile] = useState<File | null>(null)
   const [form, setForm] = useState({
     id_modelo: '' as string | number,
     imei: '',
@@ -36,6 +39,17 @@ export function EquiposPage() {
     activo: true,
     id_producto: '' as string | number,
   })
+
+  const fotoPreview = useMemo(() => {
+    if (!fotoFile) return ''
+    return URL.createObjectURL(fotoFile)
+  }, [fotoFile])
+
+  useEffect(() => {
+    return () => {
+      if (fotoPreview) URL.revokeObjectURL(fotoPreview)
+    }
+  }, [fotoPreview])
 
   const load = useCallback(async () => {
     setError(null)
@@ -60,7 +74,7 @@ export function EquiposPage() {
 
   function startEdit(e: EquipoRow) {
     const idEquipo = e.id_equipo ?? e.id
-    const idModelo = e.modelo?.id ?? e.modelo?.id_modelo ?? ''
+    const idModelo = e.modelo?.id ?? e.modelo?.id_modelo ?? e.id_modelo ?? ''
 
     if (!idEquipo) {
       setError('No se puede editar: el equipo no tiene ID válido.')
@@ -68,6 +82,7 @@ export function EquiposPage() {
     }
 
     setEditingId(idEquipo)
+    setFotoFile(null)
     setForm({
       id_modelo: idModelo,
       imei: e.imei ?? '',
@@ -80,6 +95,7 @@ export function EquiposPage() {
 
   function cancelEdit() {
     setEditingId(null)
+    setFotoFile(null)
     setForm({
       id_modelo: '',
       imei: '',
@@ -113,8 +129,15 @@ export function EquiposPage() {
     try {
       if (editingId != null) {
         await inventarioApi.equipos.patch(editingId, body)
+        if (fotoFile) {
+          await inventarioApi.equipos.uploadFoto(editingId, fotoFile)
+        }
       } else {
-        await inventarioApi.equipos.create(body)
+        const created = await inventarioApi.equipos.create(body)
+        const createdId = created.id_equipo ?? created.id
+        if (fotoFile && createdId != null) {
+          await inventarioApi.equipos.uploadFoto(createdId, fotoFile)
+        }
       }
       cancelEdit()
       await load()
@@ -207,6 +230,31 @@ export function EquiposPage() {
                 }
               />
             </label>
+            <label>
+              Foto del equipo
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null
+                  setFotoFile(f)
+                }}
+              />
+              {fotoPreview ? (
+                <img
+                  src={fotoPreview}
+                  alt="Vista previa"
+                  style={{
+                    marginTop: '0.5rem',
+                    width: '120px',
+                    height: '120px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border, #e6e6e6)',
+                  }}
+                />
+              ) : null}
+            </label>
             <div className="form-row-check">
               <input
                 id="activo-eq"
@@ -238,6 +286,7 @@ export function EquiposPage() {
 
       <div className="panel">
         <h2>Listado</h2>
+
         {loading ? (
           <p className="msg-muted">Cargando…</p>
         ) : rows.length === 0 ? (
@@ -249,59 +298,79 @@ export function EquiposPage() {
                 <tr>
                   <th>ID</th>
                   <th>ID producto</th>
+                  <th>Foto</th>
+                  <th>Modelo</th>
                   <th>IMEI</th>
                   <th>Tipo</th>
                   <th>Estado comercial</th>
                   <th>Ingreso</th>
                   <th>Activo</th>
-                  <th>Modelo</th>
                   <th>Capacidad</th>
                   <th>Color</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id_equipo ?? r.id}>
-                    <td>{r.id_equipo ?? r.id ?? '—'}</td>
-                    <td>{r.id_producto ?? '—'}</td>
-                    <td>{r.imei ?? '—'}</td>
-                    <td>{r.tipo_equipo ?? '—'}</td>
-                    <td>{r.estado_comercial ?? '—'}</td>
-                    <td>{fmtDate(r.fecha_ingreso)}</td>
-                    <td>{r.activo ? 'Sí' : 'No'}</td>
-                    <td>{r.modelo?.nombre_modelo ?? r.modelo?.id ?? '—'}</td>
-                    <td>
-                      {r.modelo?.capacidad_gb != null
-                        ? `${r.modelo.capacidad_gb} GB`
-                        : '—'}
-                    </td>
-                    <td>{r.modelo?.color ?? '—'}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => startEdit(r)}
-                      >
-                        Editar
-                      </button>{' '}
-                      <button
-                        type="button"
-                        className="btn btn-danger btn-sm"
-                        onClick={() => {
-                          const idEquipo = r.id_equipo ?? r.id
-                          if (!idEquipo) {
-                            setError('No se puede eliminar: el equipo no tiene ID válido.')
-                            return
-                          }
-                          void handleDelete(idEquipo)
-                        }}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((r) => {
+                  const idEquipo = r.id_equipo ?? r.id
+                  return (
+                    <tr key={idEquipo ?? `${r.id_producto ?? 'eq'}-${r.imei ?? 'sin-imei'}`}>
+                      <td>{idEquipo ?? '—'}</td>
+                      <td>{r.id_producto ?? '—'}</td>
+                      <td>
+                        {r.foto_url ? (
+                          <img
+                            src={mediaUrl(r.foto_url)}
+                            alt={`Equipo ${idEquipo ?? '—'}`}
+                            style={{
+                              width: '44px',
+                              height: '44px',
+                              objectFit: 'cover',
+                              borderRadius: '8px',
+                              border: '1px solid var(--border, #e6e6e6)',
+                            }}
+                          />
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td>{r.modelo?.nombre_modelo ?? r.id_modelo ?? '—'}</td>
+                      <td>{r.imei ?? '—'}</td>
+                      <td>{r.tipo_equipo ?? '—'}</td>
+                      <td>{r.estado_comercial ?? '—'}</td>
+                      <td>{fmtDate(r.fecha_ingreso)}</td>
+                      <td>{r.activo ? 'Sí' : 'No'}</td>
+                      <td>
+                        {r.modelo?.capacidad_gb != null
+                          ? `${r.modelo.capacidad_gb} GB`
+                          : '—'}
+                      </td>
+                      <td>{r.modelo?.color ?? '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => startEdit(r)}
+                        >
+                          Editar
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          onClick={() => {
+                            if (!idEquipo) {
+                              setError('No se puede eliminar: el equipo no tiene ID válido.')
+                              return
+                            }
+                            void handleDelete(idEquipo)
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

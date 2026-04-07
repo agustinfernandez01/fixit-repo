@@ -28,6 +28,7 @@ class Equipo(Base):
     fecha_ingreso = Column(DateTime, nullable=True)
     activo = Column(Boolean, default=True)
     id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
+    foto_url = Column(String(255), nullable=True)
 
     modelo = relationship("ModeloEquipo", back_populates="equipos")
     producto = relationship("Productos", back_populates="equipo", uselist=False)

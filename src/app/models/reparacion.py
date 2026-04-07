@@ -13,6 +13,24 @@ class TipoReparacion(Base):
     tiempo_estimado = Column(Integer, nullable=True)  # minutos o días según convención
 
 
+class ListaPrecioReparacion(Base):
+    """
+    Listado público de precios por modelo (módulo con original/alternativo, u otros servicios con un solo par USD/ARS).
+    categoria: modulo_pantalla | bateria | camara_principal | flex_carga
+    """
+
+    __tablename__ = "lista_precios_reparacion"
+
+    id_lista_precio = Column(Integer, primary_key=True, autoincrement=True)
+    categoria = Column(String(40), nullable=False, index=True)
+    modelo = Column(String(150), nullable=False)
+    orden = Column(Integer, nullable=False, default=0)
+    precio_usd_original = Column(Numeric(12, 2), nullable=True)
+    precio_ars_original = Column(Numeric(14, 2), nullable=True)
+    precio_usd_alternativo = Column(Numeric(12, 2), nullable=True)
+    precio_ars_alternativo = Column(Numeric(14, 2), nullable=True)
+
+
 class Reparacion(Base):
     __tablename__ = "reparaciones"
 

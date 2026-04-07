@@ -10,6 +10,8 @@ class ProductoCarritoBase(BaseModel):
     nombre: str
     precio: Decimal
     activo: bool
+    tipo_producto: Optional[str] = None
+    id_origen: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

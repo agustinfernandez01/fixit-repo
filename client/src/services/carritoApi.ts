@@ -1,6 +1,6 @@
 import { authHeaders } from '../lib/auth'
 import { emitCartChanged, getCartToken } from '../lib/cart'
-import { apiUrl, fetchJson } from './api'
+import { fetchJson } from './api'
 import type { Carrito, CarritoDetalle, CarritoResumen } from '../types/carrito'
 
 const P = '/api/v1/carrito'
