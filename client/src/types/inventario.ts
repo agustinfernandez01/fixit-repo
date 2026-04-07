@@ -18,6 +18,7 @@ export type Equipo = {
   activo: boolean
   id_producto: number | null
   fecha_ingreso: string | null
+  foto_url: string | null
 }
 
 export type EquipoConModelo = Equipo & {

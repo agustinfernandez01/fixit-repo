@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EquipoConModelo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
+import { mediaUrl } from '../../services/api'
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
@@ -17,6 +18,7 @@ export function EquiposPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [fotoFile, setFotoFile] = useState<File | null>(null)
   const [form, setForm] = useState({
     id_modelo: '' as string | number,
     imei: '',
@@ -25,6 +27,17 @@ export function EquiposPage() {
     activo: true,
     id_producto: '' as string | number,
   })
+
+  const fotoPreview = useMemo(() => {
+    if (!fotoFile) return ''
+    return URL.createObjectURL(fotoFile)
+  }, [fotoFile])
+
+  useEffect(() => {
+    return () => {
+      if (fotoPreview) URL.revokeObjectURL(fotoPreview)
+    }
+  }, [fotoPreview])
 
   const load = useCallback(async () => {
     setError(null)
@@ -49,6 +62,7 @@ export function EquiposPage() {
 
   function startEdit(e: EquipoConModelo) {
     setEditingId(e.id_equipo)
+    setFotoFile(null)
     setForm({
       id_modelo: e.id_modelo,
       imei: e.imei ?? '',
@@ -61,6 +75,7 @@ export function EquiposPage() {
 
   function cancelEdit() {
     setEditingId(null)
+    setFotoFile(null)
     setForm({
       id_modelo: '',
       imei: '',
@@ -94,8 +109,14 @@ export function EquiposPage() {
     try {
       if (editingId != null) {
         await inventarioApi.equipos.patch(editingId, body)
+        if (fotoFile) {
+          await inventarioApi.equipos.uploadFoto(editingId, fotoFile)
+        }
       } else {
-        await inventarioApi.equipos.create(body)
+        const created = await inventarioApi.equipos.create(body)
+        if (fotoFile) {
+          await inventarioApi.equipos.uploadFoto(created.id_equipo, fotoFile)
+        }
       }
       cancelEdit()
       await load()
@@ -188,6 +209,31 @@ export function EquiposPage() {
                 }
               />
             </label>
+            <label>
+              Foto del equipo
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null
+                  setFotoFile(f)
+                }}
+              />
+              {fotoPreview ? (
+                <img
+                  src={fotoPreview}
+                  alt="Vista previa"
+                  style={{
+                    marginTop: '0.5rem',
+                    width: '120px',
+                    height: '120px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border, #e6e6e6)',
+                  }}
+                />
+              ) : null}
+            </label>
             <div className="form-row-check">
               <input
                 id="activo-eq"
@@ -219,6 +265,7 @@ export function EquiposPage() {
 
       <div className="panel">
         <h2>Listado</h2>
+
         {loading ? (
           <p className="msg-muted">Cargando…</p>
         ) : rows.length === 0 ? (
@@ -229,6 +276,7 @@ export function EquiposPage() {
               <thead>
                 <tr>
                   <th>ID</th>
+                  <th>Foto</th>
                   <th>Modelo</th>
                   <th>IMEI</th>
                   <th>Tipo</th>
@@ -241,6 +289,23 @@ export function EquiposPage() {
                 {rows.map((r) => (
                   <tr key={r.id_equipo}>
                     <td>{r.id_equipo}</td>
+                    <td>
+                      {r.foto_url ? (
+                        <img
+                          src={mediaUrl(r.foto_url)}
+                          alt={`Equipo ${r.id_equipo}`}
+                          style={{
+                            width: '44px',
+                            height: '44px',
+                            objectFit: 'cover',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border, #e6e6e6)',
+                          }}
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td>{r.modelo?.nombre_modelo ?? r.id_modelo}</td>
                     <td>{r.imei ?? '—'}</td>
                     <td>{r.tipo_equipo ?? '—'}</td>

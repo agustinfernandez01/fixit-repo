@@ -1,38 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import type { EquipoConModelo } from '../../types/inventario'
+import { inventarioApi } from '../../services/inventarioApi'
+import { mediaUrl } from '../../services/api'
 
-const PHONES = [
-  {
-    id: 1,
-    name: 'Nexus X Ultra',
-    tag: 'Pro Series',
-    price: '$1,199',
-    badge: 'New',
-    accent: 'bg-gray-900',
-    accentText: 'text-white',
-    specs: ['6.9″ AMOLED', '200 MP', '5,000 mAh', 'Snapdragon 8 Gen 4'],
-  },
-  {
-    id: 2,
-    name: 'Nexus Slim 15',
-    tag: 'Design Series',
-    price: '$899',
-    badge: 'Trending',
-    accent: 'bg-gray-100',
-    accentText: 'text-gray-900',
-    specs: ['6.4″ OLED', '108 MP', '4,200 mAh', 'Dimensity 9300'],
-  },
-  {
-    id: 3,
-    name: 'Nexus Core',
-    tag: 'Essential',
-    price: '$549',
-    badge: 'Best Value',
-    accent: 'bg-gray-100',
-    accentText: 'text-gray-900',
-    specs: ['6.1″ LCD', '64 MP', '4,000 mAh', 'Snapdragon 7s'],
-  },
-]
+function isIphone(nombre: string | null | undefined): boolean {
+  const s = (nombre ?? '').trim().toLowerCase()
+  return s.includes('iphone')
+}
+
+function isNuevo(estado: string | null | undefined): boolean {
+  const s = (estado ?? '').trim().toLowerCase()
+  return s === 'nuevo' || s.startsWith('nuevo')
+}
 
 const FEATURES = [
   {
@@ -116,6 +96,100 @@ function PhoneMockup({ dark = false }: { dark?: boolean }) {
 
 export default function Home() {
   const [active, setActive] = useState(0)
+  const [equipos, setEquipos] = useState<EquipoConModelo[]>([])
+  const [loadingEquipos, setLoadingEquipos] = useState(true)
+  const [equiposError, setEquiposError] = useState<string | null>(null)
+  const sliderRef = useRef<HTMLDivElement | null>(null)
+  const [sliderIndex, setSliderIndex] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    async function load() {
+      setEquiposError(null)
+      setLoadingEquipos(true)
+      try {
+        const eq = await inventarioApi.equipos.list(0, 100)
+        if (!alive) return
+        setEquipos(eq)
+      } catch (e) {
+        if (!alive) return
+        setEquiposError(e instanceof Error ? e.message : 'Error al cargar equipos')
+      } finally {
+        if (!alive) return
+        setLoadingEquipos(false)
+      }
+    }
+    void load()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  function scrollToIndex(next: number) {
+    const el = sliderRef.current
+    if (!el) return
+    const items = Array.from(el.querySelectorAll<HTMLElement>('[data-slide="1"]'))
+    const target = items[next]
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })
+    setSliderIndex(next)
+  }
+
+  function handleSliderScroll() {
+    const el = sliderRef.current
+    if (!el) return
+    const items = Array.from(el.querySelectorAll<HTMLElement>('[data-slide="1"]'))
+    if (items.length === 0) return
+    const left = el.scrollLeft
+    // Encontramos el slide cuyo offsetLeft esté más cerca de scrollLeft.
+    let bestIdx = 0
+    let bestDist = Number.POSITIVE_INFINITY
+    for (let i = 0; i < items.length; i++) {
+      const d = Math.abs(items[i].offsetLeft - left)
+      if (d < bestDist) {
+        bestDist = d
+        bestIdx = i
+      }
+    }
+    setSliderIndex(bestIdx)
+  }
+
+  const equiposPresentados = useMemo(() => {
+    // Home (iPhone): SOLO "Nuevo" y sin repetidos por modelo.
+    // Orden: primero con foto, luego más reciente.
+    const base = equipos.filter(
+      (e) =>
+        e.activo &&
+        isIphone(e.modelo?.nombre_modelo ?? null) &&
+        isNuevo(e.estado_comercial),
+    )
+
+    const sorted = [...base].sort((a, b) => {
+      const af = a.foto_url ? 1 : 0
+      const bf = b.foto_url ? 1 : 0
+      if (af !== bf) return bf - af
+      return (b.fecha_ingreso ?? '').localeCompare(a.fecha_ingreso ?? '')
+    })
+
+    const seen = new Set<number>()
+    const out: EquipoConModelo[] = []
+    for (const e of sorted) {
+      // Dedupe por modelo (id_modelo). Si por alguna razón falta, cae a id_equipo.
+      const key = Number.isFinite(e.id_modelo) ? e.id_modelo : e.id_equipo
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(e)
+    }
+    return out
+  }, [equipos])
+
+  useEffect(() => {
+    // Cuando cambia la data, reseteamos el slider.
+    setSliderIndex(0)
+    const el = sliderRef.current
+    if (!el) return
+    el.scrollTo({ left: 0, behavior: 'instant' as ScrollBehavior })
+  }, [equiposPresentados.length])
 
   return (
     <>
@@ -181,52 +255,147 @@ export default function Home() {
 
       <div className="border-t border-gray-100" />
 
-      <section className="mx-auto max-w-6xl px-6 py-20">
+      <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
         <div className="mb-10 flex items-end justify-between">
           <div>
             <p className="mb-1.5 text-[11px] tracking-widest text-gray-300 uppercase">Lineup</p>
-            <h2 className="text-3xl font-black tracking-tight text-gray-900">Choose your Nexus</h2>
           </div>
-          <a href="#" className="text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900">
-            View all →
-          </a>
+          <Link to="/marketplace" className="text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900">
+            Ver usados →
+          </Link>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-3">
-          {PHONES.map((phone) => (
-            <div
-              key={phone.id}
-              className="group cursor-pointer overflow-hidden rounded-3xl border border-gray-100 bg-white transition-all duration-200 hover:-translate-y-1 hover:border-gray-300 hover:shadow-sm"
-            >
-              <div className="bg-gray-50 py-10">
-                <PhoneMockup dark={phone.id === 1} />
-              </div>
+        {loadingEquipos ? (
+          <div className="rounded-3xl border border-gray-100 bg-white p-6 text-gray-400">Cargando equipos…</div>
+        ) : equiposError ? (
+          <div className="rounded-3xl border border-gray-100 bg-white p-6 text-red-500">{equiposError}</div>
+        ) : equiposPresentados.length === 0 ? (
+          <div className="rounded-3xl border border-gray-100 bg-white p-6 text-gray-400">
+            Todavía no hay equipos “Nuevo” activos cargados.
+          </div>
+        ) : (
+          <div>
+            <div className="mb-8">
+              <h3 className="mb-5 text-6xl font-black tracking-tight text-gray-900">iPhone</h3>
 
-              <div className="border-t border-gray-100 p-6">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-[11px] text-gray-400">{phone.tag}</p>
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 uppercase">
-                    {phone.badge}
-                  </span>
-                </div>
-                <h3 className="mb-1 text-base font-bold text-gray-900">{phone.name}</h3>
-                <p className="mb-4 text-xl font-black text-gray-900">{phone.price}</p>
+              <div className="flex items-start gap-10 overflow-x-auto pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {equiposPresentados.map((eq) => {
+                  const title = eq.modelo?.nombre_modelo ?? `Modelo ${eq.id_modelo}`
+                  const isActive = equiposPresentados[sliderIndex]?.id_equipo === eq.id_equipo
+                  const idx = equiposPresentados.findIndex((e) => e.id_equipo === eq.id_equipo)
+                  const onClick = () => {
+                    if (idx >= 0) scrollToIndex(idx)
+                  }
 
-                <ul className="mb-5 grid grid-cols-2 gap-1.5">
-                  {phone.specs.map((s) => (
-                    <li key={s} className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] text-gray-400">
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-
-                <button className="w-full rounded-2xl bg-gray-900 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-gray-700">
-                  Shop now
-                </button>
+                  return (
+                    <button
+                      key={`presentado-${eq.id_equipo}`}
+                      type="button"
+                      onClick={onClick}
+                      className="group flex w-[120px] flex-none flex-col items-center gap-3 text-center"
+                      title={title}
+                    >
+                      <div
+                        className={`h-20 w-20 overflow-hidden rounded-2xl bg-transparent transition-opacity duration-150 ${
+                          isActive ? 'opacity-100' : 'opacity-90 group-hover:opacity-100'
+                        }`}
+                      >
+                        {eq.foto_url ? (
+                          <img
+                            src={mediaUrl(eq.foto_url)}
+                            alt={title}
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-300">
+                            —
+                          </div>
+                        )}
+                      </div>
+                      <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-gray-700">
+                        {title}
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
-          ))}
-        </div>
+
+            <div className="mb-6 flex items-end justify-between">
+              <h3 className="text-4xl font-black tracking-tight text-gray-900">Conocé a la familia.</h3>
+              <Link
+                to="/marketplace"
+                className="text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900"
+              >
+                Comparar todos los modelos ›
+              </Link>
+            </div>
+
+            <div
+              ref={sliderRef}
+              onScroll={handleSliderScroll}
+              className="flex gap-4 overflow-x-auto scroll-smooth pb-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              style={{ scrollSnapType: 'x mandatory' }}
+            >
+              {equiposPresentados.map((eq, idx) => {
+                const title = eq.modelo?.nombre_modelo ?? `Modelo ${eq.id_modelo}`
+                const subtitle =
+                  eq.modelo?.descripcion?.trim() ||
+                  (eq.estado_comercial ? `Estado: ${eq.estado_comercial}` : 'Equipo disponible')
+
+                return (
+                  <div
+                    key={eq.id_equipo}
+                    data-slide="1"
+                    className="w-[280px] flex-none sm:w-[320px] md:w-[360px]"
+                    style={{ scrollSnapAlign: 'start' }}
+                  >
+                    <div className="relative overflow-hidden rounded-[2.25rem] bg-gray-100">
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/10" />
+                      <div className="relative h-[280px] w-full">
+                        {eq.foto_url ? (
+                          <img
+                            src={mediaUrl(eq.foto_url)}
+                            alt={title}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <PhoneMockup dark={idx % 3 === 0} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-lg font-black text-gray-900">{title}</p>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 uppercase">
+                          Nuevo
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-400">{subtitle}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="flex items-center justify-center gap-2">
+              {equiposPresentados.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Ir a celular ${i + 1}`}
+                  onClick={() => scrollToIndex(i)}
+                  className={`h-1.5 rounded-full transition-all duration-200 ${
+                    i === sliderIndex ? 'w-6 bg-gray-900' : 'w-3 bg-gray-200 hover:bg-gray-300'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="border-t border-gray-100">

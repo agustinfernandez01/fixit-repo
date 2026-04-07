@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 
 from app.config import UPLOAD_DIR
 from app.db import Base, engine
@@ -23,6 +24,16 @@ def crear_tablas_si_hay_db():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     try:
         Base.metadata.create_all(bind=engine)
+        # Mini-migración defensiva: agrega columna foto_url si falta.
+        try:
+            insp = inspect(engine)
+            cols = {c.get("name") for c in insp.get_columns("equipos")}
+            if "foto_url" not in cols:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE equipos ADD COLUMN foto_url VARCHAR(255) NULL"))
+                logger.info("Migración aplicada: equipos.foto_url")
+        except Exception as e:
+            logger.warning("No se pudo verificar/migrar columna equipos.foto_url: %s", e)
         logger.info("Tablas creadas o ya existentes en la base de datos.")
     except Exception as e:
         logger.warning(

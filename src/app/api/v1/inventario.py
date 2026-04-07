@@ -4,10 +4,14 @@ Solo: modelos de equipo, equipos, detalle usados, depósitos, equipo-depósito.
 No incluye: catálogo productos, pedidos ni pagos (los hace el compañero).
 """
 from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import UPLOAD_DIR
 from app.db import get_db
 from app.models import (
     ModeloEquipo,
@@ -15,6 +19,7 @@ from app.models import (
     EquipoUsadoDetalle,
     Deposito,
     EquipoDeposito,
+    Productos,
 )
 from app.schemas.inventario import (
     ModeloEquipoCreate,
@@ -109,9 +114,23 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
     if data.get("fecha_ingreso") is None:
         data["fecha_ingreso"] = datetime.now(timezone.utc)
+    if data.get("id_producto") is not None:
+        prod = db.query(Productos).filter(Productos.id_producto == data["id_producto"]).first()
+        if not prod:
+            raise HTTPException(
+                status_code=400,
+                detail="El ID producto no existe en catálogo (productos). Dejalo vacío si no corresponde.",
+            )
     obj = Equipo(**data)
     db.add(obj)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo guardar el equipo. Revisá IMEI único e ID producto válido.",
+        )
     db.refresh(obj)
     return obj
 
@@ -136,10 +155,26 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
 
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    patch = payload.model_dump(exclude_unset=True)
+    if "id_producto" in patch and patch["id_producto"] is not None:
+        prod = db.query(Productos).filter(Productos.id_producto == patch["id_producto"]).first()
+        if not prod:
+            raise HTTPException(
+                status_code=400,
+                detail="El ID producto no existe en catálogo (productos). Dejalo vacío si no corresponde.",
+            )
+
+    for k, v in patch.items():
         setattr(obj, k, v)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo actualizar el equipo. Revisá IMEI único e ID producto válido.",
+        )
     db.refresh(obj)
     return obj
 
@@ -152,6 +187,45 @@ def borrar_equipo(id_equipo: int, db: Session = Depends(get_db)):
     db.delete(obj)
     db.commit()
     return None
+
+
+@router.post("/equipos/{id_equipo}/foto", response_model=EquipoResponse)
+async def subir_foto_equipo(
+    id_equipo: int,
+    foto: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(Equipo).filter(Equipo.id_equipo == id_equipo).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+
+    if not foto.content_type or not foto.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen.")
+
+    ext = Path(foto.filename or "").suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        # Si no viene extensión o viene rara, intentamos default a .jpg
+        ext = ".jpg"
+
+    rel_dir = Path("equipos") / str(id_equipo)
+    abs_dir = UPLOAD_DIR / rel_dir
+    abs_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{uuid4().hex}{ext}"
+    abs_path = abs_dir / filename
+
+    content = await foto.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="La imagen supera 10 MB.")
+
+    abs_path.write_bytes(content)
+
+    obj.foto_url = f"/uploads/{rel_dir.as_posix()}/{filename}"
+    db.commit()
+    db.refresh(obj)
+    return obj
 
 
 @router.get("/equipos-usados-detalle", response_model=list[EquipoUsadoDetalleResponse])

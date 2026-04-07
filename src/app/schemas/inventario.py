@@ -40,6 +40,7 @@ class EquipoBase(BaseModel):
     estado_comercial: Optional[str] = None
     activo: bool = True
     id_producto: Optional[int] = None  # FK opcional al catálogo de productos
+    foto_url: Optional[str] = None
 
 
 class EquipoCreate(EquipoBase):

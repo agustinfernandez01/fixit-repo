@@ -6,7 +6,7 @@ import type {
   EquipoUsadoDetalle,
   ModeloEquipo,
 } from '../types/inventario'
-import { fetchJson } from './api'
+import { apiUrl, fetchJson } from './api'
 
 const P = '/api/v1/inventario'
 
@@ -45,6 +45,27 @@ export const inventarioApi = {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
+    uploadFoto: async (id: number, file: File) => {
+      const fd = new FormData()
+      fd.append('foto', file)
+      const res = await fetch(apiUrl(`${P}/equipos/${id}/foto`), {
+        method: 'POST',
+        body: fd,
+      })
+      const text = await res.text()
+      if (!res.ok) {
+        let detail = res.statusText
+        try {
+          const j = JSON.parse(text) as { detail?: string | unknown }
+          if (typeof j.detail === 'string') detail = j.detail
+          else if (j.detail) detail = JSON.stringify(j.detail)
+        } catch {
+          if (text) detail = text
+        }
+        throw new Error(detail || `HTTP ${res.status}`)
+      }
+      return text ? (JSON.parse(text) as Equipo) : (undefined as unknown as Equipo)
+    },
     delete: (id: number) =>
       fetchJson<void>(`${P}/equipos/${id}`, { method: 'DELETE' }),
   },
