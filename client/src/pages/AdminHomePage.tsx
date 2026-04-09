@@ -26,6 +26,16 @@ function IconMarketplace() {
   )
 }
 
+function IconPedidos() {
+  return (
+    <svg className="admin-module-icon-svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <rect x="10" y="14" width="28" height="22" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M10 22h28" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M14 18h8M14 26h8M14 34h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function AdminHomePage() {
   return (
     <div className="admin-dashboard">
@@ -42,6 +52,24 @@ export function AdminHomePage() {
           Módulos
         </h2>
         <ul className="admin-dashboard-grid">
+          <li>
+            <Link to="/admin/pedidos" className="admin-module-card">
+              <span className="admin-module-icon-wrap">
+                <IconPedidos />
+              </span>
+              <div className="admin-module-body">
+                <span className="admin-module-name">Pedidos</span>
+                <span className="admin-module-desc">
+                  Confirma pedidos pendientes y bloquea stock.
+                </span>
+              </div>
+              <span className="admin-module-arrow" aria-hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+            </Link>
+          </li>
           <li>
             <Link to="/admin/inventario/modelos" className="admin-module-card">
               <span className="admin-module-icon-wrap">

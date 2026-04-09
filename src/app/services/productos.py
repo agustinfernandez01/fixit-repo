@@ -48,6 +48,56 @@ def get_productos(db: Session) -> list[dict]:
 
     return response
 
+
+def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
+    producto = db.query(Productos).filter(Productos.id == id_producto).first()
+    if not producto:
+        return None
+
+    base = {
+        "id": producto.id,
+        "nombre": producto.nombre,
+        "descripcion": producto.descripcion,
+        "precio": producto.precio,
+        "id_categoria": producto.id_categoria,
+        "activo": producto.activo,
+        "tipo_producto": None,
+        "id_origen": None,
+        "detalle_equipo": None,
+        "detalle_accesorio": None,
+    }
+
+    equipo = db.query(Equipos).filter(Equipos.id_producto == producto.id).first()
+    if equipo:
+        base["tipo_producto"] = "equipo"
+        base["id_origen"] = equipo.id
+        base["detalle_equipo"] = {
+            "id_equipo": equipo.id,
+            "id_modelo": equipo.id_modelo,
+            "nombre_modelo": equipo.modelo.nombre_modelo if equipo.modelo else None,
+            "capacidad_gb": equipo.modelo.capacidad_gb if equipo.modelo else None,
+            "color": equipo.modelo.color if equipo.modelo else None,
+            "tipo_equipo": equipo.tipo_equipo,
+            "estado_comercial": equipo.estado_comercial,
+            "foto_url": equipo.foto_url,
+        }
+        return base
+
+    accesorio = db.query(Accesorios).filter(Accesorios.id_producto == producto.id).first()
+    if accesorio:
+        base["tipo_producto"] = "accesorio"
+        base["id_origen"] = accesorio.id
+        base["detalle_accesorio"] = {
+            "id_accesorio": accesorio.id,
+            "tipo": accesorio.tipo,
+            "nombre": accesorio.nombre,
+            "color": accesorio.color,
+            "descripcion": accesorio.descripcion,
+            "estado": accesorio.estado,
+        }
+
+    return base
+
 def create_producto(db: Session, producto: Productos) -> Productos:
     db.add(producto)
     db.flush()

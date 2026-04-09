@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { CART_CHANGED_EVENT, type CartChangedDetail } from '../lib/cart'
-import { clearAuthTokens, getAccessToken } from '../lib/auth'
+import {
+	CART_CHANGED_EVENT,
+	type CartChangedDetail,
+	regenerateCartToken,
+	setCartToken,
+} from '../lib/cart'
+import { clearAuthTokens, getAccessToken, getCurrentUserRole } from '../lib/auth'
 import { carritoApi } from '../services/carritoApi'
 
 const NAV_LINKS = [
@@ -16,6 +21,8 @@ export default function ClientLayout() {
 	const location = useLocation()
 	const navigate = useNavigate()
 	const logged = !!getAccessToken()
+	const role = (getCurrentUserRole() ?? '').toLowerCase()
+	const isAdmin = role.includes('admin')
 	const [cartCount, setCartCount] = useState(0)
 	const [cartReady, setCartReady] = useState(false)
 
@@ -27,17 +34,29 @@ export default function ClientLayout() {
 	useEffect(() => {
 		let alive = true
 		let initialized = false
+		let recoveredToken = false
 		async function loadCart() {
 			try {
 				if (!initialized) {
-					await carritoApi.ensure(logged)
+					const ensured = await carritoApi.ensure(logged)
+					if (ensured.token_identificador) {
+						setCartToken(ensured.token_identificador)
+					}
 					initialized = true
 				}
 				const summary = await carritoApi.summary(logged)
 				if (!alive) return
 				setCartCount(summary.total_unidades)
 				setCartReady(true)
-			} catch {
+			} catch (e) {
+				const msg = e instanceof Error ? e.message.toLowerCase() : ''
+				if (!recoveredToken && msg.includes('otro usuario')) {
+					recoveredToken = true
+					regenerateCartToken()
+					initialized = false
+					void loadCart()
+					return
+				}
 				if (!alive) return
 				setCartCount(0)
 				setCartReady(true)
@@ -92,12 +111,22 @@ export default function ClientLayout() {
 					</ul>
 
 					<div className="flex items-center gap-3">
-						<Link
-							to="/admin"
-							className="hidden text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900 sm:block"
-						>
-							Administración
-						</Link>
+						{logged ? (
+							<Link
+								to="/perfil"
+								className="hidden text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900 sm:block"
+							>
+								Perfil
+							</Link>
+						) : null}
+						{logged && isAdmin ? (
+							<Link
+								to="/admin"
+								className="hidden text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900 sm:block"
+							>
+								Administración
+							</Link>
+						) : null}
 						{logged ? (
 							<button
 								type="button"

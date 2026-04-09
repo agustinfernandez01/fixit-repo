@@ -27,6 +27,17 @@ export function setCartToken(token: string): void {
   localStorage.setItem(CART_TOKEN_KEY, token)
 }
 
+export function clearCartToken(): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(CART_TOKEN_KEY)
+}
+
+export function regenerateCartToken(): string {
+  const token = createToken()
+  setCartToken(token)
+  return token
+}
+
 export function emitCartChanged(detail?: CartChangedDetail): void {
   window.dispatchEvent(new CustomEvent(CART_CHANGED_EVENT, { detail }))
 }

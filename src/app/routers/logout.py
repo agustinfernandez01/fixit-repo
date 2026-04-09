@@ -14,7 +14,7 @@ def logout_user(refresh_token: str, db: Session = Depends(get_db)):
         resultado_logout = logout(db, refresh_token)
         return resultado_logout
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except Exception as e:
         print(f"Error al hacer logout")
         traceback.print_exc()

@@ -1,7 +1,13 @@
 import { authHeaders } from '../lib/auth'
 import { emitCartChanged, getCartToken } from '../lib/cart'
 import { fetchJson } from './api'
-import type { Carrito, CarritoDetalle, CarritoResumen } from '../types/carrito'
+import type {
+  Carrito,
+  CarritoCheckoutPayload,
+  CarritoCheckoutResponse,
+  CarritoDetalle,
+  CarritoResumen,
+} from '../types/carrito'
 
 const P = '/api/v1/carrito'
 
@@ -61,5 +67,14 @@ export const carritoApi = {
     })
     emitCartChanged({ totalUnidades: summary.total_unidades, summary })
     return summary
+  },
+  checkout: async (payload: CarritoCheckoutPayload, withAuth = true) => {
+    const result = await fetchJson<CarritoCheckoutResponse>(`${P}/checkout`, {
+      method: 'POST',
+      headers: cartHeaders(withAuth),
+      body: JSON.stringify(payload),
+    })
+    emitCartChanged({ totalUnidades: 0 })
+    return result
   },
 }

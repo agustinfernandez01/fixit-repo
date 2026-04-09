@@ -7,14 +7,55 @@ from app.services.usuarios import (
     post_usuario,
     put_usuario_completo,
 )
-from app.schemas.usuarios import UsuarioCreate, UsuarioResponse, UsuarioPut, UsuarioPatch   
-from fastapi import APIRouter, Depends, HTTPException
+from app.schemas.usuarios import UsuarioCreate, UsuarioPerfilResponse, UsuarioResponse, UsuarioPut, UsuarioPatch   
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db import get_db
 import traceback
 from typing import Optional
+from app.deps.auth import get_optional_user_id_from_access_token
+from app.models.usuarios import Usuario
+from app.models.roles import Rol
 
 router = APIRouter()
+
+
+@router.get("/me", response_model=UsuarioPerfilResponse)
+def obtener_mi_perfil(
+    db: Session = Depends(get_db),
+    id_usuario: int | None = Depends(get_optional_user_id_from_access_token),
+):
+    if id_usuario is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Debes iniciar sesión.")
+
+    try:
+        usuario = (
+            db.query(Usuario, Rol.nombre.label("rol_nombre"))
+            .join(Rol, Usuario.id_rol == Rol.id)
+            .filter(Usuario.id == id_usuario)
+            .first()
+        )
+        if not usuario:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        user, rol_nombre = usuario
+        payload = {
+            "id": user.id,
+            "nombre": user.nombre,
+            "apellido": user.apellido,
+            "email": user.email,
+            "telefono": user.telefono,
+            "id_rol": user.id_rol,
+            "rol_nombre": rol_nombre,
+            "activo": True,
+        }
+        return payload
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error al obtener mi perfil: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 #GET - Obtener usuario por id
 @router.get("/get/{id}", response_model=UsuarioResponse)

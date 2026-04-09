@@ -1,12 +1,15 @@
 """API del carrito de compras."""
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps.auth import get_optional_user_id_from_access_token
+from app.deps.auth import get_optional_user_id_from_access_token, require_admin_user_id
+from app.models.pedido import Pedido
 from app.schemas.carrito import (
     CarritoBase,
+    CarritoCheckoutRequest,
+    CarritoCheckoutResponse,
     CarritoDetalleBase,
     CarritoItemAdd,
     CarritoItemUpdate,
@@ -14,8 +17,11 @@ from app.schemas.carrito import (
 )
 from app.services.carrito import (
     add_item_to_carrito,
+    cancel_pedido,
     carrito_resumen,
+    checkout_carrito,
     clear_carrito,
+    confirm_pedido,
     get_carrito_items,
     get_or_create_carrito,
     merge_guest_cart_into_user_cart,
@@ -137,3 +143,125 @@ def vaciar_carrito(
     except ValueError as exc:
         raise _http_error_from_value_error(exc)
     return carrito_resumen(db, token)
+
+
+@router.post("/checkout", response_model=CarritoCheckoutResponse)
+def confirmar_checkout(
+    payload: CarritoCheckoutRequest,
+    db: Session = Depends(get_db),
+    token: str = Depends(_require_carrito_token),
+    id_usuario: int | None = Depends(get_optional_user_id_from_access_token),
+):
+    if id_usuario is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Debes iniciar sesión para confirmar la compra.",
+        )
+    try:
+        pedido, pago, whatsapp_url = checkout_carrito(
+            db,
+            token=token,
+            id_usuario=id_usuario,
+            metodo_pago=payload.metodo_pago,
+            observaciones=payload.observaciones,
+        )
+        return CarritoCheckoutResponse(
+            id_pedido=pedido.id,
+            id_pago=pago.id,
+            estado_pedido=pedido.estado or "pendiente_confirmacion",
+            estado_pago=pago.estado_pago or "pendiente",
+            referencia_externa=pago.referencia_externa,
+            whatsapp_url=whatsapp_url,
+            total=pedido.total,
+            mensaje="Pedido generado. Te redirigimos a WhatsApp para finalizar la compra.",
+        )
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)
+
+
+@router.post("/confirmar-pedido/{id_pedido}", response_model=dict)
+def confirmar_pedido_endpoint(
+    id_pedido: int,
+    db: Session = Depends(get_db),
+    force: bool = Query(False, description="Confirma aunque requiera validación comercial"),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin endpoint: confirma pedido pendiente, bloquea stock, aprueba pago."""
+    try:
+        pedido, warnings = confirm_pedido(db, id_pedido, force=force)
+
+        if warnings:
+            return {
+                "id_pedido": id_pedido,
+                "estado": "requiere_verificacion_whatsapp",
+                "mensaje": "Este pedido requiere confirmar disponibilidad con el local por WhatsApp.",
+                "warnings": warnings,
+            }
+
+        if pedido.estado == "cancelado_sin_stock":
+            return {
+                "id_pedido": pedido.id,
+                "estado": pedido.estado,
+                "mensaje": "Pedido cancelado automáticamente por falta de stock/disponibilidad.",
+                "warnings": [],
+            }
+
+        return {
+            "id_pedido": pedido.id,
+            "estado": pedido.estado,
+            "mensaje": "Pedido confirmado y stock bloqueado.",
+            "warnings": [],
+        }
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)
+
+
+@router.post("/cancelar-pedido/{id_pedido}", response_model=dict)
+def cancelar_pedido_endpoint(
+    id_pedido: int,
+    db: Session = Depends(get_db),
+    motivo: str | None = Query(None, description="Motivo de cancelación"),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin endpoint: cancela un pedido pendiente de confirmación."""
+    try:
+        pedido = cancel_pedido(db, id_pedido=id_pedido, motivo=motivo)
+        return {
+            "id_pedido": pedido.id,
+            "estado": pedido.estado,
+            "mensaje": "Pedido cancelado. Compra no realizada.",
+            "warnings": [],
+        }
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)
+
+
+@router.get("/pedidos-pendientes", response_model=list[dict])
+def listar_pedidos_pendientes(
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin endpoint: lista pedidos pendientes de confirmación."""
+    try:
+        pedidos = (
+            db.query(Pedido)
+            .filter(Pedido.estado == "pendiente_confirmacion")
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id_pedido": p.id,
+                "id_usuario": p.id_usuario,
+                "fecha_pedido": p.fecha_pedido,
+                "estado": p.estado,
+                "total": str(p.total) if p.total else "0",
+                "observaciones": p.observaciones,
+            }
+            for p in pedidos
+        ]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

@@ -1,15 +1,33 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional, Tuple
+from urllib.parse import quote
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import WHATSAPP_CHECKOUT_PHONE
 from app.models.accesorios import Accesorios
 from app.models.carrito import Carrito, CarritoDetalle
 from app.models.equipos import Equipo
+from app.models.pedido import DetallePedido, Pago, Pedido
 from app.models.productos import Productos
 from app.schemas.carrito import CarritoResumen
+
+
+AVAILABILITY_CHECK_STATES = {
+    "proximamente",
+    "próximamente",
+    "por_ingresar",
+    "por ingresar",
+    "en_transito",
+    "en transito",
+    "en tránsito",
+    "reservado",
+}
+
+BLOCKED_STATES = {"vendido", "cancelado", "baja"}
 
 
 def _carrito_activo_query(db: Session, token: str):
@@ -287,10 +305,7 @@ def merge_guest_cart_into_user_cart(
     si no, asigna el usuario al carrito invitado.
     """
     try:
-        guest = _require_carrito_por_token(db, guest_token)
-        if guest.id_usuario is not None and guest.id_usuario != id_usuario:
-            raise ValueError("El carrito ya pertenece a otro usuario")
-
+        guest = get_carrito_by_token(db, guest_token)
         user_cart = (
             db.query(Carrito)
             .filter(
@@ -300,6 +315,26 @@ def merge_guest_cart_into_user_cart(
             )
             .first()
         )
+
+        # Caso típico al volver de checkout/WhatsApp: el token invitado ya no tiene
+        # carrito activo (se cerró al generar pedido). En ese caso devolvemos el
+        # carrito activo del usuario o creamos uno nuevo.
+        if not guest:
+            if user_cart:
+                return user_cart
+
+            nuevo = Carrito(
+                token_identificador=guest_token,
+                id_usuario=id_usuario,
+                estado=True,
+            )
+            db.add(nuevo)
+            db.commit()
+            db.refresh(nuevo)
+            return nuevo
+
+        if guest.id_usuario is not None and guest.id_usuario != id_usuario:
+            raise ValueError("El carrito ya pertenece a otro usuario")
 
         if not user_cart:
             guest.id_usuario = id_usuario
@@ -351,3 +386,273 @@ def count_items_in_carrito(db: Session, id_carrito: int) -> int:
         .scalar()
     )
     return int(result or 0)
+
+
+def checkout_carrito(
+    db: Session,
+    token: str,
+    id_usuario: int,
+    metodo_pago: str,
+    observaciones: Optional[str] = None,
+) -> tuple[Pedido, Pago, str]:
+    """
+    Confirma la compra del carrito activo en una sola transacción:
+    - valida disponibilidad de productos,
+    - crea pedido y detalle,
+    - registra pago aprobado,
+    - marca equipos vendidos para evitar sobreventa.
+    """
+    try:
+        carrito = _require_carrito_por_token(db, token)
+        items = get_carrito_items(db, carrito.id)
+
+        if not items:
+            raise ValueError("El carrito está vacío")
+        if carrito.id_pedido is not None:
+            raise ValueError("El carrito ya fue procesado")
+
+        total = Decimal("0")
+
+        for linea in items:
+            producto = (
+                db.query(Productos)
+                .filter(
+                    Productos.id == linea.id_producto,
+                    Productos.activo.is_(True),
+                )
+                .first()
+            )
+            if not producto:
+                raise ValueError(f"Producto {linea.id_producto} no disponible")
+
+            total += Decimal(str(linea.subtotal))
+
+        now = datetime.now(timezone.utc)
+        pedido = Pedido(
+            id_usuario=id_usuario,
+            fecha_pedido=now,
+            estado="pendiente_confirmacion",
+            total=total,
+            observaciones=observaciones,
+        )
+        db.add(pedido)
+        db.flush()
+
+        for linea in items:
+            db.add(
+                DetallePedido(
+                    id_pedido=pedido.id,
+                    id_producto=linea.id_producto,
+                    cantidad=linea.cant,
+                    precio_unitario=Decimal(str(linea.precio_unitario)),
+                    subtotal=Decimal(str(linea.subtotal)),
+                )
+            )
+
+        referencia_externa = f"LOCAL-{pedido.id}-{int(now.timestamp())}"
+        pago = Pago(
+            id_pedido=pedido.id,
+            monto=total,
+            metodo_pago=metodo_pago,
+            estado_pago="pendiente",
+            fecha_pago=now,
+            referencia_externa=referencia_externa,
+        )
+        db.add(pago)
+
+        carrito.id_usuario = id_usuario
+        carrito.id_pedido = pedido.id
+        carrito.estado = False
+
+        lineas = [
+            "Hola! Quiero finalizar esta compra:",
+            f"Pedido #{pedido.id}",
+            "",
+            "Detalle:",
+        ]
+        for linea in items:
+            nombre = linea.producto.nombre if linea.producto else f"Producto {linea.id_producto}"
+            lineas.append(
+                f"- {linea.cant} x {nombre} ({linea.subtotal} ARS)"
+            )
+        lineas.extend(
+            [
+                "",
+                f"Total: {total} ARS",
+                f"Método de pago: {metodo_pago}",
+            ]
+        )
+        if observaciones:
+            lineas.append(f"Observaciones: {observaciones}")
+
+        mensaje = "\n".join(lineas)
+        phone = "".join(ch for ch in WHATSAPP_CHECKOUT_PHONE if ch.isdigit())
+        whatsapp_url = f"https://wa.me/{phone}?text={quote(mensaje)}"
+
+        db.commit()
+        db.refresh(pedido)
+        db.refresh(pago)
+        return pedido, pago, whatsapp_url
+
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("No se pudo confirmar el checkout")
+    except ValueError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise ValueError("Ocurrió un error al confirmar la compra")
+
+
+def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Optional[Pedido], list[str]]:
+    """
+    Confirma un pedido pendiente:
+    - valida estado de equipos,
+    - si hay items no inmediatos devuelve warnings para confirmar con el local,
+    - al confirmar, bloquea stock, marca pedido y pago.
+    """
+    try:
+        pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
+        if not pedido:
+            raise ValueError("Pedido no encontrado")
+        if pedido.estado != "pendiente_confirmacion":
+            raise ValueError(f"Pedido en estado {pedido.estado}, no se puede confirmar")
+
+        detalles = db.query(DetallePedido).filter(DetallePedido.id_pedido == id_pedido).all()
+        if not detalles:
+            raise ValueError("El pedido no tiene detalle")
+
+        warnings: list[str] = []
+        cancel_reasons: list[str] = []
+
+        for detalle in detalles:
+            equipo = (
+                db.query(Equipo)
+                .filter(Equipo.id_producto == detalle.id_producto)
+                .first()
+            )
+
+            if not equipo:
+                cancel_reasons.append(
+                    f"No hay equipo físico vinculado al producto {detalle.id_producto}."
+                )
+                continue
+
+            estado_normalizado = (equipo.estado_comercial or "").strip().lower()
+
+            if estado_normalizado in BLOCKED_STATES:
+                cancel_reasons.append(
+                    f"El equipo {equipo.id} no está disponible para confirmar (estado: {equipo.estado_comercial})."
+                )
+                continue
+
+            requiere_verificacion = (
+                estado_normalizado in AVAILABILITY_CHECK_STATES
+                or not bool(equipo.activo)
+            )
+
+            if requiere_verificacion and not force:
+                nombre_producto = (
+                    equipo.producto.nombre
+                    if equipo.producto is not None and equipo.producto.nombre
+                    else f"producto {detalle.id_producto}"
+                )
+                warnings.append(
+                    "El ítem "
+                    f"{nombre_producto} requiere confirmar disponibilidad con el local por WhatsApp antes de cerrar la venta."
+                )
+
+        if cancel_reasons:
+            pedido.estado = "cancelado_sin_stock"
+            pago = db.query(Pago).filter(Pago.id_pedido == id_pedido).first()
+            if pago:
+                pago.estado_pago = "rechazado"
+
+            reason_text = " ".join(cancel_reasons)
+            if pedido.observaciones:
+                pedido.observaciones = f"{pedido.observaciones} | {reason_text}"
+            else:
+                pedido.observaciones = reason_text
+
+            db.commit()
+            db.refresh(pedido)
+            return pedido, []
+
+        if warnings:
+            db.rollback()
+            return None, warnings
+
+        for detalle in detalles:
+            equipo = (
+                db.query(Equipo)
+                .filter(Equipo.id_producto == detalle.id_producto)
+                .first()
+            )
+            if equipo:
+                equipo.activo = False
+                equipo.estado_comercial = "vendido"
+                if equipo.producto is not None:
+                    equipo.producto.activo = False
+
+        pedido.estado = "confirmado"
+        pago = db.query(Pago).filter(Pago.id_pedido == id_pedido).first()
+        if pago:
+            pago.estado_pago = "aprobado"
+
+        db.commit()
+        db.refresh(pedido)
+        return pedido, []
+
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("No se pudo confirmar el pedido")
+    except ValueError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise ValueError("Ocurrió un error al confirmar el pedido")
+
+
+def cancel_pedido(
+    db: Session,
+    id_pedido: int,
+    motivo: Optional[str] = None,
+) -> Pedido:
+    """Cancela manualmente un pedido pendiente de confirmación desde admin."""
+    try:
+        pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
+        if not pedido:
+            raise ValueError("Pedido no encontrado")
+        if pedido.estado != "pendiente_confirmacion":
+            raise ValueError(f"Pedido en estado {pedido.estado}, no se puede cancelar")
+
+        pedido.estado = "cancelado"
+
+        pago = db.query(Pago).filter(Pago.id_pedido == id_pedido).first()
+        if pago:
+            pago.estado_pago = "rechazado"
+
+        motivo_cancelacion = (
+            (motivo or "").strip()
+            or "Pedido cancelado desde administración (compra no realizada)."
+        )
+        if pedido.observaciones:
+            pedido.observaciones = f"{pedido.observaciones} | {motivo_cancelacion}"
+        else:
+            pedido.observaciones = motivo_cancelacion
+
+        db.commit()
+        db.refresh(pedido)
+        return pedido
+
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("No se pudo cancelar el pedido")
+    except ValueError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise ValueError("Ocurrió un error al cancelar el pedido")

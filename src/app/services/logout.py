@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 def logout(db: Session, refresh_token: str):
     try:
         payload = verificar_refresh_token(refresh_token)
-        session_id = payload["session_id"]
+        session_id = int(payload["session_id"])
         id_usuario = payload["id_usuario"]
     except ValueError as e:
         raise ValueError(f"Token inválido: {e}") from e

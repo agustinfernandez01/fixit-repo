@@ -328,17 +328,23 @@ export default function Home() {
               style={{ scrollSnapType: 'x mandatory' }}
             >
               {equiposPresentados.map((eq, idx) => (
+                (() => {
+                  const stableId = eq.id_equipo ?? eq.id
+                  return (
                 <EquipoCard
-                  key={eq.id_equipo}
+                  key={stableId}
                   equipo={eq}
-                  isActive={equiposPresentados[sliderIndex]?.id_equipo === eq.id_equipo}
+                  isActive={(equiposPresentados[sliderIndex]?.id_equipo ?? equiposPresentados[sliderIndex]?.id) === stableId}
                   onSelect={() => {
-                    const index = equiposPresentados.findIndex((e) => e.id_equipo === eq.id_equipo)
+                    const index = equiposPresentados.findIndex((e) => (e.id_equipo ?? e.id) === stableId)
                     if (index >= 0) scrollToIndex(index)
                   }}
                   onViewDetail={() => {
-                    const q = eq.id_producto != null ? `?producto=${eq.id_producto}` : ''
-                    navigate(`/tienda${q}`)
+                    if (eq.id_producto != null) {
+                      navigate(`/producto/${eq.id_producto}`)
+                      return
+                    }
+                    navigate('/tienda')
                   }}
                   onAddToCart={() => {
                     void handleAddToCart(eq)
@@ -347,6 +353,8 @@ export default function Home() {
                   addingToCart={addingEquipoId === (eq.id_equipo ?? eq.id)}
                   dark={idx % 3 === 0}
                 />
+                  )
+                })()
               ))}
             </div>
 

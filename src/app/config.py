@@ -1,4 +1,5 @@
 from pathlib import Path
+import warnings
 
 from dotenv import load_dotenv
 import os
@@ -8,7 +9,15 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
+DEFAULT_DEV_SECRET_KEY = "dev-secret-change-in-production-please-override-this-key-2026"
+SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_DEV_SECRET_KEY)
+if len(SECRET_KEY) < 32:
+    warnings.warn(
+        "SECRET_KEY es demasiado corta (<32 chars). Defini una clave mas robusta en .env.",
+        RuntimeWarning,
+        stacklevel=1,
+    )
+WHATSAPP_CHECKOUT_PHONE = os.getenv("WHATSAPP_CHECKOUT_PHONE", "5493816226300")
 
 # Si DATABASE_URL está definida, se usa. Si no, se construye desde variables.
 DATABASE_URL = os.getenv("DATABASE_URL")

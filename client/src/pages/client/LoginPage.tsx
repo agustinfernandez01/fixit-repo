@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { apiUrl } from '../../services/api'
 import { setAuthTokens } from '../../lib/auth'
+import { setCartToken } from '../../lib/cart'
+import { carritoApi } from '../../services/carritoApi'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -38,6 +40,13 @@ export default function LoginPage() {
         refresh_token: string
       }
       setAuthTokens(j.access_token, j.refresh_token)
+
+      // Sincroniza el carrito con el usuario logueado y actualiza token local.
+      const ensured = await carritoApi.ensure(true)
+      if (ensured.token_identificador) {
+        setCartToken(ensured.token_identificador)
+      }
+
       navigate(next, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión')

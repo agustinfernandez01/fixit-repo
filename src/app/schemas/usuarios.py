@@ -38,3 +38,16 @@ class UsuarioResponse(BaseModel):
     activo: bool = True
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UsuarioPerfilResponse(BaseModel):
+    id_usuario: int = Field(validation_alias="id")
+    nombre: str
+    apellido: str
+    email: str
+    telefono: Optional[str] = None
+    id_rol: int
+    rol_nombre: str
+    activo: bool = True
+
+    model_config = ConfigDict(from_attributes=True)

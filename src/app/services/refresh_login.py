@@ -10,7 +10,7 @@ def refresh_login(db: Session, refresh_token: str) -> LoginResponse:
     try:
         payload = verificar_refresh_token(refresh_token)
         id_usuario = payload["id_usuario"]
-        session_id = payload["session_id"]
+        session_id = int(payload["session_id"])
     except ValueError as e:
         raise ValueError(f"Refresh token inválido: {e}") from e
 

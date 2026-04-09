@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAccessToken } from '../../lib/auth'
-import { CART_CHANGED_EVENT, type CartChangedDetail } from '../../lib/cart'
+import { getAccessToken, setAuthTokens } from '../../lib/auth'
+import {
+  CART_CHANGED_EVENT,
+  type CartChangedDetail,
+  regenerateCartToken,
+  setCartToken,
+} from '../../lib/cart'
+import { apiUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
-import type { CarritoResumen } from '../../types/carrito'
+import type { CarritoCheckoutResponse, CarritoResumen } from '../../types/carrito'
+
+type RoleItem = {
+  id: number
+  nombre: string
+}
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -27,16 +38,43 @@ export default function CarritoPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [checkoutBusy, setCheckoutBusy] = useState(false)
+  const [metodoPago, setMetodoPago] = useState('transferencia')
+  const [checkoutInfo, setCheckoutInfo] = useState<CarritoCheckoutResponse | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      await carritoApi.ensure(!!getAccessToken())
+      const ensured = await carritoApi.ensure(!!getAccessToken())
+      if (ensured.token_identificador) {
+        setCartToken(ensured.token_identificador)
+      }
       const data = await carritoApi.summary(!!getAccessToken())
       setSummary(data)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar el carrito')
+      const message = e instanceof Error ? e.message : 'No se pudo cargar el carrito'
+      if (
+        message.toLowerCase().includes('otro usuario') ||
+        message.toLowerCase().includes('carrito no encontrado')
+      ) {
+        try {
+          regenerateCartToken()
+          const ensured = await carritoApi.ensure(!!getAccessToken())
+          if (ensured.token_identificador) {
+            setCartToken(ensured.token_identificador)
+          }
+          const recovered = await carritoApi.summary(!!getAccessToken())
+          setSummary(recovered)
+          setError(null)
+          return
+        } catch (e2) {
+          setError(e2 instanceof Error ? e2.message : 'No se pudo recuperar el carrito')
+          return
+        }
+      }
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -57,6 +95,7 @@ export default function CarritoPage() {
   }, [load])
 
   async function updateQty(id: number, cant: number) {
+    setCheckoutInfo(null)
     setBusyId(id)
     try {
       const data = await carritoApi.updateItem(id, cant, !!getAccessToken())
@@ -69,6 +108,7 @@ export default function CarritoPage() {
   }
 
   async function remove(id: number) {
+    setCheckoutInfo(null)
     setBusyId(id)
     try {
       const data = await carritoApi.removeItem(id, !!getAccessToken())
@@ -81,6 +121,7 @@ export default function CarritoPage() {
   }
 
   async function clearAll() {
+    setCheckoutInfo(null)
     setBusyId(-1)
     try {
       const data = await carritoApi.clear(!!getAccessToken())
@@ -92,7 +133,49 @@ export default function CarritoPage() {
     }
   }
 
+  async function checkout() {
+    if (!getAccessToken()) {
+      setError(null)
+      setShowAuthModal(true)
+      return
+    }
+    setCheckoutBusy(true)
+    setError(null)
+    try {
+      const result = await carritoApi.checkout({ metodo_pago: metodoPago }, true)
+      setCheckoutInfo(result)
+      if (summary) {
+        setSummary({
+          ...summary,
+          items: [],
+          total_unidades: 0,
+          total_importe: 0,
+        })
+      }
+      window.open(result.whatsapp_url, '_self')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo confirmar la compra')
+    } finally {
+      setCheckoutBusy(false)
+    }
+  }
+
   const items = summary?.items ?? []
+
+  async function handleAuthSuccess() {
+    setShowAuthModal(false)
+    setError(null)
+    try {
+      const ensured = await carritoApi.ensure(true)
+      if (ensured.token_identificador) {
+        setCartToken(ensured.token_identificador)
+      }
+      const updated = await carritoApi.summary(true)
+      setSummary(updated)
+    } catch {
+      void load()
+    }
+  }
 
   return (
     <div className="bg-white">
@@ -127,6 +210,28 @@ export default function CarritoPage() {
         {error ? (
           <div className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
             {error}
+          </div>
+        ) : null}
+
+        <AuthPromptModal
+          open={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={() => void handleAuthSuccess()}
+        />
+
+        {checkoutInfo ? (
+          <div className="mb-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {checkoutInfo.mensaje} Pedido #{checkoutInfo.id_pedido} · Pago #{checkoutInfo.id_pago} · Total{' '}
+            {fmtArs(checkoutInfo.total)}. Si no se abrió WhatsApp, usá este enlace:{' '}
+            <a
+              className="font-semibold underline"
+              href={checkoutInfo.whatsapp_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              abrir chat
+            </a>
+            .
           </div>
         ) : null}
 
@@ -216,17 +321,303 @@ export default function CarritoPage() {
               </div>
               <button
                 type="button"
+                disabled={checkoutBusy || items.length === 0}
+                onClick={() => void checkout()}
                 className="mt-6 w-full rounded-full bg-gray-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-700"
               >
-                Continuar con el checkout
+                {checkoutBusy ? 'Procesando compra…' : 'Confirmar compra'}
               </button>
+
+              <label className="mt-3 block text-xs font-medium text-gray-500" htmlFor="metodoPago">
+                Método de pago
+              </label>
+              <select
+                id="metodoPago"
+                value={metodoPago}
+                onChange={(e) => setMetodoPago(e.target.value)}
+                disabled={checkoutBusy}
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+              >
+                <option value="transferencia">Transferencia</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="efectivo">Efectivo</option>
+              </select>
               <p className="mt-3 text-xs leading-relaxed text-gray-400">
-                El checkout todavía no está conectado. Este panel ya te deja operar el carrito completo.
+                El checkout crea pedido pendiente y te redirige a WhatsApp con el detalle de productos y cantidades.
               </p>
             </aside>
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+type AuthPromptModalProps = {
+  open: boolean
+  onClose: () => void
+  onSuccess: () => void
+}
+
+function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+
+  const [nombre, setNombre] = useState('')
+  const [apellido, setApellido] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [registerEmail, setRegisterEmail] = useState('')
+  const [registerPassword, setRegisterPassword] = useState('')
+
+  if (!open) return null
+
+  async function parseError(res: Response) {
+    const text = await res.text()
+    let detail = res.statusText
+    try {
+      const j = JSON.parse(text) as { detail?: string }
+      if (typeof j.detail === 'string') detail = j.detail
+    } catch {
+      if (text) detail = text
+    }
+    return detail || `HTTP ${res.status}`
+  }
+
+  async function login(email: string, password: string) {
+    const res = await fetch(apiUrl('/login/post'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) {
+      throw new Error(await parseError(res))
+    }
+    const j = (await res.json()) as {
+      access_token: string
+      refresh_token: string
+    }
+    setAuthTokens(j.access_token, j.refresh_token)
+    const ensured = await carritoApi.ensure(true)
+    if (ensured.token_identificador) {
+      setCartToken(ensured.token_identificador)
+    }
+  }
+
+  async function getClienteRoleId(): Promise<number> {
+    const res = await fetch(apiUrl('/roles/get'))
+    if (!res.ok) {
+      throw new Error(await parseError(res))
+    }
+    const roles = (await res.json()) as RoleItem[]
+    if (!Array.isArray(roles) || roles.length === 0) {
+      throw new Error('No hay roles disponibles para crear la cuenta.')
+    }
+    const cliente = roles.find((r) => (r.nombre ?? '').toLowerCase().includes('cliente'))
+    return (cliente ?? roles[0]).id
+  }
+
+  async function submitLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    try {
+      await login(loginEmail, loginPassword)
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function submitRegister(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    try {
+      const idRolCliente = await getClienteRoleId()
+      const res = await fetch(apiUrl('/usuarios/post'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre,
+          apellido,
+          telefono: telefono || null,
+          email: registerEmail,
+          password_hash: registerPassword,
+          id_rol: idRolCliente,
+        }),
+      })
+      if (!res.ok) {
+        throw new Error(await parseError(res))
+      }
+
+      await login(registerEmail, registerPassword)
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear la cuenta')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-6 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold tracking-widest text-gray-300 uppercase">Fix It</p>
+            <h2 className="text-2xl font-black tracking-tight text-gray-900">
+              {mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
+            </h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Para confirmar la compra, primero autenticá tu cuenta.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 rounded-full bg-gray-100 p-1">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('login')
+              setError(null)
+            }}
+            className={`rounded-full px-3 py-2 text-sm font-semibold transition-colors ${
+              mode === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            Ingresar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('register')
+              setError(null)
+            }}
+            className={`rounded-full px-3 py-2 text-sm font-semibold transition-colors ${
+              mode === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            Crear cuenta
+          </button>
+        </div>
+
+        {error ? (
+          <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {error}
+          </div>
+        ) : null}
+
+        {mode === 'login' ? (
+          <form className="space-y-3" onSubmit={(e) => void submitLogin(e)}>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Email</label>
+              <input
+                type="email"
+                autoComplete="email"
+                required
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Contraseña</label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 w-full rounded-full bg-gray-900 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-60"
+            >
+              {loading ? 'Ingresando…' : 'Ingresar y continuar'}
+            </button>
+          </form>
+        ) : (
+          <form className="space-y-3" onSubmit={(e) => void submitRegister(e)}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Nombre</label>
+                <input
+                  type="text"
+                  required
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Apellido</label>
+                <input
+                  type="text"
+                  required
+                  value={apellido}
+                  onChange={(e) => setApellido(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Teléfono</label>
+              <input
+                type="text"
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Email</label>
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={registerEmail}
+                onChange={(e) => setRegisterEmail(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Contraseña</label>
+              <input
+                type="password"
+                required
+                autoComplete="new-password"
+                minLength={6}
+                value={registerPassword}
+                onChange={(e) => setRegisterPassword(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 w-full rounded-full bg-gray-900 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-60"
+            >
+              {loading ? 'Creando cuenta…' : 'Crear cuenta e ingresar'}
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   )
 }

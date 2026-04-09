@@ -27,7 +27,6 @@ class Equipo(Base):
     estado_comercial = Column(String(50), nullable=True)
     fecha_ingreso = Column(DateTime, nullable=True)
     activo = Column(Boolean, default=True)
-    id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
     foto_url = Column(String(255), nullable=True)
 
     modelo = relationship("ModeloEquipo", back_populates="equipos")
@@ -36,7 +35,6 @@ class Equipo(Base):
         "EquipoUsadoDetalle", back_populates="equipo", uselist=False
     )
     depositos = relationship("EquipoDeposito", back_populates="equipo")
-    productos = relationship("Productos", back_populates="equipo")
 
 
 class EquipoUsadoDetalle(Base):

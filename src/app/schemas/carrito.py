@@ -48,6 +48,22 @@ class CarritoItemUpdate(BaseModel):
     cant: int = Field(ge=1)
 
 
+class CarritoCheckoutRequest(BaseModel):
+    metodo_pago: str = Field(default="transferencia", min_length=2, max_length=50)
+    observaciones: Optional[str] = Field(default=None, max_length=1000)
+
+
+class CarritoCheckoutResponse(BaseModel):
+    id_pedido: int
+    id_pago: int
+    estado_pedido: str
+    estado_pago: str
+    referencia_externa: Optional[str] = None
+    whatsapp_url: str
+    total: Decimal
+    mensaje: str
+
+
 class CarritoResumen(BaseModel):
     carrito: CarritoBase
     items: List[CarritoDetalleBase]

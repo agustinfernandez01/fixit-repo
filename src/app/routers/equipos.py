@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, exceptions, HTTPException
+from fastapi import APIRouter, Depends, exceptions, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.services.equipos import create_equipo, get_equipos
-from app.schemas.equipos import EquipoCreate, EquipoResponse
+from app.services.equipos import get_equipos
+from app.schemas.equipos import EquipoResponse
 import traceback
 
 router = APIRouter()
@@ -20,18 +20,13 @@ def listar_equipos(db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-#POST - Crear equipo
-@router.post("/post", response_model=EquipoResponse)
-def create_equipo_endpoint(equipo: EquipoCreate, db: Session = Depends(get_db)):
-    try:
-        db_equipo = create_equipo(db, equipo)
-        if db_equipo is None:
-            raise exceptions.HTTPException(status_code=404, detail="Modelo de equipo no encontrado")
-        return db_equipo
-    except ValueError as e:
-        raise exceptions.HTTPException(status_code=400, detail=str(e))
-    except exceptions.HTTPException:
-        raise
-    except Exception:
-        traceback.print_exc()
-        raise exceptions.HTTPException(status_code=500, detail="Error al crear el equipo")
+#POST - Crear equipo (legacy deprecado)
+@router.post("/post", deprecated=True)
+def create_equipo_endpoint():
+    raise exceptions.HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "Endpoint deprecado: usa POST /api/v1/inventario/equipos "
+            "como flujo oficial de alta de equipos."
+        ),
+    )
