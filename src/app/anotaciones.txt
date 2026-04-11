@@ -12,7 +12,8 @@ marketplace de usados
 reparaciones
 canje
 
-reuvicorn app.main:app --reload
+.\venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
 
 funcionamiento tokens
 
