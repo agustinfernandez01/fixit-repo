@@ -9,11 +9,20 @@ def get_productos(db: Session) -> list[dict]:
     productos = db.query(Productos).all()
 
     equipos_rows = (
-        db.query(Equipos.id, Equipos.id_producto)
+        db.query(Equipos.id, Equipos.id_producto, Equipos.tipo_equipo)
         .filter(Equipos.id_producto.is_not(None))
         .all()
     )
-    equipos_por_producto = {id_producto: id_equipo for id_equipo, id_producto in equipos_rows}
+    equipos_por_producto = {
+        id_producto: id_equipo
+        for id_equipo, id_producto, _tipo_equipo in equipos_rows
+        if id_producto is not None
+    }
+    tipo_equipo_por_producto = {
+        id_producto: tipo_equipo
+        for _id_equipo, id_producto, tipo_equipo in equipos_rows
+        if id_producto is not None
+    }
 
     accesorios_rows = db.query(Accesorios.id, Accesorios.id_producto).all()
     accesorios_por_producto = {}
@@ -43,6 +52,7 @@ def get_productos(db: Session) -> list[dict]:
                 "activo": p.activo,
                 "tipo_producto": tipo_producto,
                 "id_origen": id_origen,
+                "tipo_equipo": tipo_equipo_por_producto.get(p.id),
             }
         )
 
@@ -63,6 +73,7 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         "activo": producto.activo,
         "tipo_producto": None,
         "id_origen": None,
+        "tipo_equipo": None,
         "detalle_equipo": None,
         "detalle_accesorio": None,
     }
@@ -71,6 +82,7 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
     if equipo:
         base["tipo_producto"] = "equipo"
         base["id_origen"] = equipo.id
+        base["tipo_equipo"] = equipo.tipo_equipo
         base["detalle_equipo"] = {
             "id_equipo": equipo.id,
             "id_modelo": equipo.id_modelo,

@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { carritoApi } from '../../services/carritoApi'
 import { productosApi } from '../../services/productosApi'
 import type { ProductoCompra } from '../../types/carrito'
 import { getAccessToken } from '../../lib/auth'
+import productosAppleFilterImg from '../../assets/filtradocatalogoimg/productos-apple.svg'
+import accesoriosFilterImg from '../../assets/filtradocatalogoimg/accesorios.svg'
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -15,10 +18,229 @@ function fmtArs(v: string | number | null | undefined) {
   }).format(n)
 }
 
-function tipoLabel(tipo: ProductoCompra['tipo_producto']) {
-  if (tipo === 'equipo') return 'Equipo'
-  if (tipo === 'accesorio') return 'Accesorio'
+type CatalogCategory = 'apple' | 'accesorios'
+type SortMode = 'featured' | 'price-asc' | 'price-desc' | 'name'
+type VisibleCategory = CatalogCategory
+
+type CatalogItem = ProductoCompra & {
+  category: CatalogCategory
+  familyLabel: string
+}
+
+function normalize(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function toNumber(value: string | number | null | undefined): number {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return Number.isNaN(n) ? 0 : n
+  }
+  return 0
+}
+
+function isAccessoryByName(name: string): boolean {
+  return [
+    'funda',
+    'cargador',
+    'cable',
+    'cabezal',
+    'airpods',
+    'glass',
+    'templado',
+    'protector',
+    'soporte',
+    'adaptador',
+    'auricular',
+    'airpods',
+    'power bank',
+    'bateria externa',
+    'mouse',
+    'teclado',
+  ].some((w) => name.includes(w))
+}
+
+function inferFamilyLabel(name: string): string {
+  if (name.includes('iphone')) return 'iPhone'
+  if (name.includes('ipad')) return 'iPad'
+  if (name.includes('macbook')) return 'MacBook'
+  if (name.includes('apple watch') || name.includes('watch')) return 'Watch'
+  if (name.includes('airpods')) return 'AirPods'
+  if (isAccessoryByName(name)) return 'Accesorio'
   return 'Producto'
+}
+
+function inferFamilyFromTipoEquipo(tipoEquipo: string | null | undefined): string | null {
+  const t = normalize(tipoEquipo)
+  if (!t) return null
+  if (t.includes('iphone')) return 'iPhone'
+  if (t.includes('ipad') || t.includes('tablet')) return 'iPad'
+  if (t.includes('watch')) return 'Watch'
+  if (t.includes('macbook') || t.includes('mac')) return 'MacBook'
+  if (t.includes('airpods')) return 'AirPods'
+  if (t.includes('cable')) return 'Cable'
+  if (t.includes('funda')) return 'Funda'
+  if (t.includes('cabezal')) return 'Cabezal'
+  return t
+}
+
+function classifyCategory(producto: ProductoCompra): CatalogCategory {
+  if (producto.tipo_producto === 'accesorio') return 'accesorios'
+
+  const tipoEquipo = normalize(producto.tipo_equipo)
+  if (
+    tipoEquipo.includes('airpods') ||
+    tipoEquipo.includes('funda') ||
+    tipoEquipo.includes('cable') ||
+    tipoEquipo.includes('cabezal') ||
+    tipoEquipo.includes('accesorio')
+  ) {
+    return 'accesorios'
+  }
+
+  if (
+    tipoEquipo.includes('iphone') ||
+    tipoEquipo.includes('ipad') ||
+    tipoEquipo.includes('macbook')
+  ) {
+    return 'apple'
+  }
+
+  if (producto.tipo_producto === 'equipo') return 'apple'
+
+  const name = normalize(producto.nombre)
+  if (isAccessoryByName(name)) return 'accesorios'
+  return 'apple'
+}
+
+function toCatalogItem(producto: ProductoCompra): CatalogItem {
+  const normalizedName = normalize(producto.nombre)
+  const familyByTipo = inferFamilyFromTipoEquipo(producto.tipo_equipo)
+  return {
+    ...producto,
+    category: classifyCategory(producto),
+    familyLabel: familyByTipo ?? inferFamilyLabel(normalizedName),
+  }
+}
+
+function paletteByCategory(category: CatalogCategory): {
+  backdrop: string
+  swatches: string[]
+  tag: string
+} {
+  if (category === 'accesorios') {
+    return {
+      backdrop: 'bg-gradient-to-b from-amber-100/75 via-orange-50/70 to-white',
+      swatches: ['bg-amber-100', 'bg-orange-200', 'bg-zinc-700'],
+      tag: 'Accesorio',
+    }
+  }
+  return {
+    backdrop: 'bg-gradient-to-b from-neutral-200/90 via-stone-100/80 to-white',
+    swatches: ['bg-stone-200', 'bg-neutral-100', 'bg-slate-800'],
+    tag: 'Apple',
+  }
+}
+
+function ProductMockup({ category }: { category: CatalogCategory }) {
+  if (category === 'accesorios') {
+    return (
+      <div className="relative mx-auto flex h-36 w-36 items-center justify-center rounded-3xl border border-neutral-200 bg-white shadow-sm">
+        <div className="h-20 w-20 rounded-2xl border border-neutral-300 bg-neutral-50" />
+        <div className="absolute -bottom-2 h-1.5 w-20 rounded-full bg-neutral-200" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative mx-auto flex h-44 w-24 flex-col items-center rounded-[1.9rem] border border-[1.5px] border-gray-200 bg-white pb-2.5 pt-2.5 shadow-sm">
+      <div className="mb-1.5 h-3.5 w-10 rounded-full bg-gray-200" />
+      <div className="w-[88%] flex-1 space-y-1 overflow-hidden rounded-xl bg-gray-100 p-2">
+        <div className="h-1.5 w-3/4 rounded-full bg-gray-200" />
+        <div className="h-1.5 w-1/2 rounded-full bg-gray-200 opacity-60" />
+        <div className="mt-2 h-14 rounded-lg bg-gray-200 opacity-40" />
+      </div>
+      <div className="mt-2 h-1 w-8 rounded-full bg-gray-200" />
+    </div>
+  )
+}
+
+function sortItems(items: CatalogItem[], mode: SortMode): CatalogItem[] {
+  const sorted = [...items]
+  if (mode === 'price-asc') {
+    sorted.sort((a, b) => toNumber(a.precio) - toNumber(b.precio))
+    return sorted
+  }
+  if (mode === 'price-desc') {
+    sorted.sort((a, b) => toNumber(b.precio) - toNumber(a.precio))
+    return sorted
+  }
+  if (mode === 'name') {
+    sorted.sort((a, b) => a.nombre.localeCompare(b.nombre))
+    return sorted
+  }
+
+  sorted.sort((a, b) => {
+    const byType = (a.category === 'apple' ? 1 : 0) - (b.category === 'apple' ? 1 : 0)
+    if (byType !== 0) return -byType
+    return toNumber(b.precio) - toNumber(a.precio)
+  })
+  return sorted
+}
+
+function ProductCard({
+  item,
+  saving,
+  onAdd,
+}: {
+  item: CatalogItem
+  saving: boolean
+  onAdd: (id: number) => void
+}) {
+  const p = paletteByCategory(item.category)
+  return (
+    <article className="overflow-hidden rounded-[2rem] border border-neutral-100 bg-white shadow-[0_12px_30px_-22px_rgba(0,0,0,0.25)] transition-shadow duration-200 hover:shadow-[0_20px_40px_-24px_rgba(0,0,0,0.28)]">
+      <div className={`relative overflow-hidden ${p.backdrop}`}>
+        <div className="relative flex h-[260px] w-full items-center justify-center">
+          <ProductMockup category={item.category} />
+        </div>
+      </div>
+
+      <div className="px-5 pb-5 pt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="inline-flex rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-neutral-600 uppercase">
+            {p.tag}
+          </p>
+          <div className="flex gap-1.5" aria-hidden>
+            {p.swatches.map((sw, i) => (
+              <span key={`${item.id}-sw-${i}`} className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`} />
+            ))}
+          </div>
+        </div>
+
+        <h3 className="line-clamp-2 text-[1.1rem] font-semibold tracking-[-0.02em] text-neutral-900">{item.nombre}</h3>
+        <p className="mt-1 text-xs font-medium tracking-wide text-neutral-500 uppercase">{item.familyLabel}</p>
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-neutral-500">{item.descripcion ?? 'Producto disponible en catálogo.'}</p>
+
+        <div className="mt-4 flex items-end justify-between gap-3">
+          <p className="text-2xl font-black tracking-tight text-neutral-900">{fmtArs(item.precio)}</p>
+          <Link to={`/producto/${item.id}`} className="text-sm font-medium text-[#0071e3] hover:underline">
+            Ver detalle
+          </Link>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onAdd(item.id)}
+          disabled={saving}
+          className="mt-4 inline-flex min-h-[2.75rem] w-full items-center justify-center rounded-full bg-neutral-900 px-6 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-wait disabled:bg-neutral-500"
+        >
+          {saving ? 'Agregando…' : 'Agregar al carrito'}
+        </button>
+      </div>
+    </article>
+  )
 }
 
 export default function TiendaPage() {
@@ -26,6 +248,18 @@ export default function TiendaPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const [visibleCategory, setVisibleCategory] = useState<VisibleCategory>('apple')
+  const [sortMode, setSortMode] = useState<SortMode>('featured')
+
+  const visualFilters: Array<{
+    id: VisibleCategory
+    label: string
+    image: string
+  }> = [
+    { id: 'apple', label: 'Productos Apple', image: productosAppleFilterImg },
+    { id: 'accesorios', label: 'Accesorios', image: accesoriosFilterImg },
+  ]
 
   const load = useCallback(async () => {
     setError(null)
@@ -57,20 +291,94 @@ export default function TiendaPage() {
     }
   }
 
+  const catalogItems = useMemo(() => items.map(toCatalogItem), [items])
+
+  const filtered = useMemo(() => {
+    const q = normalize(search)
+    let data = catalogItems.filter((item) => item.category === visibleCategory)
+    if (q) {
+      data = data.filter((item) => {
+        const hay = `${normalize(item.nombre)} ${normalize(item.descripcion)} ${normalize(item.familyLabel)}`
+        return hay.includes(q)
+      })
+    }
+    return sortItems(data, sortMode)
+  }, [catalogItems, visibleCategory, search, sortMode])
+
+  const appleItems = useMemo(
+    () => filtered.filter((item) => item.category === 'apple'),
+    [filtered],
+  )
+
+  const accesoriosItems = useMemo(
+    () => filtered.filter((item) => item.category === 'accesorios'),
+    [filtered],
+  )
+
   return (
     <div className="bg-white">
       <section className="mx-auto max-w-6xl px-6 pb-16 pt-10">
-        <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-1.5 text-[11px] tracking-widest text-gray-300 uppercase">
-              Fix It · tienda
+            <p className="mb-1.5 text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">
+              Fix It · catálogo
             </p>
-            <h1 className="text-3xl font-black tracking-tight text-gray-900">
-              Catálogo de productos
+            <h1 className="text-4xl font-semibold tracking-[-0.03em] text-neutral-900">
+              Tienda de productos
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-400">
-              Elegí productos del catálogo y agregalos al carrito. El ícono superior te muestra el total.
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
+              Explorá dos categorías claras para vender mejor: <strong className="font-semibold text-neutral-700">Productos Apple</strong> y <strong className="font-semibold text-neutral-700">Accesorios</strong>. Buscá, filtrá y agregá al carrito en un flujo de catálogo profesional.
             </p>
+          </div>
+        </div>
+
+        <div className="mb-10 rounded-[1.6rem] border border-neutral-200 bg-[#f5f5f7] p-4 sm:p-5">
+          <div className="mb-5 flex gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {visualFilters.map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setVisibleCategory(filter.id)}
+                className={`group flex min-w-[150px] flex-col items-center gap-2 rounded-2xl px-3 py-2 transition-colors ${
+                  visibleCategory === filter.id ? 'bg-white shadow-sm' : 'hover:bg-white/70'
+                }`}
+              >
+                <img
+                  src={filter.image}
+                  alt={filter.label}
+                  className="h-[64px] w-auto max-w-[120px] object-contain"
+                  loading="lazy"
+                />
+                <span className="text-sm font-medium text-neutral-800">{filter.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[1.2fr_auto] lg:items-end">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold tracking-widest text-neutral-400 uppercase">Buscar</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="iPhone 15, MacBook, funda, cargador..."
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition-colors focus:border-neutral-400"
+              />
+            </label>
+
+            <label className="block min-w-[210px]">
+              <span className="mb-1 block text-[11px] font-semibold tracking-widest text-neutral-400 uppercase">Orden</span>
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as SortMode)}
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition-colors focus:border-neutral-400"
+              >
+                <option value="featured">Relevancia</option>
+                <option value="price-asc">Precio: menor a mayor</option>
+                <option value="price-desc">Precio: mayor a menor</option>
+                <option value="name">Nombre (A-Z)</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -81,47 +389,64 @@ export default function TiendaPage() {
         ) : null}
 
         {loading ? (
-          <p className="text-sm text-gray-400">Cargando productos…</p>
-        ) : items.length === 0 ? (
+          <p className="text-sm text-neutral-500">Cargando productos…</p>
+        ) : filtered.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50/80 px-8 py-16 text-center">
-            <p className="text-gray-500">Todavía no hay productos activos para vender.</p>
+            <p className="text-gray-500">No encontramos productos para esos filtros.</p>
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((p) => (
-              <article
-                key={p.id}
-                className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="flex aspect-[4/3] items-end bg-gradient-to-br from-gray-50 to-white p-5">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gray-900 text-white shadow-lg">
-                    <svg className="h-11 w-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M12 3v18m9-9H3" />
-                    </svg>
+          <div className="space-y-12">
+            {appleItems.length > 0 ? (
+              <section>
+                <div className="mb-6 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Categoría</p>
+                    <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900">Productos Apple</h2>
                   </div>
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+                    {appleItems.length} disponibles
+                  </span>
                 </div>
-                <div className="border-t border-gray-100 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="mb-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 uppercase">
-                        {tipoLabel(p.tipo_producto)}
-                      </p>
-                      <h2 className="text-lg font-bold text-gray-900">{p.nombre}</h2>
-                      <p className="mt-1 text-sm text-gray-400">{p.descripcion ?? 'Sin descripción'}</p>
-                    </div>
-                    <p className="text-lg font-black text-gray-900">{fmtArs(p.precio)}</p>
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {appleItems.map((item) => (
+                    <ProductCard
+                      key={item.id}
+                      item={item}
+                      saving={savingId === item.id}
+                      onAdd={(id) => {
+                        void addToCart(id)
+                      }}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {accesoriosItems.length > 0 ? (
+              <section>
+                <div className="mb-6 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Categoría</p>
+                    <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900">Accesorios</h2>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void addToCart(p.id)}
-                    disabled={savingId === p.id}
-                    className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-60"
-                  >
-                    {savingId === p.id ? 'Agregando…' : 'Agregar al carrito'}
-                  </button>
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+                    {accesoriosItems.length} disponibles
+                  </span>
                 </div>
-              </article>
-            ))}
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {accesoriosItems.map((item) => (
+                    <ProductCard
+                      key={item.id}
+                      item={item}
+                      saving={savingId === item.id}
+                      onAdd={(id) => {
+                        void addToCart(id)
+                      }}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
         )}
       </section>

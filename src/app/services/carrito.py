@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 from urllib.parse import quote
 
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import WHATSAPP_CHECKOUT_PHONE
@@ -80,33 +80,58 @@ def get_carrito_items(db: Session, id_carrito: int) -> List[CarritoDetalle]:
     product_ids = [d.id_producto for d in items]
 
     equipos_rows = (
-        db.query(Equipo.id, Equipo.id_producto)
+        db.query(Equipo.id, Equipo.id_producto, Equipo.foto_url)
         .filter(Equipo.id_producto.in_(product_ids))
         .all()
     )
-    equipo_por_producto = {id_producto: id_equipo for id_equipo, id_producto in equipos_rows}
+    equipo_por_producto = {
+        id_producto: {"id_equipo": id_equipo, "foto_url": foto_url}
+        for id_equipo, id_producto, foto_url in equipos_rows
+    }
 
-    accesorios_rows = (
-        db.query(Accesorios.id, Accesorios.id_producto)
-        .filter(Accesorios.id_producto.in_(product_ids))
-        .all()
-    )
+    try:
+        accesorios_rows = (
+            db.query(Accesorios.id, Accesorios.id_producto, Accesorios.foto_url)
+            .filter(Accesorios.id_producto.in_(product_ids))
+            .all()
+        )
+    except OperationalError as exc:
+        # Backward compatibility while DB migrations are being applied.
+        if "Unknown column" in str(exc):
+            db.rollback()
+            accesorios_rows = (
+                db.query(Accesorios.id, Accesorios.id_producto)
+                .filter(Accesorios.id_producto.in_(product_ids))
+                .all()
+            )
+            accesorios_rows = [
+                (id_accesorio, id_producto, None)
+                for id_accesorio, id_producto in accesorios_rows
+            ]
+        else:
+            raise
     accesorio_por_producto = {}
-    for id_accesorio, id_producto in accesorios_rows:
+    for id_accesorio, id_producto, foto_url in accesorios_rows:
         if id_producto not in accesorio_por_producto:
-            accesorio_por_producto[id_producto] = id_accesorio
+            accesorio_por_producto[id_producto] = {
+                "id_accesorio": id_accesorio,
+                "foto_url": foto_url,
+            }
 
     for detalle in items:
         if not detalle.producto:
             continue
         detalle.producto.tipo_producto = None
         detalle.producto.id_origen = None
+        detalle.producto.foto_url = None
         if detalle.id_producto in equipo_por_producto:
             detalle.producto.tipo_producto = "equipo"
-            detalle.producto.id_origen = equipo_por_producto[detalle.id_producto]
+            detalle.producto.id_origen = equipo_por_producto[detalle.id_producto]["id_equipo"]
+            detalle.producto.foto_url = equipo_por_producto[detalle.id_producto]["foto_url"]
         elif detalle.id_producto in accesorio_por_producto:
             detalle.producto.tipo_producto = "accesorio"
-            detalle.producto.id_origen = accesorio_por_producto[detalle.id_producto]
+            detalle.producto.id_origen = accesorio_por_producto[detalle.id_producto]["id_accesorio"]
+            detalle.producto.foto_url = accesorio_por_producto[detalle.id_producto]["foto_url"]
 
     return items
 

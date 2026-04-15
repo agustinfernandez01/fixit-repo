@@ -74,3 +74,9 @@ Hacer una pasada completa para detectar referencias antiguas id_equipo o id_prod
 
 *Checklist de release local
 Verificar build frontend, creación de equipo, upload de imagen, visualización en Home, y compra en carrito en una corrida de punta a punta.
+
+que hacer 15/4:
+
+mejorar cards del catalogo y seccionar.
+agregar foto al producto de carrito.
+cranear plan canje

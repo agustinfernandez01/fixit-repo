@@ -1,0 +1,13 @@
+{
+  "name": "fixit-repo-workspace",
+  "private": true,
+  "scripts": {
+    "front": "npm --prefix client run dev",
+    "back": "cd src && .\\venv\\Scripts\\python.exe -m uvicorn app.main:app --reload",
+    "levantar": "concurrently -n FRONT,BACK -c cyan,green \"npm --prefix client run dev\" \"cd src && .\\venv\\Scripts\\python.exe -m uvicorn app.main:app --reload\"",
+    "dev": "npm run levantar"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

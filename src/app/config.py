@@ -4,9 +4,13 @@ import warnings
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+APP_DIR = Path(__file__).resolve().parent
+SRC_DIR = APP_DIR.parent
 
-BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(SRC_DIR / ".env")
+load_dotenv(APP_DIR / ".env")
+
+BASE_DIR = APP_DIR
 UPLOAD_DIR = BASE_DIR / "uploads"
 
 DEFAULT_DEV_SECRET_KEY = "dev-secret-change-in-production-please-override-this-key-2026"

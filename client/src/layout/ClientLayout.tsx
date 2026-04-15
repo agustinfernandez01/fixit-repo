@@ -13,6 +13,7 @@ const NAV_LINKS = [
 	{ to: '/', label: 'Inicio' },
 	{ to: '/tienda', label: 'Tienda' },
 	{ to: '/marketplace', label: 'Usados' },
+	{ to: '/canje', label: 'Canje' },
 	{ to: '/reparaciones', label: 'Reparaciones' },
 	{ to: '/publicar', label: 'Vender' },
 ]

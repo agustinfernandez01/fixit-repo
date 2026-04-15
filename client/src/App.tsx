@@ -6,6 +6,7 @@ import { AdminHomePage } from './pages/AdminHomePage'
 import PedidosPage from './pages/admin/PedidosPage'
 import Home from './pages/client/HomeView'
 import MarketplaceTiendaPage from './pages/client/MarketplaceTiendaPage'
+import CanjePage from './pages/client/CanjePage.tsx'
 import PublicarCelularPage from './pages/client/PublicarCelularPage'
 import LoginPage from './pages/client/LoginPage'
 import ReparacionesPage from './pages/client/ReparacionesPage'
@@ -29,6 +30,7 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="tienda" element={<TiendaPage />} />
         <Route path="marketplace" element={<MarketplaceTiendaPage />} />
+        <Route path="canje" element={<CanjePage />} />
         <Route path="reparaciones" element={<ReparacionesPage />} />
         <Route path="publicar" element={<PublicarCelularPage />} />
         <Route path="login" element={<LoginPage />} />
