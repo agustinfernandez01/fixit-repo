@@ -1,7 +1,22 @@
-import { Link, Outlet } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { getAccessToken, getCurrentUserRole } from '../lib/auth'
 import fixitLogo from '../assets/fixit-logo.png'
 
 export default function AdminLayout() {
+  const location = useLocation()
+  const token = getAccessToken()
+  const role = (getCurrentUserRole() ?? '').toLowerCase()
+  const isAdmin = role.includes('admin')
+
+  if (!token) {
+    const next = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/login?next=${next}`} replace />
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />
+  }
+
   return (
     <div className="admin-shell">
       <header className="admin-header">

@@ -1,28 +1,36 @@
 /** Alineado con `app/schemas/inventario.py` (respuestas API). */
 
 export type ModeloEquipo = {
-  id_modelo: number
+  id: number
+  id_modelo?: number
   nombre_modelo: string
   capacidad_gb: number | null
   color: string | null
-  descripcion: string | null
+  descripcion?: string | null
   activo: boolean
 }
 
 export type Equipo = {
-  id_equipo: number
-  id_modelo: number
+  id: number
+  id_equipo?: number
+  id_modelo?: number | null
+  id_producto: number | null
   imei: string | null
   tipo_equipo: string | null
   estado_comercial: string | null
   activo: boolean
-  id_producto: number | null
   fecha_ingreso: string | null
+  modelo: {
+    id: number
+    id_modelo?: number
+    nombre_modelo: string
+    capacidad_gb: number | null
+    color: string | null
+  }
+  foto_url: string | null
 }
 
-export type EquipoConModelo = Equipo & {
-  modelo: ModeloEquipo
-}
+export type EquipoConModelo = Equipo
 
 export type Deposito = {
   id_deposito: number

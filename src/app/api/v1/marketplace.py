@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy.orm import Session
 
 from app.config import UPLOAD_DIR
-from app.deps.auth import get_optional_user_id_from_access_token
+from app.deps.auth import get_optional_user_id_from_access_token, require_admin_user_id
 from app.db import get_db
 from app.models import Publicacion, RevisionPublicacion
 from app.schemas.marketplace import (
@@ -134,6 +134,7 @@ def borrar_publicacion(id_publicacion: int, db: Session = Depends(get_db)):
 def listar_revisiones(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    _id_admin: int = Depends(require_admin_user_id),
     db: Session = Depends(get_db),
 ):
     return db.query(RevisionPublicacion).offset(skip).limit(limit).all()
@@ -144,7 +145,11 @@ def listar_revisiones(
     response_model=RevisionPublicacionResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def crear_revision(payload: RevisionPublicacionCreate, db: Session = Depends(get_db)):
+def crear_revision(
+    payload: RevisionPublicacionCreate,
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
     data = payload.model_dump()
     if data.get("fecha_revision") is None:
         data["fecha_revision"] = datetime.now(timezone.utc)
@@ -167,6 +172,7 @@ def obtener_revision(id_revision: int, db: Session = Depends(get_db)):
 def actualizar_revision(
     id_revision: int,
     payload: RevisionPublicacionUpdate,
+    _id_admin: int = Depends(require_admin_user_id),
     db: Session = Depends(get_db),
 ):
     obj = db.query(RevisionPublicacion).filter(RevisionPublicacion.id_revision == id_revision).first()
@@ -182,7 +188,11 @@ def actualizar_revision(
 
 
 @router.delete("/revisiones/{id_revision}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar_revision(id_revision: int, db: Session = Depends(get_db)):
+def borrar_revision(
+    id_revision: int,
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
     obj = db.query(RevisionPublicacion).filter(RevisionPublicacion.id_revision == id_revision).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Revisión no encontrada")

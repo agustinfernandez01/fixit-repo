@@ -2,6 +2,12 @@
 
 Proyecto para cliente, ecommerce + sistema de stock, ventas y mini mercado: frontend (React + Vite + TypeScript) y backend/API (Python + FastAPI)
 
+## Documentacion funcional
+
+- Regla de deduplicacion Home: `docs/HOME_DEDUPLICACION.md`
+- Checklist E2E + release (flujo WhatsApp): `docs/RELEASE_CHECKLIST_E2E.md`
+- Operaciones (migracion y seguridad JWT): `docs/OPERACIONES_SEGURIDAD.md`
+
 ## Estructura del repositorio
 
 ```

@@ -35,7 +35,7 @@ export function ModelosPage() {
   }, [load])
 
   function startEdit(m: ModeloEquipo) {
-    setEditingId(m.id_modelo)
+    setEditingId(m.id)
     setForm({
       nombre_modelo: m.nombre_modelo,
       capacidad_gb: m.capacidad_gb ?? '',
@@ -199,8 +199,8 @@ export function ModelosPage() {
               </thead>
               <tbody>
                 {rows.map((m) => (
-                  <tr key={m.id_modelo}>
-                    <td>{m.id_modelo}</td>
+                  <tr key={m.id}>
+                    <td>{m.id}</td>
                     <td>{m.nombre_modelo}</td>
                     <td>{m.capacidad_gb ?? '—'}</td>
                     <td>{m.color ?? '—'}</td>
@@ -222,7 +222,7 @@ export function ModelosPage() {
                       <button
                         type="button"
                         className="btn btn-danger btn-sm"
-                        onClick={() => void handleDelete(m.id_modelo)}
+                        onClick={() => void handleDelete(m.id)}
                       >
                         Eliminar
                       </button>

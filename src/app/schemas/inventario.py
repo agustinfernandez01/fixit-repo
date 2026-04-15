@@ -26,7 +26,7 @@ class ModeloEquipoUpdate(BaseModel):
 
 
 class ModeloEquipoResponse(ModeloEquipoBase):
-    id_modelo: int
+    id: int
 
     class Config:
         from_attributes = True
@@ -40,6 +40,7 @@ class EquipoBase(BaseModel):
     estado_comercial: Optional[str] = None
     activo: bool = True
     id_producto: Optional[int] = None  # FK opcional al catálogo de productos
+    foto_url: Optional[str] = None
 
 
 class EquipoCreate(EquipoBase):
@@ -57,7 +58,7 @@ class EquipoUpdate(BaseModel):
 
 
 class EquipoResponse(EquipoBase):
-    id_equipo: int
+    id: int
     fecha_ingreso: Optional[datetime] = None
 
     class Config:

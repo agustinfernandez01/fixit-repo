@@ -7,7 +7,7 @@ class EquipoOfrecidoCanje(Base):
     __tablename__ = "equipos_ofrecidos_canje"
 
     id_equipo_ofrecido = Column(Integer, primary_key=True, autoincrement=True)
-    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     modelo = Column(String(100), nullable=True)
     capacidad_gb = Column(Integer, nullable=True)
     color = Column(String(50), nullable=True)
@@ -31,7 +31,7 @@ class SolicitudCanje(Base):
     __tablename__ = "solicitudes_canje"
 
     id_solicitud_canje = Column(Integer, primary_key=True, autoincrement=True)
-    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     id_equipo_ofrecido = Column(
         Integer, ForeignKey("equipos_ofrecidos_canje.id_equipo_ofrecido"), nullable=False
     )

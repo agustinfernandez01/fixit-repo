@@ -12,8 +12,10 @@ def login_auth(request: LoginRequest,db: Session = Depends(get_db)):
     try:
         resultado_logueo = logueo(db,request)
         if not resultado_logueo:
-            raise HTTPException("Crendenciales invalidas o error al loguearse")
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
         return resultado_logueo
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

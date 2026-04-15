@@ -7,11 +7,10 @@ from app.db import Base
 class ModeloEquipo(Base):
     __tablename__ = "modelos_equipo"
 
-    id_modelo = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column("id", Integer, primary_key=True, autoincrement=True)
     nombre_modelo = Column(String(100), nullable=False)
     capacidad_gb = Column(Integer, nullable=True)
     color = Column(String(50), nullable=True)
-    descripcion = Column(Text, nullable=True)
     activo = Column(Boolean, default=True)
 
     equipos = relationship("Equipo", back_populates="modelo")
@@ -20,14 +19,15 @@ class ModeloEquipo(Base):
 class Equipo(Base):
     __tablename__ = "equipos"
 
-    id_equipo = Column(Integer, primary_key=True, autoincrement=True)
-    id_modelo = Column(Integer, ForeignKey("modelos_equipo.id_modelo"), nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    id_modelo = Column(Integer, ForeignKey("modelos_equipo.id"), nullable=False)
+    id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
     imei = Column(String(20), nullable=True, unique=True)
     tipo_equipo = Column(String(50), nullable=True)
     estado_comercial = Column(String(50), nullable=True)
     fecha_ingreso = Column(DateTime, nullable=True)
     activo = Column(Boolean, default=True)
-    id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
+    foto_url = Column(String(255), nullable=True)
 
     modelo = relationship("ModeloEquipo", back_populates="equipos")
     producto = relationship("Productos", back_populates="equipo", uselist=False)
@@ -41,7 +41,7 @@ class EquipoUsadoDetalle(Base):
     __tablename__ = "equipos_usados_detalle"
 
     id_detalle_usado = Column(Integer, primary_key=True, autoincrement=True)
-    id_equipo = Column(Integer, ForeignKey("equipos.id_equipo"), nullable=False)
+    id_equipo = Column(Integer, ForeignKey("equipos.id"), nullable=False)
     bateria_porcentaje = Column(Integer, nullable=True)
     estado_estetico = Column(String(50), nullable=True)
     estado_funcional = Column(String(50), nullable=True)
@@ -52,3 +52,8 @@ class EquipoUsadoDetalle(Base):
     observaciones = Column(Text, nullable=True)
 
     equipo = relationship("Equipo", back_populates="detalle_usado")
+
+
+# Compatibilidad hacia atrás con imports existentes.
+ModelosEquipo = ModeloEquipo
+Equipos = Equipo

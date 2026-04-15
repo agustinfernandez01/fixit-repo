@@ -29,6 +29,20 @@ class TipoReparacionResponse(TipoReparacionBase):
         from_attributes = True
 
 
+class ListaPrecioReparacionResponse(BaseModel):
+    id_lista_precio: int
+    categoria: str
+    modelo: str
+    orden: int
+    precio_usd_original: Optional[Decimal] = None
+    precio_ars_original: Optional[Decimal] = None
+    precio_usd_alternativo: Optional[Decimal] = None
+    precio_ars_alternativo: Optional[Decimal] = None
+
+    class Config:
+        from_attributes = True
+
+
 class ReparacionBase(BaseModel):
     modelo: Optional[str] = None
     capacidad_gb: Optional[int] = None
