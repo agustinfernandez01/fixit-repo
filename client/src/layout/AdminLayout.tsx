@@ -1,4 +1,5 @@
 import { Link, Outlet } from 'react-router-dom'
+import fixitLogo from '../assets/fixit-logo.png'
 
 export default function AdminLayout() {
   return (
@@ -6,12 +7,7 @@ export default function AdminLayout() {
       <header className="admin-header">
         <div className="admin-header-inner">
           <Link to="/admin" className="admin-brand">
-            <span className="admin-brand-mark" aria-hidden>
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
+            <img className="admin-brand-img" src={fixitLogo} alt="" aria-hidden />
             <span className="admin-brand-text">
               <span className="admin-brand-title">Fix It</span>
               <span className="admin-brand-sub">Administración</span>

@@ -28,6 +28,14 @@
   font-size: 1.05rem;
 }
 
+.app-logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .app-logo-mark {
   width: 28px;
   height: 28px;
@@ -388,6 +396,14 @@ table.data tbody tr:hover td {
   gap: 0.75rem;
   text-decoration: none;
   color: inherit;
+}
+
+.admin-brand-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .admin-brand-mark {

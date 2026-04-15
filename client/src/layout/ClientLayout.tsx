@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearAuthTokens, getAccessToken } from '../lib/auth'
+import fixitLogo from '../assets/fixit-logo.png'
 
 const NAV_LINKS = [
 	{ to: '/', label: 'Inicio' },
@@ -21,18 +22,9 @@ export default function ClientLayout() {
 	return (
 		<div className="min-h-screen bg-white font-sans text-gray-900">
 			<header className="fixed top-0 right-0 left-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-md">
-				<nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-					<Link to="/" className="flex items-center gap-2">
-						<div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900">
-							<svg className="h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
-								<circle cx="12" cy="12" r="4" />
-								<circle cx="5" cy="5" r="2.5" />
-								<circle cx="19" cy="5" r="2.5" />
-								<circle cx="5" cy="19" r="2.5" />
-								<circle cx="19" cy="19" r="2.5" />
-							</svg>
-						</div>
-						<span className="text-sm font-semibold tracking-tight text-gray-900">Fix It</span>
+				<nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+					<Link to="/" className="flex items-center">
+						<img src={fixitLogo} alt="Fix It" className="h-10 w-auto object-contain" />
 					</Link>
 
 					<ul className="hidden items-center gap-7 md:flex">
@@ -83,7 +75,7 @@ export default function ClientLayout() {
 				</nav>
 			</header>
 
-			<main className="pt-14">
+			<main className="pt-16">
 				<Outlet />
 			</main>
 
