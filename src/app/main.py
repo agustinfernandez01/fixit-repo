@@ -32,6 +32,42 @@ def crear_tablas_si_hay_db():
                 with engine.begin() as conn:
                     conn.execute(text("ALTER TABLE equipos ADD COLUMN foto_url VARCHAR(255) NULL"))
                 logger.info("Migración aplicada: equipos.foto_url")
+
+            # Canje: catálogo propio de modelos + FK lógica de cotizaciones.
+            tablas = set(insp.get_table_names())
+            if "modelos_canje" in tablas:
+                cols_modelos_canje = {
+                    c.get("name") for c in insp.get_columns("modelos_canje")
+                }
+                if "foto_url" not in cols_modelos_canje:
+                    with engine.begin() as conn:
+                        conn.execute(
+                            text("ALTER TABLE modelos_canje ADD COLUMN foto_url VARCHAR(255) NULL")
+                        )
+                    logger.info("Migración aplicada: modelos_canje.foto_url")
+
+            if "cotizaciones_canje" in tablas:
+                columnas_cotizaciones = insp.get_columns("cotizaciones_canje")
+                cols_cotizaciones = {c.get("name") for c in columnas_cotizaciones}
+                if "id_modelo_canje" not in cols_cotizaciones:
+                    with engine.begin() as conn:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE cotizaciones_canje ADD COLUMN id_modelo_canje INT NULL"
+                            )
+                        )
+                    logger.info("Migración aplicada: cotizaciones_canje.id_modelo_canje")
+
+                col_id_modelo = next(
+                    (c for c in columnas_cotizaciones if c.get("name") == "id_modelo"),
+                    None,
+                )
+                if col_id_modelo and not col_id_modelo.get("nullable", False):
+                    with engine.begin() as conn:
+                        conn.execute(
+                            text("ALTER TABLE cotizaciones_canje MODIFY id_modelo INT NULL")
+                        )
+                    logger.info("Migración aplicada: cotizaciones_canje.id_modelo nullable")
         except Exception as e:
             logger.warning("No se pudo verificar/migrar columna equipos.foto_url: %s", e)
         logger.info("Tablas creadas o ya existentes en la base de datos.")

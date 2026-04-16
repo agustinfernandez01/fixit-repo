@@ -21,11 +21,47 @@ function fmtArs(v: string | number | null | undefined) {
 type CatalogCategory = 'apple' | 'accesorios'
 type SortMode = 'featured' | 'price-asc' | 'price-desc' | 'name'
 type VisibleCategory = CatalogCategory
+type CatalogSubcategory =
+  | 'all'
+  | 'iphone'
+  | 'ipad'
+  | 'macbook'
+  | 'watch'
+  | 'airpods'
+  | 'funda'
+  | 'templado'
+  | 'cabezal'
+  | 'cable'
 
 type CatalogItem = ProductoCompra & {
   category: CatalogCategory
   familyLabel: string
 }
+
+const APPLE_SUBCATEGORY_OPTIONS: Array<{
+  id: CatalogSubcategory
+  label: string
+}> = [
+  { id: 'all', label: 'Todos' },
+  { id: 'iphone', label: 'iPhone' },
+  { id: 'ipad', label: 'iPad' },
+  { id: 'macbook', label: 'MacBook' },
+  { id: 'watch', label: 'Apple Watch' },
+  { id: 'airpods', label: 'AirPods' },
+]
+
+const ACCESORIOS_SUBCATEGORY_OPTIONS: Array<{
+  id: CatalogSubcategory
+  label: string
+}> = [
+  { id: 'all', label: 'Todos' },
+  { id: 'funda', label: 'Fundas' },
+  { id: 'templado', label: 'Templados' },
+  { id: 'cabezal', label: 'Cabezales' },
+  { id: 'cable', label: 'Cables' },
+]
+
+const ITEMS_PER_PAGE = 9
 
 function normalize(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase()
@@ -122,6 +158,38 @@ function toCatalogItem(producto: ProductoCompra): CatalogItem {
     category: classifyCategory(producto),
     familyLabel: familyByTipo ?? inferFamilyLabel(normalizedName),
   }
+}
+
+function itemMatchesSubcategory(
+  item: CatalogItem,
+  subcategory: CatalogSubcategory,
+): boolean {
+  if (subcategory === 'all') return true
+
+  const haystack = `${normalize(item.nombre)} ${normalize(item.descripcion)} ${normalize(item.tipo_equipo)} ${normalize(item.familyLabel)}`
+
+  if (subcategory === 'iphone') return haystack.includes('iphone')
+  if (subcategory === 'ipad') return haystack.includes('ipad') || haystack.includes('tablet')
+  if (subcategory === 'macbook') return haystack.includes('macbook') || haystack.includes('mac')
+  if (subcategory === 'watch') return haystack.includes('watch')
+  if (subcategory === 'airpods') return haystack.includes('airpods')
+
+  if (subcategory === 'funda') return haystack.includes('funda')
+  if (subcategory === 'templado') {
+    return (
+      haystack.includes('templado') ||
+      haystack.includes('glass') ||
+      haystack.includes('protector')
+    )
+  }
+  if (subcategory === 'cabezal') {
+    return haystack.includes('cabezal') || haystack.includes('cargador')
+  }
+  if (subcategory === 'cable') {
+    return haystack.includes('cable') || haystack.includes('adaptador')
+  }
+
+  return true
 }
 
 function paletteByCategory(category: CatalogCategory): {
@@ -250,7 +318,9 @@ export default function TiendaPage() {
   const [savingId, setSavingId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [visibleCategory, setVisibleCategory] = useState<VisibleCategory>('apple')
+  const [selectedSubcategory, setSelectedSubcategory] = useState<CatalogSubcategory>('all')
   const [sortMode, setSortMode] = useState<SortMode>('featured')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const visualFilters: Array<{
     id: VisibleCategory
@@ -296,6 +366,7 @@ export default function TiendaPage() {
   const filtered = useMemo(() => {
     const q = normalize(search)
     let data = catalogItems.filter((item) => item.category === visibleCategory)
+    data = data.filter((item) => itemMatchesSubcategory(item, selectedSubcategory))
     if (q) {
       data = data.filter((item) => {
         const hay = `${normalize(item.nombre)} ${normalize(item.descripcion)} ${normalize(item.familyLabel)}`
@@ -303,17 +374,32 @@ export default function TiendaPage() {
       })
     }
     return sortItems(data, sortMode)
-  }, [catalogItems, visibleCategory, search, sortMode])
+  }, [catalogItems, visibleCategory, selectedSubcategory, search, sortMode])
 
-  const appleItems = useMemo(
-    () => filtered.filter((item) => item.category === 'apple'),
-    [filtered],
-  )
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
 
-  const accesoriosItems = useMemo(
-    () => filtered.filter((item) => item.category === 'accesorios'),
-    [filtered],
-  )
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE
+    return filtered.slice(start, start + ITEMS_PER_PAGE)
+  }, [filtered, currentPage])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [visibleCategory, selectedSubcategory, search, sortMode])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  const subcategoryOptions =
+    visibleCategory === 'apple'
+      ? APPLE_SUBCATEGORY_OPTIONS
+      : ACCESORIOS_SUBCATEGORY_OPTIONS
+
+  const sectionTitle =
+    visibleCategory === 'apple' ? 'Productos Apple' : 'Accesorios'
 
   return (
     <div className="bg-white">
@@ -338,7 +424,10 @@ export default function TiendaPage() {
               <button
                 key={filter.id}
                 type="button"
-                onClick={() => setVisibleCategory(filter.id)}
+                onClick={() => {
+                  setVisibleCategory(filter.id)
+                  setSelectedSubcategory('all')
+                }}
                 className={`group flex min-w-[150px] flex-col items-center gap-2 rounded-2xl px-3 py-2 transition-colors ${
                   visibleCategory === filter.id ? 'bg-white shadow-sm' : 'hover:bg-white/70'
                 }`}
@@ -350,6 +439,23 @@ export default function TiendaPage() {
                   loading="lazy"
                 />
                 <span className="text-sm font-medium text-neutral-800">{filter.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mb-5 flex flex-wrap gap-2">
+            {subcategoryOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setSelectedSubcategory(option.id)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  selectedSubcategory === option.id
+                    ? 'bg-neutral-900 text-white'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-100'
+                }`}
+              >
+                {option.label}
               </button>
             ))}
           </div>
@@ -395,57 +501,67 @@ export default function TiendaPage() {
             <p className="text-gray-500">No encontramos productos para esos filtros.</p>
           </div>
         ) : (
-          <div className="space-y-12">
-            {appleItems.length > 0 ? (
-              <section>
-                <div className="mb-6 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Categoría</p>
-                    <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900">Productos Apple</h2>
-                  </div>
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-                    {appleItems.length} disponibles
-                  </span>
+          <div className="space-y-7">
+            <section>
+              <div className="mb-6 flex items-end justify-between gap-4">
+                <div>
+                  <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Categoría</p>
+                  <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900">{sectionTitle}</h2>
                 </div>
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {appleItems.map((item) => (
-                    <ProductCard
-                      key={item.id}
-                      item={item}
-                      saving={savingId === item.id}
-                      onAdd={(id) => {
-                        void addToCart(id)
-                      }}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
+                <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+                  {filtered.length} disponibles
+                </span>
+              </div>
 
-            {accesoriosItems.length > 0 ? (
-              <section>
-                <div className="mb-6 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Categoría</p>
-                    <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900">Accesorios</h2>
-                  </div>
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-                    {accesoriosItems.length} disponibles
-                  </span>
-                </div>
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {accesoriosItems.map((item) => (
-                    <ProductCard
-                      key={item.id}
-                      item={item}
-                      saving={savingId === item.id}
-                      onAdd={(id) => {
-                        void addToCart(id)
-                      }}
-                    />
-                  ))}
-                </div>
-              </section>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {paginatedItems.map((item) => (
+                  <ProductCard
+                    key={item.id}
+                    item={item}
+                    saving={savingId === item.id}
+                    onAdd={(id) => {
+                      void addToCart(id)
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+
+            {totalPages > 1 ? (
+              <nav className="flex flex-wrap items-center justify-center gap-2" aria-label="Paginación de catálogo">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Anterior
+                </button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`h-9 min-w-9 rounded-full px-3 text-sm font-semibold transition-colors ${
+                      page === currentPage
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Siguiente
+                </button>
+              </nav>
             ) : null}
           </div>
         )}

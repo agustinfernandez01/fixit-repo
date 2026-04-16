@@ -16,6 +16,8 @@ import ProductoDetallePage from './pages/client/ProductoDetallePage'
 import PerfilPage from './pages/client/PerfilPage'
 import { ModelosPage } from './pages/inventario/ModelosPage'
 import { EquiposPage } from './pages/inventario/EquiposPage'
+import { AccesoriosPage } from './pages/inventario/AccesoriosPage'
+import { CanjeCotizacionesPage } from './pages/inventario/CanjeCotizacionesPage'
 import { DepositosPage } from './pages/inventario/DepositosPage'
 import { EquipoDepositoPage } from './pages/inventario/EquipoDepositoPage'
 import { EquiposUsadosDetallePage } from './pages/inventario/EquiposUsadosDetallePage'
@@ -49,6 +51,16 @@ export default function App() {
           />
           <Route path="modelos" element={<ModelosPage />} />
           <Route path="equipos" element={<EquiposPage />} />
+          <Route path="accesorios" element={<AccesoriosPage />} />
+          <Route path="canje" element={<CanjeCotizacionesPage />} />
+          <Route
+            path="canje-modelos"
+            element={<Navigate to="/admin/inventario/canje" replace />}
+          />
+          <Route
+            path="canje-cotizaciones"
+            element={<Navigate to="/admin/inventario/canje" replace />}
+          />
           <Route path="depositos" element={<DepositosPage />} />
           <Route path="ubicaciones" element={<EquipoDepositoPage />} />
           <Route

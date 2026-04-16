@@ -3,6 +3,8 @@ import { NavLink, Outlet } from 'react-router-dom'
 const links = [
   { to: '/admin/inventario/modelos', label: 'Modelos' },
   { to: '/admin/inventario/equipos', label: 'Equipos' },
+  { to: '/admin/inventario/accesorios', label: 'Accesorios' },
+  { to: '/admin/inventario/canje', label: 'Canje' },
   { to: '/admin/inventario/depositos', label: 'Depósitos' },
   { to: '/admin/inventario/ubicaciones', label: 'Ubicaciones' },
   { to: '/admin/inventario/equipos-usados', label: 'Equipos usados' },

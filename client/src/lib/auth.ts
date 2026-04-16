@@ -66,3 +66,18 @@ export function getCurrentUserProfile(): {
     role: typeof payload.rol === 'string' ? payload.rol : null,
   }
 }
+
+export function getCurrentUserId(): number | null {
+  const token = getAccessToken()
+  if (!token) return null
+  const payload = decodeJwtPayload(token)
+  const sub = payload?.sub
+  if (typeof sub === 'number' && Number.isInteger(sub)) return sub
+  if (typeof sub === 'string') {
+    const parsed = Number(sub)
+    if (Number.isInteger(parsed) && parsed > 0) return parsed
+  }
+  const idUsuario = payload?.id_usuario
+  if (typeof idUsuario === 'number' && Number.isInteger(idUsuario)) return idUsuario
+  return null
+}

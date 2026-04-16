@@ -3,6 +3,18 @@ import type { EquipoConModelo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
 import { mediaUrl } from '../../services/api'
 
+const TIPOS_EQUIPO = [
+  { value: 'iphone', label: 'iPhone' },
+  { value: 'ipad', label: 'iPad' },
+  { value: 'macbook', label: 'MacBook' },
+  { value: 'airpods', label: 'AirPods' },
+]
+
+const ESTADOS_COMERCIALES = [
+  { value: 'nuevo', label: 'Nuevo' },
+  { value: 'usado', label: 'Usado' },
+]
+
 type ModeloApi = Partial<ModeloEquipo> & {
   id?: number
   id_modelo?: number
@@ -106,6 +118,26 @@ export function EquiposPage() {
     })
   }
 
+  const currentTipoEquipo = form.tipo_equipo.trim().toLowerCase()
+  const currentEstadoComercial = form.estado_comercial.trim().toLowerCase()
+  const tipoEquipoOptions = TIPOS_EQUIPO.some(
+    (option) => option.value === currentTipoEquipo,
+  )
+    ? TIPOS_EQUIPO
+    : currentTipoEquipo
+      ? [...TIPOS_EQUIPO, { value: currentTipoEquipo, label: form.tipo_equipo.trim() }]
+      : TIPOS_EQUIPO
+  const estadoComercialOptions = ESTADOS_COMERCIALES.some(
+    (option) => option.value === currentEstadoComercial,
+  )
+    ? ESTADOS_COMERCIALES
+    : currentEstadoComercial
+      ? [
+          ...ESTADOS_COMERCIALES,
+          { value: currentEstadoComercial, label: form.estado_comercial.trim() },
+        ]
+      : ESTADOS_COMERCIALES
+
   async function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     setError(null)
@@ -121,8 +153,8 @@ export function EquiposPage() {
     const body: Record<string, unknown> = {
       id_modelo: idModelo,
       imei: form.imei.trim() || null,
-      tipo_equipo: form.tipo_equipo.trim() || null,
-      estado_comercial: form.estado_comercial.trim() || null,
+      tipo_equipo: form.tipo_equipo.trim().toLowerCase() || null,
+      estado_comercial: form.estado_comercial.trim().toLowerCase() || null,
       activo: form.activo,
       id_producto: idProd,
     }
@@ -201,23 +233,37 @@ export function EquiposPage() {
             </label>
             <label>
               Tipo
-              <input
-                placeholder="smartphone, usado…"
+              <select
                 value={form.tipo_equipo}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, tipo_equipo: e.target.value }))
                 }
-              />
+                required
+              >
+                <option value="">Seleccionar…</option>
+                {tipoEquipoOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Estado comercial
-              <input
-                placeholder="nuevo, usado…"
+              <select
                 value={form.estado_comercial}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, estado_comercial: e.target.value }))
                 }
-              />
+                required
+              >
+                <option value="">Seleccionar…</option>
+                {estadoComercialOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               ID producto (catálogo)
