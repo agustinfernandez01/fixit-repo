@@ -15,18 +15,68 @@ canje
 .\venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
 
-JWT (bien entendido)
+funcionamiento tokens
 
-Expiración
+LOGIN
+→ se crea sesión en Db
+→ se dan access + refresh
 
-Refresh Token
+REQUESTS
+→ usan access (rápido, sin DB)
 
-Implementación en FastAPI
+ACCESS EXPIRE
+→ se usa refresh
 
-Frontend (React)
+REFRESH
+→ backend valida:
+   1. el token (JWT)
+   2. la sesión (DB)
 
-Seguridad
+→ si todo ok → nuevo access
 
-Cache (como extra)
+LOGOUT
+→ se revoca sesión en DB
+→ el refresh deja de servir
 
-QUEDA POR HACER (TOKENS) : PROTEGER RUTAS
+
+## QUE HACER
+
+* Checkout/pago real conectado.
+* Tests automáticos del carrito (backend + frontend).
+* Manejo de stock en tiempo real al confirmar compra.
+* dejar un único flujo oficial (Inventario) y marcar equipos/post como deprecated para no mantener dos lógicas en paralelo
+*Backfill de equipos viejos sin producto
+Actualizar los registros existentes con id_producto nulo para que también queden comprables desde Home y Tienda.
+
+*Consolidar un único flujo de creación
+Definir oficialmente si queda solo Inventario como alta de equipos y dejar equipos/post como deprecado para evitar doble lógica futura.
+
+*End-to-end completo de carrito desde Home
+Probar flujo real: Agregar desde card, ver contador en header, editar cantidad, eliminar, vaciar carrito y persistencia al recargar.
+
+*Mejorar Ver detalle en la card
+Hoy navega a Tienda; falta resaltar o abrir directamente el producto específico para que el botón tenga comportamiento de detalle real.
+
+*Ajustar UX de card para casos sin vínculo
+Si aparece un equipo sin producto, mostrar CTA de corrección en admin o esconder botón Agregar según decisión de negocio.
+
+*Normalizar reglas de deduplicación y prioridad
+Documentar y dejar estable la regla actual de Home por modelo para evitar regresiones visuales cuando entren más equipos.
+
+*Validaciones de datos en alta de equipos
+Asegurar validaciones consistentes de IMEI, estado comercial, categoría, precio por defecto y mensajes claros de error.
+
+*Pruebas automáticas mínimas
+Agregar tests de backend para creación de equipo con auto-creación de producto y tests frontend para botones de la card y estados de carrito.
+
+*Revisión de endpoints legacy con columnas antiguas
+Hacer una pasada completa para detectar referencias antiguas id_equipo o id_producto en rutas legacy y unificarlas.
+
+*Checklist de release local
+Verificar build frontend, creación de equipo, upload de imagen, visualización en Home, y compra en carrito en una corrida de punta a punta.
+
+que hacer 15/4:
+
+mejorar cards del catalogo y seccionar.
+agregar foto al producto de carrito.
+cranear plan canje

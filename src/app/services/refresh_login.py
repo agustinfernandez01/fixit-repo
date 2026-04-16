@@ -1,32 +1,26 @@
-from datetime import datetime, timezone
-
-from sqlalchemy.orm import Session, joinedload
-
-from app.models.rol import Usuario
-from app.models.sesiones_login import SesionesLogin
+from app.models.usuarios import Usuario as model_usuarios
+from app.models.sesiones_login import SesionesLogin as model_sesiones
 from app.schemas.login import LoginResponse
-from app.services.tokens import (
-    crear_access_token,
-    verificar_refresh_token,
-    verify_hashed_token,
-)
-
+from datetime import datetime, timedelta, timezone
+from app.config import SECRET_KEY
+from app.services.tokens import crear_access_token, crear_refresh_token, hash_token , verficar_access_token, verificar_refresh_token , verify_hashed_token
+from sqlalchemy.orm import Session, joinedload
 
 def refresh_login(db: Session, refresh_token: str) -> LoginResponse:
     try:
         payload = verificar_refresh_token(refresh_token)
         id_usuario = payload["id_usuario"]
-        session_id = payload["session_id"]
+        session_id = int(payload["session_id"])
     except ValueError as e:
         raise ValueError(f"Refresh token inválido: {e}") from e
 
     sesion = (
-        db.query(SesionesLogin)
+        db.query(model_sesiones)
         .filter(
-            SesionesLogin.id_sesion == session_id,
-            SesionesLogin.id_usuario == id_usuario,
-            SesionesLogin.revocada.is_(False),
-            SesionesLogin.fecha_expiracion > datetime.now(timezone.utc),
+            model_sesiones.id_sesion == session_id,
+            model_sesiones.id_usuario == id_usuario,
+            model_sesiones.revocada.is_(False),
+            model_sesiones.fecha_expiracion > datetime.now(timezone.utc),
         )
         .first()
     )
@@ -38,9 +32,9 @@ def refresh_login(db: Session, refresh_token: str) -> LoginResponse:
         raise ValueError("Refresh token no coincide")
 
     usuario = (
-        db.query(Usuario)
-        .options(joinedload(Usuario.rol))
-        .filter(Usuario.id_usuario == id_usuario)
+        db.query(model_usuarios)
+        .options(joinedload(model_usuarios.rol))
+        .filter(model_usuarios.id == id_usuario)
         .first()
     )
 

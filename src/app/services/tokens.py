@@ -1,5 +1,7 @@
 import bcrypt
 import jwt
+import hashlib
+from datetime import datetime, timedelta
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -24,7 +26,7 @@ def crear_access_token(usuario):
     rol_nombre = usuario.rol.nombre if getattr(usuario, "rol", None) else ""
 
     payload = {
-        "sub": str(usuario.id_usuario),
+        "sub": str(usuario.id),
         "email": usuario.email,
         "nombre": usuario.nombre,
         "apellido": usuario.apellido,
@@ -42,7 +44,7 @@ def crear_refresh_token(usuario, session_id):
     expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
     payload = {
-        "sub": str(usuario.id_usuario),
+        "sub": str(usuario.id),
         "session_id": session_id,
         "type": "refresh",
         "exp": expire,
@@ -86,11 +88,27 @@ def verificar_refresh_token(token: str) -> dict:
         raise ValueError("Token inválido")
 
 
+def _token_material(token: str) -> bytes:
+    # bcrypt only accepts up to 72 bytes of input. We pre-hash the token so
+    # refresh tokens (JWT) can be safely verified regardless of length.
+    return hashlib.sha256(token.encode("utf-8")).hexdigest().encode("utf-8")
+
+
 def verify_hashed_token(token: str, hashed_token: str) -> bool:
-    return bcrypt.checkpw(token.encode("utf-8"), hashed_token.encode("utf-8"))
+    try:
+        return bcrypt.checkpw(_token_material(token), hashed_token.encode("utf-8"))
+    except ValueError:
+        # Compatibilidad con hashes viejos generados antes del pre-hash.
+        try:
+            token_bytes = token.encode("utf-8")
+            if len(token_bytes) > 72:
+                return False
+            return bcrypt.checkpw(token_bytes, hashed_token.encode("utf-8"))
+        except ValueError:
+            return False
 
 def hash_token(token: str) -> str:
     salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(token.encode("utf-8"), salt)
+    hashed = bcrypt.hashpw(_token_material(token), salt)
     return hashed.decode("utf-8")
 

@@ -7,17 +7,36 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import TipoReparacion, Reparacion
+from app.models import TipoReparacion, ListaPrecioReparacion, Reparacion
 from app.schemas.reparaciones import (
     TipoReparacionCreate,
     TipoReparacionUpdate,
     TipoReparacionResponse,
+    ListaPrecioReparacionResponse,
     ReparacionCreate,
     ReparacionUpdate,
     ReparacionResponse,
 )
 
 router = APIRouter()
+
+
+@router.get("/lista-precios", response_model=list[ListaPrecioReparacionResponse])
+def listar_precios_reparacion(
+    categoria: str | None = Query(
+        None,
+        description="Filtrar por slug: modulo_pantalla, bateria, camara_principal, flex_carga",
+    ),
+    db: Session = Depends(get_db),
+):
+    q = db.query(ListaPrecioReparacion).order_by(
+        ListaPrecioReparacion.categoria,
+        ListaPrecioReparacion.orden,
+        ListaPrecioReparacion.modelo,
+    )
+    if categoria:
+        q = q.filter(ListaPrecioReparacion.categoria == categoria)
+    return q.all()
 
 
 @router.get("/tipos", response_model=list[TipoReparacionResponse])

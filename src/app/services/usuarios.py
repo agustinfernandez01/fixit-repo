@@ -1,11 +1,10 @@
 from datetime import datetime, timezone
 from typing import Optional
-
 import bcrypt
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-
-from app.models.rol import Usuario
+from app.models.roles import Rol
+from app.models.usuarios import Usuario
 from app.schemas.usuarios import UsuarioCreate, UsuarioPatch, UsuarioPut, UsuarioResponse
 
 
@@ -18,8 +17,8 @@ def get_usuarios(db: Session) -> list[Usuario]:
     return db.query(Usuario).all()
 
 
-def get_usuario_by_id(db: Session, id_usuario: int) -> Usuario | None:
-    return db.query(Usuario).filter(Usuario.id_usuario == id_usuario).first()
+def get_usuario_by_id(db: Session, id_usuario: int) -> Usuario| None:
+    return db.query(Usuario).filter(Usuario.id == id_usuario).first()
 
 
 def get_usuario_filtered(
@@ -32,7 +31,7 @@ def get_usuario_filtered(
 ):
     query = db.query(Usuario)
     if id_usuario is not None:
-        query = query.filter(Usuario.id_usuario == id_usuario)
+        query = query.filter(Usuario.id == id_usuario)
     if email is not None:
         query = query.filter(Usuario.email == email)
     if nombre is not None:

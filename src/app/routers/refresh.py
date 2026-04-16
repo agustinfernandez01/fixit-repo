@@ -14,6 +14,8 @@ def refresh_login_auth(refresh_token: str, db: Session = Depends(get_db)):
         if not resultado_refresh:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido o error al refrescar el login")
         return resultado_refresh
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

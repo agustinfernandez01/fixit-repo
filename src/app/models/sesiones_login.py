@@ -11,11 +11,13 @@ class SesionesLogin(Base):
 
     __tablename__ = "sesiones_login"
 
-    id_sesion = Column(String(36), primary_key=True)
-    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
-    refresh_token_hash = Column(String(255), nullable=False)
-    fecha_inicio = Column(DateTime, default=datetime.utcnow, nullable=False)
-    fecha_expiracion = Column(DateTime, nullable=False)
+    id_sesion = Column("id", Integer, primary_key=True, index=True, autoincrement=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    fecha_inicio = Column(DateTime, default=datetime.now)
+    fecha_expiracion = Column(DateTime, default=datetime.now)
+    refresh_token_hash = Column(String, nullable=False)
     revocada = Column(Boolean, default=False)
 
     usuario = relationship("Usuario", back_populates="sesiones_login")
+    
+    

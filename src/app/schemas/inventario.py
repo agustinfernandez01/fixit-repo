@@ -1,7 +1,18 @@
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
+
+
+TIPOS_EQUIPO_VALIDOS = {"iphone", "ipad", "macbook", "airpods"}
+ESTADOS_COMERCIALES_VALIDOS = {"nuevo", "usado"}
+
+
+def _normalizar_texto(valor: object) -> Optional[str]:
+    if valor is None:
+        return None
+    texto = str(valor).strip().lower()
+    return texto or None
 
 
 # Modelos de equipo
@@ -26,7 +37,7 @@ class ModeloEquipoUpdate(BaseModel):
 
 
 class ModeloEquipoResponse(ModeloEquipoBase):
-    id_modelo: int
+    id: int
 
     class Config:
         from_attributes = True
@@ -40,10 +51,33 @@ class EquipoBase(BaseModel):
     estado_comercial: Optional[str] = None
     activo: bool = True
     id_producto: Optional[int] = None  # FK opcional al catálogo de productos
+    foto_url: Optional[str] = None
 
 
 class EquipoCreate(EquipoBase):
     fecha_ingreso: Optional[datetime] = None
+
+    @field_validator("tipo_equipo", mode="before")
+    @classmethod
+    def validar_tipo_equipo(cls, valor):
+        texto = _normalizar_texto(valor)
+        if texto is None:
+            raise ValueError("El tipo de equipo es obligatorio")
+        if texto not in TIPOS_EQUIPO_VALIDOS:
+            raise ValueError(
+                "Tipo de equipo inválido. Valores permitidos: iphone, ipad, macbook, airpods."
+            )
+        return texto
+
+    @field_validator("estado_comercial", mode="before")
+    @classmethod
+    def validar_estado_comercial(cls, valor):
+        texto = _normalizar_texto(valor)
+        if texto is None:
+            raise ValueError("El estado comercial es obligatorio")
+        if texto not in ESTADOS_COMERCIALES_VALIDOS:
+            raise ValueError("Estado comercial inválido. Valores permitidos: nuevo, usado.")
+        return texto
 
 
 class EquipoUpdate(BaseModel):
@@ -55,9 +89,31 @@ class EquipoUpdate(BaseModel):
     activo: Optional[bool] = None
     id_producto: Optional[int] = None
 
+    @field_validator("tipo_equipo", mode="before")
+    @classmethod
+    def normalizar_tipo_equipo(cls, valor):
+        texto = _normalizar_texto(valor)
+        if texto is None:
+            return None
+        if texto not in TIPOS_EQUIPO_VALIDOS:
+            raise ValueError(
+                "Tipo de equipo inválido. Valores permitidos: iphone, ipad, macbook, airpods."
+            )
+        return texto
+
+    @field_validator("estado_comercial", mode="before")
+    @classmethod
+    def normalizar_estado_comercial(cls, valor):
+        texto = _normalizar_texto(valor)
+        if texto is None:
+            return None
+        if texto not in ESTADOS_COMERCIALES_VALIDOS:
+            raise ValueError("Estado comercial inválido. Valores permitidos: nuevo, usado.")
+        return texto
+
 
 class EquipoResponse(EquipoBase):
-    id_equipo: int
+    id: int
     fecha_ingreso: Optional[datetime] = None
 
     class Config:
