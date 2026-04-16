@@ -1,49 +1,90 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ModeloEquipo } from '../../types/inventario'
 import type { TipoReparacion } from '../../types/reparaciones'
+import { inventarioApi } from '../../services/inventarioApi'
 import { reparacionesApi } from '../../services/reparacionesApi'
 
-const STORAGE_KEY = 'fixit_reparacion_tipo_id'
+const WHATSAPP_PHONE: string = import.meta.env.VITE_WHATSAPP_PHONE ?? ''
 
-function formatArs(value: string | null | undefined): string {
-  if (!value) return ''
-  const n = Number.parseFloat(value)
-  if (!Number.isFinite(n)) return value
-  return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })
+type ProblemaOption = {
+  id: string
+  label: string
+  /** Texto “hint” para encontrar un `TipoReparacion` por nombre. */
+  hint: string
 }
 
-function formatTiempo(minutos: number | null | undefined): string {
-  if (!minutos) return ''
-  if (minutos < 60) return `${minutos} min`
-  const h = Math.round((minutos / 60) * 10) / 10
-  return `${h} h`
+const PROBLEMAS: ProblemaOption[] = [
+  { id: 'pantalla', label: 'Pantalla rota / Daño en display', hint: 'pantalla' },
+  { id: 'bateria', label: 'Batería / Carga lenta', hint: 'bater' },
+  { id: 'vidrio-trasero', label: 'Vidrio trasero roto / fisurado', hint: 'vidrio' },
+  { id: 'pin-carga', label: 'Pin de carga / No carga', hint: 'carga' },
+  { id: 'camara-parlante-mic', label: 'Cámara / parlante / micrófono', hint: 'cam' },
+  { id: 'parlante', label: 'Parlante / Altavoz', hint: 'parlante' },
+  { id: 'microfono', label: 'Micrófono', hint: 'micro' },
+  { id: 'botones', label: 'Botones (volumen, power, silencio)', hint: 'boton' },
+  { id: 'agua', label: 'Daño por agua / humedad', hint: 'agua' },
+  { id: 'software', label: 'Problemas de software', hint: 'software' },
+  { id: 'diagnostico', label: 'Diagnóstico general', hint: 'diagn' },
+]
+
+function normalizePhoneForWaMe(phone: string): string {
+  return (phone || '').replace(/[^\d]/g, '')
+}
+
+function buildWhatsAppUrl(phoneRaw: string, text: string): string | null {
+  const phone = normalizePhoneForWaMe(phoneRaw)
+  if (!phone) return null
+  const msg = encodeURIComponent(text)
+  return `https://wa.me/${phone}?text=${msg}`
+}
+
+function findTipoByHint(items: TipoReparacion[], hint: string): TipoReparacion | null {
+  const h = hint.trim().toLowerCase()
+  if (!h) return null
+  return items.find((x) => (x.nombre ?? '').toLowerCase().includes(h)) ?? null
+}
+
+function buildModeloLabel(m: ModeloEquipo): string {
+  const base = m.nombre_modelo
+  const gb = m.capacidad_gb ? `${m.capacidad_gb} GB` : null
+  return [base, gb].filter(Boolean).join(' ')
 }
 
 export default function ReparacionesPage() {
-  const [items, setItems] = useState<TipoReparacion[] | null>(null)
+  const topRef = useRef<HTMLDivElement | null>(null)
+
+  const [tipos, setTipos] = useState<TipoReparacion[]>([])
+  const [modelos, setModelos] = useState<ModeloEquipo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState<number | null>(() => {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    const n = raw ? Number(raw) : NaN
-    return Number.isFinite(n) ? n : null
-  })
 
-  const filtered = useMemo(() => {
-    const list = items ?? []
-    const q = query.trim().toLowerCase()
-    if (!q) return list
-    return list.filter((x) => {
-      const text = `${x.nombre ?? ''} ${x.descripcion ?? ''}`.toLowerCase()
-      return text.includes(q)
-    })
-  }, [items, query])
+  const [modeloOpen, setModeloOpen] = useState(false)
+  const [modeloQuery, setModeloQuery] = useState('')
+  const [modeloSelectedId, setModeloSelectedId] = useState<number | null>(null)
 
-  const selected = useMemo(
-    () => items?.find((x) => x.id_tipo_reparacion === selectedId) ?? null,
-    [items, selectedId],
+  const [problemaOpen, setProblemaOpen] = useState(false)
+  const [problemaSelectedId, setProblemaSelectedId] = useState<string | null>(PROBLEMAS[4]?.id ?? null)
+
+  const modeloSelected = useMemo(
+    () => modelos.find((m) => m.id_modelo === modeloSelectedId) ?? null,
+    [modelos, modeloSelectedId],
   )
+
+  const modelosFiltered = useMemo(() => {
+    const q = modeloQuery.trim().toLowerCase()
+    if (!q) return modelos
+    return modelos.filter((m) => buildModeloLabel(m).toLowerCase().includes(q))
+  }, [modelos, modeloQuery])
+
+  const problemaSelected = useMemo(
+    () => PROBLEMAS.find((p) => p.id === problemaSelectedId) ?? null,
+    [problemaSelectedId],
+  )
+
+  const tipoSelected = useMemo(() => {
+    if (!problemaSelected) return null
+    return findTipoByHint(tipos, problemaSelected.hint)
+  }, [tipos, problemaSelected])
 
   useEffect(() => {
     let alive = true
@@ -51,9 +92,13 @@ export default function ReparacionesPage() {
       setLoading(true)
       setError(null)
       try {
-        const data = await reparacionesApi.tipos.list(0, 100)
+        const [tiposData, modelosData] = await Promise.all([
+          reparacionesApi.tipos.list(0, 100),
+          inventarioApi.modelos.list(0, 100),
+        ])
         if (!alive) return
-        setItems(data)
+        setTipos(tiposData)
+        setModelos(modelosData.filter((m) => m.activo))
       } catch (e) {
         if (!alive) return
         setError(e instanceof Error ? e.message : 'No se pudo cargar')
@@ -62,200 +107,419 @@ export default function ReparacionesPage() {
         setLoading(false)
       }
     }
-    load()
+    void load()
     return () => {
       alive = false
     }
   }, [])
 
-  function choose(id: number) {
-    if (selectedId === id) {
-      setSelectedId(null)
-      localStorage.removeItem(STORAGE_KEY)
-      return
-    }
-    setSelectedId(id)
-    localStorage.setItem(STORAGE_KEY, String(id))
-  }
+  const whatsAppHref = useMemo(() => {
+    const modelo = modeloSelected ? buildModeloLabel(modeloSelected) : null
+    const problema = problemaSelected?.label ?? null
+    const tipo = tipoSelected?.nombre ?? null
+    const extra = tipo && problema && tipo.toLowerCase() !== problema.toLowerCase() ? ` (ref: ${tipo})` : ''
+    const textLines = [
+      'Hola Fix It 👋',
+      'Quiero cotizar una reparación.',
+      modelo ? `Modelo: ${modelo}` : 'Modelo: (sin seleccionar)',
+      problema ? `Problema: ${problema}${extra}` : 'Problema: (sin seleccionar)',
+    ]
+    return buildWhatsAppUrl(WHATSAPP_PHONE, textLines.join('\n'))
+  }, [modeloSelected, problemaSelected, tipoSelected])
 
-  function chooseByNameHint(hint: string) {
-    const h = hint.toLowerCase()
-    const found =
-      (items ?? []).find((x) => x.nombre.toLowerCase().includes(h)) ?? null
-    if (!found) {
-      setQuery(hint)
-      return
-    }
-
-    // Toggle: si ya estaba seleccionada, la desmarcamos y mostramos todo.
-    if (selectedId === found.id_tipo_reparacion) {
-      choose(found.id_tipo_reparacion)
-      setQuery('')
-      return
-    }
-
-    choose(found.id_tipo_reparacion)
-    setQuery(hint)
+  function quickPickProblema(id: string) {
+    setProblemaSelectedId(id)
+    setProblemaOpen(false)
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (
-    <div className="bg-white">
-      <section className="mx-auto max-w-5xl px-6 py-10">
-        <div className="mx-auto max-w-3xl text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-500">
-            <svg viewBox="0 0 24 24" className="h-8 w-8 text-white" fill="currentColor">
-              <path d="M12 2a7 7 0 0 0-4 12.74V17a2 2 0 0 0 2 2h1v-2h-1v-2.6a1 1 0 0 0-.5-.86A5 5 0 1 1 17.5 13.54a1 1 0 0 0-.5.86V17h-1v2h1a2 2 0 0 0 2-2v-2.26A7 7 0 0 0 12 2zm-1 19h2v1a1 1 0 0 1-2 0v-1z" />
-            </svg>
-          </div>
-          <h1 className="mt-6 text-4xl font-black tracking-tight text-gray-900 sm:text-5xl">
-            Soporte técnico de Fix It
+    <div className="bg-[#f7f9fb]">
+      <div ref={topRef} />
+
+      <section className="mx-auto max-w-5xl px-6 pt-10 pb-14">
+        <div className="mb-10 text-center">
+          <h1 className="text-4xl font-black tracking-tight text-neutral-900 sm:text-5xl">
+            Servicio técnico Fix It
           </h1>
-          <p className="mt-3 text-base leading-relaxed text-gray-400">
-            ¿Necesitás ayuda? Comenzá aquí.
-          </p>
         </div>
 
-        <div className="mt-12">
-          <h2 className="text-center text-2xl font-extrabold tracking-tight text-gray-900">
-            Herramientas de soporte técnico
-          </h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <button
-              type="button"
-              onClick={() => chooseByNameHint('pantalla')}
-              className="rounded-2xl border border-gray-100 bg-gray-50 px-6 py-5 text-center shadow-sm transition hover:border-gray-200 hover:bg-white"
+        <div className="mx-auto max-w-xl rounded-3xl border border-neutral-200 bg-white px-5 py-7 shadow-sm sm:px-7">
+          <h1 className="text-center text-xl font-semibold tracking-tight text-neutral-900 sm:text-2xl">
+            Cotizá tu reparación
+          </h1>
+
+          <div className="mt-7 space-y-5">
+            <div>
+              <p className="mb-2 text-sm font-medium text-neutral-900">¿Qué modelo tenés?</p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setModeloOpen((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm outline-none transition hover:border-neutral-300"
+                >
+                  <span className={modeloSelected ? 'text-neutral-900' : 'text-neutral-400'}>
+                    {modeloSelected ? buildModeloLabel(modeloSelected) : 'Seleccioná tu modelo'}
+                  </span>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+
+                {modeloOpen ? (
+                  <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
+                    <div className="p-3">
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-neutral-400">
+                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+                            <path d="M10 2a8 8 0 1 1 5.293 14.01l4.348 4.349-1.414 1.414-4.349-4.348A8 8 0 0 1 10 2zm0 2a6 6 0 1 0 0 12a6 6 0 0 0 0-12z" />
+                          </svg>
+                        </div>
+                        <input
+                          value={modeloQuery}
+                          onChange={(e) => setModeloQuery(e.target.value)}
+                          placeholder="Buscar modelo…"
+                          className="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pr-3 pl-10 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-auto py-1">
+                      {loading ? (
+                        <div className="px-4 py-3 text-sm text-neutral-500">Cargando…</div>
+                      ) : modelosFiltered.length ? (
+                        modelosFiltered.map((m) => {
+                          const active = m.id_modelo === modeloSelectedId
+                          return (
+                            <button
+                              key={m.id_modelo}
+                              type="button"
+                              onClick={() => {
+                                setModeloSelectedId(m.id_modelo)
+                                setModeloOpen(false)
+                                setModeloQuery('')
+                              }}
+                              className={[
+                                'flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition',
+                                active ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-neutral-50 text-neutral-800',
+                              ].join(' ')}
+                            >
+                              <span>{buildModeloLabel(m)}</span>
+                              {active ? (
+                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
+                                </svg>
+                              ) : null}
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-neutral-500">No hay resultados.</div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium text-neutral-900">¿Cuál es el problema?</p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setProblemaOpen((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm outline-none transition hover:border-neutral-300"
+                >
+                  <span className={problemaSelected ? 'text-neutral-900' : 'text-neutral-400'}>
+                    {problemaSelected ? problemaSelected.label : 'Seleccioná el problema'}
+                  </span>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+
+                {problemaOpen ? (
+                  <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
+                    <div className="max-h-72 overflow-auto py-1">
+                      {PROBLEMAS.map((p) => {
+                        const active = p.id === problemaSelectedId
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setProblemaSelectedId(p.id)
+                              setProblemaOpen(false)
+                            }}
+                            className={[
+                              'flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition',
+                              active ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-neutral-50 text-neutral-800',
+                            ].join(' ')}
+                          >
+                            <span className="flex h-5 w-5 items-center justify-center">
+                              {active ? (
+                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
+                                </svg>
+                              ) : (
+                                <span className="h-2.5 w-2.5 rounded-full border border-neutral-300" aria-hidden />
+                              )}
+                            </span>
+                            <span>{p.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <a
+              href={whatsAppHref ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!whatsAppHref}
+              className={[
+                'mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold shadow-sm transition',
+                whatsAppHref ? 'bg-emerald-300 text-emerald-950 hover:bg-emerald-400' : 'bg-neutral-200 text-neutral-500',
+              ].join(' ')}
+              onClick={(e) => {
+                if (!whatsAppHref) e.preventDefault()
+              }}
             >
-              <p className="text-sm font-medium text-blue-700">Cambio de pantalla</p>
-              <p className="mt-1 text-xs text-gray-400">Ver precio y tiempos</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => chooseByNameHint('bater')}
-              className="rounded-2xl border border-gray-100 bg-gray-50 px-6 py-5 text-center shadow-sm transition hover:border-gray-200 hover:bg-white"
-            >
-              <p className="text-sm font-medium text-blue-700">Cambio de batería</p>
-              <p className="mt-1 text-xs text-gray-400">Ver precio y tiempos</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => chooseByNameHint('carcaza')}
-              className="rounded-2xl border border-gray-100 bg-gray-50 px-6 py-5 text-center shadow-sm transition hover:border-gray-200 hover:bg-white"
-            >
-              <p className="text-sm font-medium text-blue-700">Carcaza iPhone</p>
-              <p className="mt-1 text-xs text-gray-400">Consultar disponibilidad</p>
-            </button>
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+                <path d="M12.04 2C6.58 2 2.16 6.42 2.16 11.88c0 1.93.56 3.82 1.62 5.45L2 22l4.82-1.73a9.82 9.82 0 0 0 5.22 1.48h.01c5.46 0 9.88-4.42 9.88-9.88C21.93 6.42 17.5 2 12.04 2zm5.75 14.28c-.24.68-1.4 1.3-1.93 1.38-.5.08-1.13.11-1.82-.11-.42-.13-.97-.32-1.67-.62-2.94-1.27-4.86-4.22-5-4.42-.14-.2-1.2-1.6-1.2-3.05 0-1.45.76-2.17 1.03-2.47.27-.3.6-.38.8-.38h.58c.19 0 .45-.07.7.53.25.6.85 2.08.92 2.23.07.15.12.33.03.53-.09.2-.14.33-.28.51-.14.18-.3.4-.43.54-.14.14-.28.3-.12.58.16.28.72 1.19 1.55 1.93 1.06.95 1.95 1.25 2.23 1.39.28.14.44.12.6-.07.16-.19.69-.8.87-1.07.18-.27.37-.22.62-.13.25.09 1.6.76 1.87.9.27.14.45.2.52.31.07.11.07.66-.17 1.34z" />
+              </svg>
+              Consultar por WhatsApp
+            </a>
+
+            <p className="text-center text-xs text-neutral-400">
+              Te respondemos en minutos
+              {!WHATSAPP_PHONE ? (
+                <>
+                  {' '}
+                  · Configurar <code className="rounded bg-neutral-100 px-1 py-0.5">VITE_WHATSAPP_PHONE</code>
+                </>
+              ) : null}
+            </p>
+
+            {error ? (
+              <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {error}
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="mt-14">
-          <h2 className="text-center text-3xl font-black tracking-tight text-gray-900">
-            Buscar más temas
-          </h2>
-          <div className="mx-auto mt-6 max-w-3xl">
-            <div className="relative">
-              <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-300">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                  <path d="M10 2a8 8 0 1 1 5.293 14.01l4.348 4.349-1.414 1.414-4.349-4.348A8 8 0 0 1 10 2zm0 2a6 6 0 1 0 0 12a6 6 0 0 0 0-12z" />
+        <div className="mt-14 text-center">
+          <h2 className="text-3xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl">Reparaciones más comunes</h2>
+          <p className="mt-2 text-sm text-neutral-500">Seleccioná un servicio para cotizar</p>
+        </div>
+
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 4h10a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V6a2 2 0 0 1 2-2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6" />
                 </svg>
               </div>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar en Soporte"
-                className="w-full rounded-2xl border border-gray-200 bg-white px-12 py-4 text-sm text-gray-900 outline-none focus:border-gray-400"
-              />
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Pantalla</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Rota, sin imagen o sin touch. Opciones según modelo y disponibilidad.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Repuestos certificados</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
+                </div>
+              </div>
             </div>
-            <p className="mt-2 text-center text-xs text-gray-400">
-              Precios base orientativos. El presupuesto final depende del diagnóstico del equipo.
-            </p>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('pantalla')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 3h4v4h-4V3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h10v14H7V7z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Batería</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Dura poco, se apaga o carga raro. Diagnóstico y reemplazo según modelo.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Repuestos premium</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('bateria')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 8h8" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Vidrio trasero</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Fisurado o roto. Evaluamos estado y alternativas antes de avanzar.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Presupuesto claro</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('vidrio-trasero')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v5m6-5v5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 8h8" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 12v6" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 12v6" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 10h10a1 1 0 0 1 1 1v2a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-2a1 1 0 0 1 1-1z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Pin de carga</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Conector flojo, no carga o no reconoce el cable. Revisamos pin, flex y más.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Presupuesto claro</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('pin-carga')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 11a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 10l2-1v6l-2-1" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Cámara / parlante / micrófono</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Fallas de cámara, audio bajo o micrófono que no toma. Según componente y modelo.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Diagnóstico previo</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('camara-parlante-mic')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Diagnóstico</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Te orientamos por WhatsApp. Si hace falta, revisamos el equipo y presupuestamos.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Presupuesto claro</span>
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Sin compromiso</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('diagnostico')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
           </div>
         </div>
 
-        {loading ? (
-          <div className="mt-6 text-sm text-gray-500">Cargando…</div>
-        ) : null}
-        {error ? (
-          <div className="mt-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {error}
-          </div>
-        ) : null}
-
-        {!loading && !error && (items?.length ?? 0) === 0 ? (
-          <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            Todavía no hay arreglos cargados. Cargalos en el backend con{' '}
+        {!loading && !error && tipos.length === 0 ? (
+          <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Todavía no hay reparaciones cargadas. Cargalas en el backend con{' '}
             <code className="rounded bg-white/60 px-1 py-0.5">POST /api/v1/reparaciones/tipos</code>.
           </div>
         ) : null}
 
-        {filtered.length ? (
-          <div className="mt-10 grid gap-4 md:grid-cols-2">
-            {filtered.map((it) => {
-              const active = it.id_tipo_reparacion === selectedId
-              return (
-                <button
-                  key={it.id_tipo_reparacion}
-                  type="button"
-                  onClick={() => choose(it.id_tipo_reparacion)}
-                  className={[
-                    'text-left rounded-2xl border px-5 py-4 transition-colors',
-                    active
-                      ? 'border-gray-900 bg-gray-900 text-white'
-                      : 'border-gray-200 bg-white hover:border-gray-400',
-                  ].join(' ')}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className={active ? 'text-xs text-gray-300' : 'text-xs text-gray-400'}>
-                        Tipo de reparación
-                      </p>
-                      <p className="mt-1 text-base font-semibold">{it.nombre}</p>
-                      {it.descripcion ? (
-                        <p className={active ? 'mt-2 text-sm text-gray-200' : 'mt-2 text-sm text-gray-500'}>
-                          {it.descripcion}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      {it.precio_base ? (
-                        <p className="text-sm font-semibold">{formatArs(it.precio_base)}</p>
-                      ) : (
-                        <p className={active ? 'text-sm text-gray-300' : 'text-sm text-gray-400'}>
-                          Consultar
-                        </p>
-                      )}
-                      {it.tiempo_estimado ? (
-                        <p className={active ? 'mt-1 text-xs text-gray-300' : 'mt-1 text-xs text-gray-400'}>
-                          {formatTiempo(it.tiempo_estimado)}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        ) : !loading && !error ? (
-          <div className="mt-10 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-            No encontramos resultados para <span className="font-medium text-gray-900">{query.trim()}</span>.
-          </div>
-        ) : null}
-
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-gray-500">
-            {selected ? (
-              <>
-                Seleccionado: <span className="font-medium text-gray-900">{selected.nombre}</span>
-              </>
-            ) : (
-              'Seleccioná un arreglo para continuar.'
-            )}
-          </div>
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-full border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-900 hover:border-gray-400"
+        <div className="mx-auto mt-14 max-w-2xl text-center">
+          <h3 className="text-xl font-semibold tracking-tight text-neutral-900">¿No encontrás tu problema?</h3>
+          <p className="mt-2 text-sm text-neutral-500">
+            Elegí tu modelo y contanos por WhatsApp. Te respondemos en minutos.
+          </p>
+          <a
+            href={whatsAppHref ?? undefined}
+            target="_blank"
+            rel="noreferrer"
+            aria-disabled={!whatsAppHref}
+            className={[
+              'mt-6 inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 text-sm font-semibold shadow-sm transition',
+              whatsAppHref ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-neutral-200 text-neutral-500',
+            ].join(' ')}
+            onClick={(e) => {
+              if (!whatsAppHref) e.preventDefault()
+            }}
           >
-            Volver
-          </Link>
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+              <path d="M12.04 2C6.58 2 2.16 6.42 2.16 11.88c0 1.93.56 3.82 1.62 5.45L2 22l4.82-1.73a9.82 9.82 0 0 0 5.22 1.48h.01c5.46 0 9.88-4.42 9.88-9.88C21.93 6.42 17.5 2 12.04 2zm5.75 14.28c-.24.68-1.4 1.3-1.93 1.38-.5.08-1.13.11-1.82-.11-.42-.13-.97-.32-1.67-.62-2.94-1.27-4.86-4.22-5-4.42-.14-.2-1.2-1.6-1.2-3.05 0-1.45.76-2.17 1.03-2.47.27-.3.6-.38.8-.38h.58c.19 0 .45-.07.7.53.25.6.85 2.08.92 2.23.07.15.12.33.03.53-.09.2-.14.33-.28.51-.14.18-.3.4-.43.54-.14.14-.28.3-.12.58.16.28.72 1.19 1.55 1.93 1.06.95 1.95 1.25 2.23 1.39.28.14.44.12.6-.07.16-.19.69-.8.87-1.07.18-.27.37-.22.62-.13.25.09 1.6.76 1.87.9.27.14.45.2.52.31.07.11.07.66-.17 1.34z" />
+            </svg>
+            Consultar por WhatsApp
+          </a>
         </div>
       </section>
     </div>
