@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CategoriaListaSlug, ListaPrecioReparacion, TipoReparacion } from '../../types/reparaciones'
+import type { CategoriaListaSlug, TipoReparacion } from '../../types/reparaciones'
 import { carritoApi } from '../../services/carritoApi'
 import { reparacionesApi } from '../../services/reparacionesApi'
+import { REPARACION_PRICE_ROWS } from '../../lib/reparacionesPrecios'
 
 const WHATSAPP_PHONE: string = import.meta.env.VITE_WHATSAPP_CHECKOUT_PHONE ?? ''
 
@@ -50,8 +51,6 @@ export default function ReparacionesPage() {
   const topRef = useRef<HTMLDivElement | null>(null)
 
   const [tipos, setTipos] = useState<TipoReparacion[]>([])
-  const [modelos, setModelos] = useState<ReparacionModelo[]>([])
-  const [listaPrecios, setListaPrecios] = useState<ListaPrecioReparacion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -64,6 +63,24 @@ export default function ReparacionesPage() {
   const [problemaOpen, setProblemaOpen] = useState(false)
   const [problemaSelectedId, setProblemaSelectedId] = useState<string | null>(PROBLEMAS[2]?.id ?? null)
   const [problemaDetalle, setProblemaDetalle] = useState('')
+
+  const modelos = useMemo(() => {
+    const seen = new Set<string>()
+    return REPARACION_PRICE_ROWS.slice()
+      .sort((a, b) => a.orden - b.orden)
+      .map((x) => x.modelo.trim())
+      .filter((x) => {
+        const key = x.toUpperCase()
+        if (!key) return false
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((nombre_modelo, idx) => ({
+        id: idx + 1,
+        nombre_modelo,
+      }))
+  }, [])
 
   const modeloSelected = useMemo(
     () => modelos.find((m) => m.id === modeloSelectedId) ?? null,
@@ -92,32 +109,9 @@ export default function ReparacionesPage() {
       setLoading(true)
       setError(null)
       try {
-        const [tiposData, listaData] = await Promise.all([
-          reparacionesApi.tipos.list(0, 100),
-          reparacionesApi.listaPrecios.list(),
-        ])
+        const tiposData = await reparacionesApi.tipos.list(0, 100)
         if (!alive) return
         setTipos(tiposData)
-        // Siempre tomamos modelos "precargados" desde la lista de precios,
-        // para que la cotización coincida con los precios definidos.
-        const seen = new Set<string>()
-        const derived: ReparacionModelo[] = listaData
-          .slice()
-          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
-          .map((x) => (x.modelo ?? '').trim())
-          .filter((x) => {
-            const key = x.toUpperCase()
-            if (!key) return false
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          })
-          .map((nombre_modelo, idx) => ({
-            id: idx + 1,
-            nombre_modelo,
-          }))
-        setModelos(derived)
-        setListaPrecios(listaData)
       } catch (e) {
         if (!alive) return
         setError(e instanceof Error ? e.message : 'No se pudo cargar')
@@ -161,7 +155,7 @@ export default function ReparacionesPage() {
   const precioSelected = useMemo(() => {
     if (!categoriaPrecio || !modeloSelected) return null
     const wanted = normalizeModelForPriceLookup(modeloSelected.nombre_modelo)
-    const rows = listaPrecios.filter((r) => r.categoria === categoriaPrecio)
+    const rows = REPARACION_PRICE_ROWS.filter((r) => r.categoria === categoriaPrecio)
     // match directo por contención (por diferencias como "12/12 PRO", "XR/SE 2nd GEN", etc.)
     return (
       rows.find((r) => normalizeModelForPriceLookup(r.modelo) === wanted) ??
@@ -169,10 +163,10 @@ export default function ReparacionesPage() {
       rows.find((r) => wanted.includes(normalizeModelForPriceLookup(r.modelo))) ??
       null
     )
-  }, [categoriaPrecio, listaPrecios, modeloSelected])
+  }, [categoriaPrecio, modeloSelected])
 
-  const precioArs = precioSelected?.precio_ars_original ? Number(precioSelected.precio_ars_original) : null
-  const precioUsd = precioSelected?.precio_usd_original ? Number(precioSelected.precio_usd_original) : null
+  const precioArs = precioSelected?.precio_ars_original ?? null
+  const precioUsd = precioSelected?.precio_usd_original ?? null
 
   async function handleAddRepairToCart() {
     if (!categoriaPrecio || !precioSelected || !modeloSelected) return
@@ -182,8 +176,9 @@ export default function ReparacionesPage() {
       const producto = await reparacionesApi.carritoProducto.create({
         categoria: categoriaPrecio,
         modelo: precioSelected.modelo,
+        precio_ars: precioArs,
+        precio_usd: precioUsd,
       })
-      await carritoApi.ensure(false)
       await carritoApi.addItem(producto.id_producto, 1, false)
       setAddedFeedback('Agregado al carrito.')
     } catch (e) {

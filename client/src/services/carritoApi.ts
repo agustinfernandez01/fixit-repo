@@ -1,5 +1,5 @@
 import { authHeaders } from '../lib/auth'
-import { emitCartChanged, getCartToken } from '../lib/cart'
+import { emitCartChanged, getCartToken, getLastKnownCartCount, setLastKnownCartCount } from '../lib/cart'
 import { fetchJson } from './api'
 import type {
   Carrito,
@@ -35,13 +35,23 @@ export const carritoApi = {
       headers: cartHeaders(withAuth),
     }),
   addItem: async (idProducto: number, cant = 1, withAuth = false) => {
-    const summary = await fetchJson<CarritoResumen>(`${P}/items`, {
-      method: 'POST',
-      headers: cartHeaders(withAuth),
-      body: JSON.stringify({ id_producto: idProducto, cant }),
-    })
-    emitCartChanged({ totalUnidades: summary.total_unidades, summary })
-    return summary
+    const optimisticCount = getLastKnownCartCount() + cant
+    emitCartChanged({ totalUnidades: optimisticCount })
+    try {
+      const summary = await fetchJson<CarritoResumen>(`${P}/items`, {
+        method: 'POST',
+        headers: cartHeaders(withAuth),
+        body: JSON.stringify({ id_producto: idProducto, cant }),
+      })
+      setLastKnownCartCount(summary.total_unidades)
+      emitCartChanged({ totalUnidades: summary.total_unidades, summary })
+      return summary
+    } catch (err) {
+      const rolledBack = Math.max(0, optimisticCount - cant)
+      setLastKnownCartCount(rolledBack)
+      emitCartChanged({ totalUnidades: rolledBack })
+      throw err
+    }
   },
   updateItem: async (detalleId: number, cant: number, withAuth = false) => {
     const summary = await fetchJson<CarritoResumen>(`${P}/items/${detalleId}`, {

@@ -46,6 +46,8 @@ class ListaPrecioReparacionResponse(BaseModel):
 class ReparacionCarritoProductoRequest(BaseModel):
     categoria: str
     modelo: str
+    precio_ars: Optional[Decimal] = None
+    precio_usd: Optional[Decimal] = None
 
 
 class ReparacionCarritoProductoResponse(BaseModel):

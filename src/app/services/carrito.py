@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import List, Optional, Tuple
 from urllib.parse import quote
 
-from sqlalchemy import func
+from sqlalchemy import cast, func, String
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
@@ -33,7 +33,7 @@ BLOCKED_STATES = {"vendido", "cancelado", "baja"}
 def _carrito_activo_query(db: Session, token: str):
     return db.query(Carrito).filter(
         Carrito.token_identificador == token,
-        Carrito.estado.is_(True),
+        func.lower(cast(Carrito.estado, String)).in_(["true", "1", "t", "yes", "y"]),
     )
 
 
@@ -335,7 +335,7 @@ def merge_guest_cart_into_user_cart(
             db.query(Carrito)
             .filter(
                 Carrito.id_usuario == id_usuario,
-                Carrito.estado.is_(True),
+                func.lower(cast(Carrito.estado, String)).in_(["true", "1", "t", "yes", "y"]),
                 Carrito.id_pedido.is_(None),
             )
             .first()

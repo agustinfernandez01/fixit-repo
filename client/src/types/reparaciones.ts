@@ -29,6 +29,8 @@ export type ListaPrecioReparacion = {
 export type ReparacionCarritoProductoRequest = {
   categoria: string
   modelo: string
+  precio_ars?: string | number | null
+  precio_usd?: string | number | null
 }
 
 export type ReparacionCarritoProductoResponse = {

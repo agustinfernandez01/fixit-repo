@@ -7,6 +7,8 @@ export type CartChangedDetail = {
   summary?: unknown
 }
 
+let lastKnownCartCount = 0
+
 function createToken(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
@@ -39,5 +41,16 @@ export function regenerateCartToken(): string {
 }
 
 export function emitCartChanged(detail?: CartChangedDetail): void {
+  if (detail?.totalUnidades !== undefined && Number.isFinite(detail.totalUnidades)) {
+    lastKnownCartCount = Math.max(0, Math.trunc(detail.totalUnidades))
+  }
   window.dispatchEvent(new CustomEvent(CART_CHANGED_EVENT, { detail }))
+}
+
+export function getLastKnownCartCount(): number {
+  return lastKnownCartCount
+}
+
+export function setLastKnownCartCount(total: number): void {
+  lastKnownCartCount = Math.max(0, Math.trunc(total))
 }

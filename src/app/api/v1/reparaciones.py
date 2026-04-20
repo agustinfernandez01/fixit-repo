@@ -4,6 +4,7 @@ Módulo Reparaciones: tipos de reparación y solicitudes de reparación.
 from datetime import datetime, timezone
 
 from decimal import Decimal
+import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -29,6 +30,20 @@ from app.schemas.reparaciones import (
 )
 
 router = APIRouter()
+
+
+def _normalize_text(value: str) -> str:
+    return (
+        unicodedata.normalize("NFD", (value or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .upper()
+        .replace("\t", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .replace("  ", " ")
+        .strip()
+    )
 
 
 @router.get("/lista-precios", response_model=list[ListaPrecioReparacionResponse])
@@ -82,16 +97,40 @@ def crear_producto_reparacion_para_carrito(
     if not categoria or not modelo:
         raise HTTPException(status_code=400, detail="Faltan categoria/modelo")
 
-    precio = (
-        db.query(ListaPrecioReparacion)
-        .filter(
-            ListaPrecioReparacion.categoria == categoria,
-            ListaPrecioReparacion.modelo == modelo,
+    precio_ars = payload.precio_ars
+    precio_usd = payload.precio_usd
+
+    if precio_ars is None:
+        candidatos = (
+            db.query(ListaPrecioReparacion)
+            .filter(ListaPrecioReparacion.categoria == categoria)
+            .order_by(ListaPrecioReparacion.orden, ListaPrecioReparacion.modelo)
+            .all()
         )
-        .first()
-    )
-    if not precio or precio.precio_ars_original is None:
-        raise HTTPException(status_code=404, detail="No hay precio para ese modelo/categoría")
+        if not candidatos:
+            raise HTTPException(status_code=404, detail="No hay precio para ese modelo/categoría")
+
+        wanted = _normalize_text(modelo)
+        precio = next(
+            (
+                row
+                for row in candidatos
+                if _normalize_text(row.modelo) == wanted
+                or wanted in _normalize_text(row.modelo)
+                or _normalize_text(row.modelo) in wanted
+            ),
+            None,
+        )
+        if not precio:
+            precio = next(
+                (row for row in candidatos if row.precio_ars_original is not None),
+                None,
+            )
+        if not precio or precio.precio_ars_original is None:
+            raise HTTPException(status_code=404, detail="No hay precio para ese modelo/categoría")
+        precio_ars = precio.precio_ars_original
+        if precio_usd is None:
+            precio_usd = precio.precio_usd_original
 
     cat = _get_or_create_categoria_reparaciones(db)
 
@@ -103,20 +142,20 @@ def crear_producto_reparacion_para_carrito(
     )
     if existing:
         existing.activo = True
-        existing.precio = Decimal(str(precio.precio_ars_original))
+        existing.precio = Decimal(str(precio_ars))
         db.commit()
         db.refresh(existing)
         return ReparacionCarritoProductoResponse(
             id_producto=existing.id,
             nombre=existing.nombre,
-            precio_ars=Decimal(str(precio.precio_ars_original)),
-            precio_usd=Decimal(str(precio.precio_usd_original)) if precio.precio_usd_original is not None else None,
+            precio_ars=Decimal(str(precio_ars)),
+            precio_usd=Decimal(str(precio_usd)) if precio_usd is not None else None,
         )
 
     producto = Productos(
         nombre=nombre,
         descripcion=f"Servicio de reparación ({categoria}) para {modelo}. Precio estimado.",
-        precio=Decimal(str(precio.precio_ars_original)),
+        precio=Decimal(str(precio_ars)),
         id_categoria=cat.id,
         activo=True,
     )
@@ -126,8 +165,8 @@ def crear_producto_reparacion_para_carrito(
     return ReparacionCarritoProductoResponse(
         id_producto=producto.id,
         nombre=producto.nombre,
-        precio_ars=Decimal(str(precio.precio_ars_original)),
-        precio_usd=Decimal(str(precio.precio_usd_original)) if precio.precio_usd_original is not None else None,
+        precio_ars=Decimal(str(precio_ars)),
+        precio_usd=Decimal(str(precio_usd)) if precio_usd is not None else None,
     )
 
 

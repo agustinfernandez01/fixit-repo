@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const next = params.get('next') || '/publicar'
+  const next = params.get('next') || '/carrito'
 
   async function syncCartAfterLogin() {
     try {
