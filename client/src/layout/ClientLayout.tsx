@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
 	CART_CHANGED_EVENT,
 	type CartChangedDetail,
+	setLastKnownCartCount,
 	regenerateCartToken,
 	setCartToken,
 } from '../lib/cart'
@@ -50,6 +51,7 @@ export default function ClientLayout() {
 				const summary = await carritoApi.summary(logged)
 				if (!alive) return
 				setCartCount(summary.total_unidades)
+				setLastKnownCartCount(summary.total_unidades)
 				setCartReady(true)
 			} catch (e) {
 				const msg = e instanceof Error ? e.message.toLowerCase() : ''
@@ -71,6 +73,7 @@ export default function ClientLayout() {
 			const detail = (ev as CustomEvent<CartChangedDetail>).detail
 			if (detail?.totalUnidades !== undefined) {
 				setCartCount(detail.totalUnidades)
+				setLastKnownCartCount(detail.totalUnidades)
 				setCartReady(true)
 				return
 			}

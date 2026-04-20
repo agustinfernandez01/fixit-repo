@@ -2,9 +2,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.config import DATABASE_URL
+import os
 
 # pool_pre_ping: reconecta si Render/Postgres cierra conexiones idle
-_engine_kwargs = {"echo": True, "pool_pre_ping": True}
+SQL_ECHO = os.getenv("SQL_ECHO", "false").strip().lower() in {"1", "true", "yes", "on"}
+_engine_kwargs = {"echo": SQL_ECHO, "pool_pre_ping": True}
 if "postgresql" in (DATABASE_URL or ""):
     _engine_kwargs.setdefault("pool_size", 5)
     _engine_kwargs.setdefault("max_overflow", 10)
