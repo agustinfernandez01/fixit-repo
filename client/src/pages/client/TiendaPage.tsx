@@ -4,12 +4,17 @@ import { carritoApi } from '../../services/carritoApi'
 import { productosApi } from '../../services/productosApi'
 import type { ProductoCompra } from '../../types/carrito'
 import { getAccessToken } from '../../lib/auth'
+import { mediaUrl } from '../../services/api'
 import productosAppleFilterImg from '../../assets/filtradocatalogoimg/productos-apple.svg'
 import accesoriosFilterImg from '../../assets/filtradocatalogoimg/accesorios.svg'
+import reparacionesFilterImg from '../../assets/filtradocatalogoimg/reparaciones.svg'
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
-  const n = typeof v === 'string' ? Number(v) : v
+  const n =
+    typeof v === 'string'
+      ? Number(String(v).trim().replace(/\./g, '').replace(',', '.'))
+      : v
   if (Number.isNaN(n)) return String(v)
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
@@ -18,7 +23,18 @@ function fmtArs(v: string | number | null | undefined) {
   }).format(n)
 }
 
-type CatalogCategory = 'apple' | 'accesorios'
+function fmtUsd(v: string | number | null | undefined) {
+  if (v === null || v === undefined || v === '') return '—'
+  const n = typeof v === 'string' ? Number(v) : v
+  if (Number.isNaN(n)) return String(v)
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(n)
+}
+
+type CatalogCategory = 'apple' | 'accesorios' | 'reparaciones'
 type SortMode = 'featured' | 'price-asc' | 'price-desc' | 'name'
 type VisibleCategory = CatalogCategory
 type CatalogSubcategory =
@@ -60,6 +76,11 @@ const ACCESORIOS_SUBCATEGORY_OPTIONS: Array<{
   { id: 'cabezal', label: 'Cabezales' },
   { id: 'cable', label: 'Cables' },
 ]
+
+const REPARACIONES_SUBCATEGORY_OPTIONS: Array<{
+  id: CatalogSubcategory
+  label: string
+}> = [{ id: 'all', label: 'Todos' }]
 
 const ITEMS_PER_PAGE = 9
 
@@ -122,6 +143,19 @@ function inferFamilyFromTipoEquipo(tipoEquipo: string | null | undefined): strin
 }
 
 function classifyCategory(producto: ProductoCompra): CatalogCategory {
+  const name = normalize(producto.nombre)
+  const desc = normalize(producto.descripcion ?? '')
+
+  const isRepair =
+    name.startsWith('reparación') ||
+    name.startsWith('reparacion') ||
+    name.includes('reparación -') ||
+    name.includes('reparacion -') ||
+    desc.includes('servicio de reparación') ||
+    desc.includes('servicio de reparacion')
+
+  if (isRepair) return 'reparaciones'
+
   if (producto.tipo_producto === 'accesorio') return 'accesorios'
 
   const tipoEquipo = normalize(producto.tipo_equipo)
@@ -145,7 +179,6 @@ function classifyCategory(producto: ProductoCompra): CatalogCategory {
 
   if (producto.tipo_producto === 'equipo') return 'apple'
 
-  const name = normalize(producto.nombre)
   if (isAccessoryByName(name)) return 'accesorios'
   return 'apple'
 }
@@ -197,6 +230,13 @@ function paletteByCategory(category: CatalogCategory): {
   swatches: string[]
   tag: string
 } {
+  if (category === 'reparaciones') {
+    return {
+      backdrop: 'bg-gradient-to-b from-sky-200/60 via-blue-50 to-white',
+      swatches: ['bg-slate-200', 'bg-violet-200', 'bg-neutral-900'],
+      tag: 'Reparaciones',
+    }
+  }
   if (category === 'accesorios') {
     return {
       backdrop: 'bg-gradient-to-b from-amber-100/75 via-orange-50/70 to-white',
@@ -267,45 +307,105 @@ function ProductCard({
   onAdd: (id: number) => void
 }) {
   const p = paletteByCategory(item.category)
+  const imageSrc = mediaUrl(item.foto_url)
+  const hasUsd = item.precio_usd !== null && item.precio_usd !== undefined && item.precio_usd !== ''
   return (
-    <article className="overflow-hidden rounded-[2rem] border border-neutral-100 bg-white shadow-[0_12px_30px_-22px_rgba(0,0,0,0.25)] transition-shadow duration-200 hover:shadow-[0_20px_40px_-24px_rgba(0,0,0,0.28)]">
-      <div className={`relative overflow-hidden ${p.backdrop}`}>
-        <div className="relative flex h-[260px] w-full items-center justify-center">
-          <ProductMockup category={item.category} />
+    <article className="flex flex-col items-center text-center">
+      <div
+        className={`relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] ${p.backdrop}`}
+      >
+        <div className="relative flex h-[280px] w-full items-center justify-center sm:h-[320px] md:h-[340px]">
+          {imageSrc ? (
+            <img
+              src={imageSrc}
+              alt={item.nombre}
+              className="max-h-full w-auto max-w-[min(100%,280px)] object-contain object-center mix-blend-multiply sm:max-w-[300px] md:max-w-[320px]"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <ProductMockup category={item.category} />
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="px-5 pb-5 pt-4">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="inline-flex rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-neutral-600 uppercase">
-            {p.tag}
-          </p>
-          <div className="flex gap-1.5" aria-hidden>
-            {p.swatches.map((sw, i) => (
-              <span key={`${item.id}-sw-${i}`} className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`} />
-            ))}
-          </div>
-        </div>
+      <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
+        {p.swatches.map((sw, i) => (
+          <span key={`${item.id}-sw-${i}`} className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`} />
+        ))}
+      </div>
 
-        <h3 className="line-clamp-2 text-[1.1rem] font-semibold tracking-[-0.02em] text-neutral-900">{item.nombre}</h3>
-        <p className="mt-1 text-xs font-medium tracking-wide text-neutral-500 uppercase">{item.familyLabel}</p>
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-neutral-500">{item.descripcion ?? 'Producto disponible en catálogo.'}</p>
+      <p className="mt-3 text-[11px] font-semibold tracking-[0.02em] text-neutral-500 uppercase">{p.tag}</p>
 
-        <div className="mt-4 flex items-end justify-between gap-3">
-          <p className="text-2xl font-black tracking-tight text-neutral-900">{fmtArs(item.precio)}</p>
-          <Link to={`/producto/${item.id}`} className="text-sm font-medium text-[#0071e3] hover:underline">
-            Ver detalle
-          </Link>
-        </div>
+      <h3 className="mt-1.5 max-w-[18rem] text-[1.375rem] font-semibold leading-tight tracking-[-0.025em] text-neutral-900 sm:text-[1.5rem]">
+        {item.nombre}
+      </h3>
 
+      <p className="mt-2 text-xs font-medium tracking-wide text-neutral-500 uppercase">{item.familyLabel}</p>
+
+      <p className="mx-auto mt-2.5 max-w-[20rem] text-[15px] leading-snug text-neutral-600">
+        {item.descripcion ?? 'Producto disponible en catálogo.'}
+      </p>
+
+      <div className="mx-auto mt-3 flex max-w-[22rem] flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
+        {hasUsd ? (
+          <span className="inline-flex items-center rounded-full bg-[#0071e3]/10 px-3 py-1 text-[13px] font-semibold text-[#0071e3]">
+            USD {fmtUsd(item.precio_usd).replace('$', '').trim()}
+          </span>
+        ) : null}
+        <span className={`${hasUsd ? 'text-xs text-neutral-500' : 'text-xs text-neutral-700 sm:text-[13px]'}`}>
+          {hasUsd ? `ARS ${fmtArs(item.precio).replace('$', '').trim()}` : fmtArs(item.precio)}
+        </span>
+      </div>
+
+      <div className="mt-5 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
         <button
           type="button"
           onClick={() => onAdd(item.id)}
           disabled={saving}
-          className="mt-4 inline-flex min-h-[2.75rem] w-full items-center justify-center rounded-full bg-neutral-900 px-6 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-wait disabled:bg-neutral-500"
+          className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] active:bg-[#006edb] disabled:cursor-wait disabled:opacity-60"
         >
           {saving ? 'Agregando…' : 'Agregar al carrito'}
         </button>
+        <Link
+          to={`/producto/${item.id}`}
+          className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
+        >
+          Ver detalle
+          <span aria-hidden className="text-lg leading-none">
+            ›
+          </span>
+        </Link>
+      </div>
+    </article>
+  )
+}
+
+function ProductCardSkeleton() {
+  return (
+    <article className="flex flex-col items-center text-center">
+      <div className="relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03]">
+        <div className="h-[280px] w-full animate-pulse bg-neutral-100 sm:h-[320px] md:h-[340px]" />
+      </div>
+
+      <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-neutral-100" />
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-neutral-100" />
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-neutral-100" />
+      </div>
+
+      <div className="mt-3 h-4 w-14 animate-pulse rounded bg-neutral-100" />
+      <div className="mt-2 h-7 w-4/5 animate-pulse rounded-xl bg-neutral-100" />
+      <div className="mt-2 h-4 w-24 animate-pulse rounded bg-neutral-100" />
+      <div className="mt-3 h-5 w-full max-w-[20rem] animate-pulse rounded bg-neutral-100" />
+      <div className="mt-1 h-5 w-5/6 max-w-[20rem] animate-pulse rounded bg-neutral-100" />
+      <div className="mt-3 h-4 w-28 animate-pulse rounded bg-neutral-100" />
+
+      <div className="mt-5 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
+        <div className="h-11 w-40 animate-pulse rounded-full bg-neutral-100" />
+        <div className="h-6 w-28 animate-pulse rounded bg-neutral-100" />
       </div>
     </article>
   )
@@ -329,6 +429,7 @@ export default function TiendaPage() {
   }> = [
     { id: 'apple', label: 'Productos Apple', image: productosAppleFilterImg },
     { id: 'accesorios', label: 'Accesorios', image: accesoriosFilterImg },
+    { id: 'reparaciones', label: 'Reparaciones', image: reparacionesFilterImg },
   ]
 
   const load = useCallback(async () => {
@@ -396,10 +497,16 @@ export default function TiendaPage() {
   const subcategoryOptions =
     visibleCategory === 'apple'
       ? APPLE_SUBCATEGORY_OPTIONS
-      : ACCESORIOS_SUBCATEGORY_OPTIONS
+      : visibleCategory === 'accesorios'
+        ? ACCESORIOS_SUBCATEGORY_OPTIONS
+        : REPARACIONES_SUBCATEGORY_OPTIONS
 
   const sectionTitle =
-    visibleCategory === 'apple' ? 'Productos Apple' : 'Accesorios'
+    visibleCategory === 'apple'
+      ? 'Productos Apple'
+      : visibleCategory === 'accesorios'
+        ? 'Accesorios'
+        : 'Reparaciones'
 
   return (
     <div className="bg-white">
@@ -495,7 +602,23 @@ export default function TiendaPage() {
         ) : null}
 
         {loading ? (
-          <p className="text-sm text-neutral-500">Cargando productos…</p>
+          <div className="space-y-7">
+            <section>
+              <div className="mb-6 flex items-end justify-between gap-4">
+                <div>
+                  <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Categoría</p>
+                  <div className="h-9 w-56 animate-pulse rounded-xl bg-neutral-100" />
+                </div>
+                <div className="h-8 w-28 animate-pulse rounded-full bg-neutral-100" />
+              </div>
+
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: ITEMS_PER_PAGE }, (_, i) => (
+                  <ProductCardSkeleton key={`sk-${i}`} />
+                ))}
+              </div>
+            </section>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50/80 px-8 py-16 text-center">
             <p className="text-gray-500">No encontramos productos para esos filtros.</p>

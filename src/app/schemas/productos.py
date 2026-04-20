@@ -6,7 +6,9 @@ class ProductoBase(BaseModel):
     id: int
     nombre: str
     descripcion: Optional[str] = None
+    foto_url: Optional[str] = None
     precio: float
+    precio_usd: Optional[float] = None
     id_categoria: int
     activo: bool
     tipo_producto: Optional[str] = None
@@ -20,6 +22,7 @@ class ProductoCreate(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
     precio: float
+    precio_usd: Optional[float] = None
     id_categoria: int
     activo: Optional[bool] = True
     
@@ -27,6 +30,7 @@ class ProductoPatch(BaseModel):
     nombre: Optional[str] = None
     descripcion: Optional[str] = None
     precio: Optional[float] = None
+    precio_usd: Optional[float] = None
     id_categoria: Optional[int] = None
     activo: Optional[bool] = None
     
@@ -34,7 +38,9 @@ class ProductoResponse(BaseModel):
     id: int
     nombre: str
     descripcion: Optional[str] = None
+    foto_url: Optional[str] = None
     precio: float
+    precio_usd: Optional[float] = None
     id_categoria: int
     activo: bool
     tipo_producto: Optional[str] = None

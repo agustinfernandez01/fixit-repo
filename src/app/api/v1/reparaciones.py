@@ -3,12 +3,22 @@ Módulo Reparaciones: tipos de reparación y solicitudes de reparación.
 """
 from datetime import datetime, timezone
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import TipoReparacion, ListaPrecioReparacion, Reparacion
+from app.models import (
+    CategoriaProducto,
+    ListaPrecioReparacion,
+    Productos,
+    Reparacion,
+    TipoReparacion,
+)
 from app.schemas.reparaciones import (
+    ReparacionCarritoProductoRequest,
+    ReparacionCarritoProductoResponse,
     TipoReparacionCreate,
     TipoReparacionUpdate,
     TipoReparacionResponse,
@@ -25,7 +35,7 @@ router = APIRouter()
 def listar_precios_reparacion(
     categoria: str | None = Query(
         None,
-        description="Filtrar por slug: modulo_pantalla, bateria, camara_principal, flex_carga",
+        description="Filtrar por slug: modulo_pantalla, bateria, camara_principal, flex_carga, tapas_traseras",
     ),
     db: Session = Depends(get_db),
 ):
@@ -37,6 +47,88 @@ def listar_precios_reparacion(
     if categoria:
         q = q.filter(ListaPrecioReparacion.categoria == categoria)
     return q.all()
+
+
+def _get_or_create_categoria_reparaciones(db: Session) -> CategoriaProducto:
+    cat = (
+        db.query(CategoriaProducto)
+        .filter(CategoriaProducto.nombre == "Reparaciones")
+        .first()
+    )
+    if cat:
+        return cat
+    cat = CategoriaProducto(
+        nombre="Reparaciones",
+        descripcion="Servicios de reparación (precios estimados por modelo).",
+        activo=True,
+    )
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@router.post(
+    "/carrito-producto",
+    response_model=ReparacionCarritoProductoResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_producto_reparacion_para_carrito(
+    payload: ReparacionCarritoProductoRequest,
+    db: Session = Depends(get_db),
+):
+    categoria = (payload.categoria or "").strip()
+    modelo = (payload.modelo or "").strip()
+    if not categoria or not modelo:
+        raise HTTPException(status_code=400, detail="Faltan categoria/modelo")
+
+    precio = (
+        db.query(ListaPrecioReparacion)
+        .filter(
+            ListaPrecioReparacion.categoria == categoria,
+            ListaPrecioReparacion.modelo == modelo,
+        )
+        .first()
+    )
+    if not precio or precio.precio_ars_original is None:
+        raise HTTPException(status_code=404, detail="No hay precio para ese modelo/categoría")
+
+    cat = _get_or_create_categoria_reparaciones(db)
+
+    nombre = f"Reparación - {categoria} - {modelo}"
+    existing = (
+        db.query(Productos)
+        .filter(Productos.id_categoria == cat.id, Productos.nombre == nombre)
+        .first()
+    )
+    if existing:
+        existing.activo = True
+        existing.precio = Decimal(str(precio.precio_ars_original))
+        db.commit()
+        db.refresh(existing)
+        return ReparacionCarritoProductoResponse(
+            id_producto=existing.id,
+            nombre=existing.nombre,
+            precio_ars=Decimal(str(precio.precio_ars_original)),
+            precio_usd=Decimal(str(precio.precio_usd_original)) if precio.precio_usd_original is not None else None,
+        )
+
+    producto = Productos(
+        nombre=nombre,
+        descripcion=f"Servicio de reparación ({categoria}) para {modelo}. Precio estimado.",
+        precio=Decimal(str(precio.precio_ars_original)),
+        id_categoria=cat.id,
+        activo=True,
+    )
+    db.add(producto)
+    db.commit()
+    db.refresh(producto)
+    return ReparacionCarritoProductoResponse(
+        id_producto=producto.id,
+        nombre=producto.nombre,
+        precio_ars=Decimal(str(precio.precio_ars_original)),
+        precio_usd=Decimal(str(precio.precio_usd_original)) if precio.precio_usd_original is not None else None,
+    )
 
 
 @router.get("/tipos", response_model=list[TipoReparacionResponse])

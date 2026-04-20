@@ -15,7 +15,7 @@ class SesionesLogin(Base):
     id_usuario = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     fecha_inicio = Column(DateTime, default=datetime.now)
     fecha_expiracion = Column(DateTime, default=datetime.now)
-    refresh_token_hash = Column(String, nullable=False)
+    refresh_token_hash = Column(String(512), nullable=False)
     revocada = Column(Boolean, default=False)
 
     usuario = relationship("Usuario", back_populates="sesiones_login")

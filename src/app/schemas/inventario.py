@@ -19,7 +19,6 @@ def _normalizar_texto(valor: object) -> Optional[str]:
 class ModeloEquipoBase(BaseModel):
     nombre_modelo: str
     capacidad_gb: Optional[int] = None
-    color: Optional[str] = None
     descripcion: Optional[str] = None
     activo: bool = True
 
@@ -31,7 +30,6 @@ class ModeloEquipoCreate(ModeloEquipoBase):
 class ModeloEquipoUpdate(BaseModel):
     nombre_modelo: Optional[str] = None
     capacidad_gb: Optional[int] = None
-    color: Optional[str] = None
     descripcion: Optional[str] = None
     activo: Optional[bool] = None
 
@@ -47,6 +45,7 @@ class ModeloEquipoResponse(ModeloEquipoBase):
 class EquipoBase(BaseModel):
     id_modelo: int
     imei: Optional[str] = None
+    color: Optional[str] = None
     tipo_equipo: Optional[str] = None
     estado_comercial: Optional[str] = None
     activo: bool = True
@@ -56,6 +55,21 @@ class EquipoBase(BaseModel):
 
 class EquipoCreate(EquipoBase):
     fecha_ingreso: Optional[datetime] = None
+    precio_ars: Optional[Decimal] = None
+    precio_usd: Optional[Decimal] = None
+
+    @field_validator("precio_ars", "precio_usd", mode="before")
+    @classmethod
+    def validar_precios(cls, valor):
+        if valor is None or valor == "":
+            return None
+        try:
+            dec = Decimal(str(valor))
+        except Exception as e:
+            raise ValueError("Precio inválido") from e
+        if dec < 0:
+            raise ValueError("El precio no puede ser negativo")
+        return dec
 
     @field_validator("tipo_equipo", mode="before")
     @classmethod
@@ -83,11 +97,27 @@ class EquipoCreate(EquipoBase):
 class EquipoUpdate(BaseModel):
     id_modelo: Optional[int] = None
     imei: Optional[str] = None
+    color: Optional[str] = None
     tipo_equipo: Optional[str] = None
     estado_comercial: Optional[str] = None
     fecha_ingreso: Optional[datetime] = None
     activo: Optional[bool] = None
     id_producto: Optional[int] = None
+    precio_ars: Optional[Decimal] = None
+    precio_usd: Optional[Decimal] = None
+
+    @field_validator("precio_ars", "precio_usd", mode="before")
+    @classmethod
+    def normalizar_precios(cls, valor):
+        if valor is None or valor == "":
+            return None
+        try:
+            dec = Decimal(str(valor))
+        except Exception as e:
+            raise ValueError("Precio inválido") from e
+        if dec < 0:
+            raise ValueError("El precio no puede ser negativo")
+        return dec
 
     @field_validator("tipo_equipo", mode="before")
     @classmethod

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ModeloEquipo } from '../../types/inventario'
-import type { TipoReparacion } from '../../types/reparaciones'
-import { inventarioApi } from '../../services/inventarioApi'
+import type { CategoriaListaSlug, ListaPrecioReparacion, TipoReparacion } from '../../types/reparaciones'
+import { carritoApi } from '../../services/carritoApi'
 import { reparacionesApi } from '../../services/reparacionesApi'
 
-const WHATSAPP_PHONE: string = import.meta.env.VITE_WHATSAPP_PHONE ?? ''
+const WHATSAPP_PHONE: string = import.meta.env.VITE_WHATSAPP_CHECKOUT_PHONE ?? ''
 
 type ProblemaOption = {
   id: string
@@ -14,17 +13,11 @@ type ProblemaOption = {
 }
 
 const PROBLEMAS: ProblemaOption[] = [
-  { id: 'pantalla', label: 'Pantalla rota / Daño en display', hint: 'pantalla' },
+  { id: 'no-encontre', label: 'No encontré mi problema', hint: '' },
   { id: 'bateria', label: 'Batería / Carga lenta', hint: 'bater' },
-  { id: 'vidrio-trasero', label: 'Vidrio trasero roto / fisurado', hint: 'vidrio' },
+  { id: 'vidrio-trasero', label: 'Cambio de tapas traseras', hint: 'tapa' },
   { id: 'pin-carga', label: 'Pin de carga / No carga', hint: 'carga' },
-  { id: 'camara-parlante-mic', label: 'Cámara / parlante / micrófono', hint: 'cam' },
-  { id: 'parlante', label: 'Parlante / Altavoz', hint: 'parlante' },
-  { id: 'microfono', label: 'Micrófono', hint: 'micro' },
-  { id: 'botones', label: 'Botones (volumen, power, silencio)', hint: 'boton' },
-  { id: 'agua', label: 'Daño por agua / humedad', hint: 'agua' },
-  { id: 'software', label: 'Problemas de software', hint: 'software' },
-  { id: 'diagnostico', label: 'Diagnóstico general', hint: 'diagn' },
+  { id: 'camara-parlante-mic', label: 'Cambio de cámara principal', hint: 'cam' },
 ]
 
 function normalizePhoneForWaMe(phone: string): string {
@@ -44,29 +37,36 @@ function findTipoByHint(items: TipoReparacion[], hint: string): TipoReparacion |
   return items.find((x) => (x.nombre ?? '').toLowerCase().includes(h)) ?? null
 }
 
-function buildModeloLabel(m: ModeloEquipo): string {
-  const base = m.nombre_modelo
-  const gb = m.capacidad_gb ? `${m.capacidad_gb} GB` : null
-  return [base, gb].filter(Boolean).join(' ')
+type ReparacionModelo = {
+  id: number
+  nombre_modelo: string
+}
+
+function buildModeloLabel(m: ReparacionModelo): string {
+  return m.nombre_modelo
 }
 
 export default function ReparacionesPage() {
   const topRef = useRef<HTMLDivElement | null>(null)
 
   const [tipos, setTipos] = useState<TipoReparacion[]>([])
-  const [modelos, setModelos] = useState<ModeloEquipo[]>([])
+  const [modelos, setModelos] = useState<ReparacionModelo[]>([])
+  const [listaPrecios, setListaPrecios] = useState<ListaPrecioReparacion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [addedFeedback, setAddedFeedback] = useState<string | null>(null)
 
   const [modeloOpen, setModeloOpen] = useState(false)
   const [modeloQuery, setModeloQuery] = useState('')
   const [modeloSelectedId, setModeloSelectedId] = useState<number | null>(null)
 
   const [problemaOpen, setProblemaOpen] = useState(false)
-  const [problemaSelectedId, setProblemaSelectedId] = useState<string | null>(PROBLEMAS[4]?.id ?? null)
+  const [problemaSelectedId, setProblemaSelectedId] = useState<string | null>(PROBLEMAS[2]?.id ?? null)
+  const [problemaDetalle, setProblemaDetalle] = useState('')
 
   const modeloSelected = useMemo(
-    () => modelos.find((m) => m.id_modelo === modeloSelectedId) ?? null,
+    () => modelos.find((m) => m.id === modeloSelectedId) ?? null,
     [modelos, modeloSelectedId],
   )
 
@@ -92,13 +92,32 @@ export default function ReparacionesPage() {
       setLoading(true)
       setError(null)
       try {
-        const [tiposData, modelosData] = await Promise.all([
+        const [tiposData, listaData] = await Promise.all([
           reparacionesApi.tipos.list(0, 100),
-          inventarioApi.modelos.list(0, 100),
+          reparacionesApi.listaPrecios.list(),
         ])
         if (!alive) return
         setTipos(tiposData)
-        setModelos(modelosData.filter((m) => m.activo))
+        // Siempre tomamos modelos "precargados" desde la lista de precios,
+        // para que la cotización coincida con los precios definidos.
+        const seen = new Set<string>()
+        const derived: ReparacionModelo[] = listaData
+          .slice()
+          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+          .map((x) => (x.modelo ?? '').trim())
+          .filter((x) => {
+            const key = x.toUpperCase()
+            if (!key) return false
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          .map((nombre_modelo, idx) => ({
+            id: idx + 1,
+            nombre_modelo,
+          }))
+        setModelos(derived)
+        setListaPrecios(listaData)
       } catch (e) {
         if (!alive) return
         setError(e instanceof Error ? e.message : 'No se pudo cargar')
@@ -113,19 +132,84 @@ export default function ReparacionesPage() {
     }
   }, [])
 
+  const categoriaPrecio: CategoriaListaSlug | null = useMemo(() => {
+    switch (problemaSelectedId) {
+      case 'bateria':
+        return 'bateria'
+      case 'pin-carga':
+        return 'flex_carga'
+      case 'camara-parlante-mic':
+        return 'camara_principal'
+      case 'vidrio-trasero':
+        return 'tapas_traseras'
+      default:
+        return null
+    }
+  }, [problemaSelectedId])
+
+  const canWhatsApp = Boolean(WHATSAPP_PHONE) && problemaSelectedId === 'no-encontre'
+
+  function normalizeModelForPriceLookup(input: string): string {
+    return (input || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  const precioSelected = useMemo(() => {
+    if (!categoriaPrecio || !modeloSelected) return null
+    const wanted = normalizeModelForPriceLookup(modeloSelected.nombre_modelo)
+    const rows = listaPrecios.filter((r) => r.categoria === categoriaPrecio)
+    // match directo por contención (por diferencias como "12/12 PRO", "XR/SE 2nd GEN", etc.)
+    return (
+      rows.find((r) => normalizeModelForPriceLookup(r.modelo) === wanted) ??
+      rows.find((r) => normalizeModelForPriceLookup(r.modelo).includes(wanted)) ??
+      rows.find((r) => wanted.includes(normalizeModelForPriceLookup(r.modelo))) ??
+      null
+    )
+  }, [categoriaPrecio, listaPrecios, modeloSelected])
+
+  const precioArs = precioSelected?.precio_ars_original ? Number(precioSelected.precio_ars_original) : null
+  const precioUsd = precioSelected?.precio_usd_original ? Number(precioSelected.precio_usd_original) : null
+
+  async function handleAddRepairToCart() {
+    if (!categoriaPrecio || !precioSelected || !modeloSelected) return
+    setAdding(true)
+    setAddedFeedback(null)
+    try {
+      const producto = await reparacionesApi.carritoProducto.create({
+        categoria: categoriaPrecio,
+        modelo: precioSelected.modelo,
+      })
+      await carritoApi.ensure(false)
+      await carritoApi.addItem(producto.id_producto, 1, false)
+      setAddedFeedback('Agregado al carrito.')
+    } catch (e) {
+      setAddedFeedback(e instanceof Error ? e.message : 'No se pudo agregar al carrito.')
+    } finally {
+      setAdding(false)
+    }
+  }
+
   const whatsAppHref = useMemo(() => {
+    if (!canWhatsApp) return null
     const modelo = modeloSelected ? buildModeloLabel(modeloSelected) : null
     const problema = problemaSelected?.label ?? null
     const tipo = tipoSelected?.nombre ?? null
     const extra = tipo && problema && tipo.toLowerCase() !== problema.toLowerCase() ? ` (ref: ${tipo})` : ''
+    const detalle = problemaDetalle.trim()
     const textLines = [
       'Hola Fix It 👋',
       'Quiero cotizar una reparación.',
       modelo ? `Modelo: ${modelo}` : 'Modelo: (sin seleccionar)',
       problema ? `Problema: ${problema}${extra}` : 'Problema: (sin seleccionar)',
+      detalle ? `Detalle: ${detalle}` : null,
     ]
+      .filter(Boolean) as string[]
     return buildWhatsAppUrl(WHATSAPP_PHONE, textLines.join('\n'))
-  }, [modeloSelected, problemaSelected, tipoSelected])
+  }, [canWhatsApp, modeloSelected, problemaSelected, tipoSelected, problemaDetalle])
 
   function quickPickProblema(id: string) {
     setProblemaSelectedId(id)
@@ -189,13 +273,13 @@ export default function ReparacionesPage() {
                         <div className="px-4 py-3 text-sm text-neutral-500">Cargando…</div>
                       ) : modelosFiltered.length ? (
                         modelosFiltered.map((m) => {
-                          const active = m.id_modelo === modeloSelectedId
+                          const active = m.id === modeloSelectedId
                           return (
                             <button
-                              key={m.id_modelo}
+                              key={m.id}
                               type="button"
                               onClick={() => {
-                                setModeloSelectedId(m.id_modelo)
+                                setModeloSelectedId(m.id ?? null)
                                 setModeloOpen(false)
                                 setModeloQuery('')
                               }}
@@ -241,38 +325,135 @@ export default function ReparacionesPage() {
                 {problemaOpen ? (
                   <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
                     <div className="max-h-72 overflow-auto py-1">
-                      {PROBLEMAS.map((p) => {
+                      {PROBLEMAS.map((p, idx) => {
                         const active = p.id === problemaSelectedId
+                        const isFallback = p.id === 'no-encontre'
                         return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => {
-                              setProblemaSelectedId(p.id)
-                              setProblemaOpen(false)
-                            }}
-                            className={[
-                              'flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition',
-                              active ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-neutral-50 text-neutral-800',
-                            ].join(' ')}
-                          >
-                            <span className="flex h-5 w-5 items-center justify-center">
-                              {active ? (
-                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
-                                </svg>
-                              ) : (
-                                <span className="h-2.5 w-2.5 rounded-full border border-neutral-300" aria-hidden />
-                              )}
-                            </span>
-                            <span>{p.label}</span>
-                          </button>
+                          <div key={p.id}>
+                            {idx === 1 ? <div className="my-1 border-t border-neutral-100" /> : null}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProblemaSelectedId(p.id)
+                                if (p.id !== 'no-encontre') {
+                                  setProblemaDetalle('')
+                                }
+                                setProblemaOpen(false)
+                              }}
+                              className={[
+                                'flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition',
+                                active ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-neutral-50 text-neutral-800',
+                                isFallback && !active ? 'bg-neutral-50/60 font-semibold text-neutral-900' : '',
+                              ].join(' ')}
+                            >
+                              <span className="flex h-5 w-5 items-center justify-center">
+                                {active ? (
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-5 w-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
+                                  </svg>
+                                ) : (
+                                  <span
+                                    className={[
+                                      'h-2.5 w-2.5 rounded-full border',
+                                      isFallback ? 'border-neutral-400' : 'border-neutral-300',
+                                    ].join(' ')}
+                                    aria-hidden
+                                  />
+                                )}
+                              </span>
+                              <span className="flex items-center gap-2">
+                                <span>{p.label}</span>
+                                {isFallback ? (
+                                  <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[11px] font-semibold text-neutral-700">
+                                    WhatsApp
+                                  </span>
+                                ) : null}
+                              </span>
+                            </button>
+                          </div>
                         )
                       })}
                     </div>
                   </div>
                 ) : null}
               </div>
+            </div>
+
+            {problemaSelectedId === 'no-encontre' ? (
+              <div>
+                <p className="mb-2 text-sm font-medium text-neutral-900">Contanos qué te pasa</p>
+                <textarea
+                  value={problemaDetalle}
+                  onChange={(e) => setProblemaDetalle(e.target.value)}
+                  placeholder="Ej: se apaga solo, no reconoce el SIM, se calentó y quedó en logo, etc."
+                  rows={4}
+                  maxLength={500}
+                  className="w-full resize-none rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm outline-none transition focus:border-neutral-400"
+                />
+                <p className="mt-1 text-xs text-neutral-400">Máx. 500 caracteres.</p>
+              </div>
+            ) : null}
+
+            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-4 py-4 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold tracking-wide text-emerald-800 uppercase">Presupuesto</p>
+                  <p className="mt-1 text-sm font-semibold text-neutral-900">
+                    {categoriaPrecio ? (
+                      <>
+                        {problemaSelected?.label ?? 'Reparación'} {modeloSelected ? `· ${buildModeloLabel(modeloSelected)}` : ''}
+                      </>
+                    ) : (
+                      'Elegí un problema compatible para ver precio'
+                    )}
+                  </p>
+                  <p className="mt-2 text-base text-neutral-900">
+                    {categoriaPrecio && modeloSelected ? (
+                      precioArs != null && precioUsd != null ? (
+                        <>
+                          <span className="text-xl font-black tracking-tight">
+                            ${precioArs.toLocaleString('es-AR')}
+                          </span>{' '}
+                          <span className="mx-1 text-neutral-400">·</span>{' '}
+                          <span className="text-sm font-semibold text-neutral-700">
+                            USD {precioUsd.toLocaleString('en-US')}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-neutral-500">Sin precio para este modelo (todavía).</span>
+                      )
+                    ) : (
+                      <span className="text-neutral-500">—</span>
+                    )}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!categoriaPrecio || !modeloSelected || precioArs == null || adding}
+                  onClick={() => {
+                    void handleAddRepairToCart()
+                  }}
+                  className={[
+                    'shrink-0 rounded-2xl px-4 py-3 text-sm font-extrabold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2',
+                    !categoriaPrecio || !modeloSelected || precioArs == null || adding
+                      ? 'bg-neutral-200 text-neutral-500'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700',
+                  ].join(' ')}
+                >
+                  {adding ? 'Agregando…' : 'Agregar al carrito'}
+                </button>
+              </div>
+
+              {addedFeedback ? (
+                <p className="mt-2 text-sm text-neutral-600">{addedFeedback}</p>
+              ) : null}
             </div>
 
             <a
@@ -299,7 +480,8 @@ export default function ReparacionesPage() {
               {!WHATSAPP_PHONE ? (
                 <>
                   {' '}
-                  · Configurar <code className="rounded bg-neutral-100 px-1 py-0.5">VITE_WHATSAPP_PHONE</code>
+                  · Configurar{' '}
+                  <code className="rounded bg-neutral-100 px-1 py-0.5">VITE_WHATSAPP_CHECKOUT_PHONE</code>
                 </>
               ) : null}
             </p>
@@ -318,34 +500,6 @@ export default function ReparacionesPage() {
         </div>
 
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-1 items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 4h10a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V6a2 2 0 0 1 2-2z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-neutral-900">Pantalla</h3>
-                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
-                  Rota, sin imagen o sin touch. Opciones según modelo y disponibilidad.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Repuestos certificados</span>
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => quickPickProblema('pantalla')}
-              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
-            >
-              Cotizar <span aria-hidden>→</span>
-            </button>
-          </div>
-
           <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <div className="flex flex-1 items-start gap-4">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
@@ -383,9 +537,9 @@ export default function ReparacionesPage() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-base font-semibold text-neutral-900">Vidrio trasero</h3>
+                <h3 className="text-base font-semibold text-neutral-900">Tapas traseras</h3>
                 <p className="mt-1 text-sm leading-relaxed text-neutral-500">
-                  Fisurado o roto. Evaluamos estado y alternativas antes de avanzar.
+                  Cambio de tapas traseras según modelo. Te pasamos precio y disponibilidad.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Presupuesto claro</span>
@@ -442,9 +596,9 @@ export default function ReparacionesPage() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-base font-semibold text-neutral-900">Cámara / parlante / micrófono</h3>
+                <h3 className="text-base font-semibold text-neutral-900">Cámara principal</h3>
                 <p className="mt-1 text-sm leading-relaxed text-neutral-500">
-                  Fallas de cámara, audio bajo o micrófono que no toma. Según componente y modelo.
+                  Cambio de cámara principal según modelo. Te pasamos precio y disponibilidad.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Diagnóstico previo</span>
@@ -460,34 +614,6 @@ export default function ReparacionesPage() {
               Cotizar <span aria-hidden>→</span>
             </button>
           </div>
-
-          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-1 items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-neutral-900">Diagnóstico</h3>
-                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
-                  Te orientamos por WhatsApp. Si hace falta, revisamos el equipo y presupuestamos.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Presupuesto claro</span>
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Sin compromiso</span>
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => quickPickProblema('diagnostico')}
-              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
-            >
-              Cotizar <span aria-hidden>→</span>
-            </button>
-          </div>
         </div>
 
         {!loading && !error && tipos.length === 0 ? (
@@ -497,30 +623,7 @@ export default function ReparacionesPage() {
           </div>
         ) : null}
 
-        <div className="mx-auto mt-14 max-w-2xl text-center">
-          <h3 className="text-xl font-semibold tracking-tight text-neutral-900">¿No encontrás tu problema?</h3>
-          <p className="mt-2 text-sm text-neutral-500">
-            Elegí tu modelo y contanos por WhatsApp. Te respondemos en minutos.
-          </p>
-          <a
-            href={whatsAppHref ?? undefined}
-            target="_blank"
-            rel="noreferrer"
-            aria-disabled={!whatsAppHref}
-            className={[
-              'mt-6 inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 text-sm font-semibold shadow-sm transition',
-              whatsAppHref ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-neutral-200 text-neutral-500',
-            ].join(' ')}
-            onClick={(e) => {
-              if (!whatsAppHref) e.preventDefault()
-            }}
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
-              <path d="M12.04 2C6.58 2 2.16 6.42 2.16 11.88c0 1.93.56 3.82 1.62 5.45L2 22l4.82-1.73a9.82 9.82 0 0 0 5.22 1.48h.01c5.46 0 9.88-4.42 9.88-9.88C21.93 6.42 17.5 2 12.04 2zm5.75 14.28c-.24.68-1.4 1.3-1.93 1.38-.5.08-1.13.11-1.82-.11-.42-.13-.97-.32-1.67-.62-2.94-1.27-4.86-4.22-5-4.42-.14-.2-1.2-1.6-1.2-3.05 0-1.45.76-2.17 1.03-2.47.27-.3.6-.38.8-.38h.58c.19 0 .45-.07.7.53.25.6.85 2.08.92 2.23.07.15.12.33.03.53-.09.2-.14.33-.28.51-.14.18-.3.4-.43.54-.14.14-.28.3-.12.58.16.28.72 1.19 1.55 1.93 1.06.95 1.95 1.25 2.23 1.39.28.14.44.12.6-.07.16-.19.69-.8.87-1.07.18-.27.37-.22.62-.13.25.09 1.6.76 1.87.9.27.14.45.2.52.31.07.11.07.66-.17 1.34z" />
-            </svg>
-            Consultar por WhatsApp
-          </a>
-        </div>
+        {/* WhatsApp solo se habilita desde el selector "No encontré mi problema" */}
       </section>
     </div>
   )

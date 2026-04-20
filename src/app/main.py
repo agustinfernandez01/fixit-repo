@@ -20,7 +20,7 @@ app = FastAPI(
 
 @app.on_event("startup")
 def crear_tablas_si_hay_db():
-    """Crea las tablas solo si la conexión a MySQL funciona (ej. DB_PASSWORD en .env)."""
+    """Crea las tablas si la conexión a la DB funciona (DATABASE_URL / PG_* o MySQL en .env)."""
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     try:
         Base.metadata.create_all(bind=engine)
@@ -33,8 +33,21 @@ def crear_tablas_si_hay_db():
                     conn.execute(text("ALTER TABLE equipos ADD COLUMN foto_url VARCHAR(255) NULL"))
                 logger.info("Migración aplicada: equipos.foto_url")
 
-            # Canje: catálogo propio de modelos + FK lógica de cotizaciones.
+            if "color" not in cols:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE equipos ADD COLUMN color VARCHAR(50) NULL"))
+                logger.info("Migración aplicada: equipos.color")
+
+            # Catálogo: precio USD opcional (para UI admin / referencia).
             tablas = set(insp.get_table_names())
+            if "productos" in tablas:
+                cols_productos = {c.get("name") for c in insp.get_columns("productos")}
+                if "precio_usd" not in cols_productos:
+                    with engine.begin() as conn:
+                        conn.execute(text("ALTER TABLE productos ADD COLUMN precio_usd NUMERIC(12,2) NULL"))
+                    logger.info("Migración aplicada: productos.precio_usd")
+
+            # Canje: catálogo propio de modelos + FK lógica de cotizaciones.
             if "modelos_canje" in tablas:
                 cols_modelos_canje = {
                     c.get("name") for c in insp.get_columns("modelos_canje")
@@ -80,8 +93,8 @@ def crear_tablas_si_hay_db():
                 "`python -m pip install cryptography` (o `pip install -r app/requirements.txt` desde la carpeta `src`)."
             )
         logger.warning(
-            "No se pudo conectar a la base de datos. Revisa .env (DB_PASSWORD, DB_NAME). "
-            "La API arranca igual; los endpoints que usen DB fallarán hasta que configures MySQL. Error: %s%s",
+            "No se pudo conectar a la base de datos. Revisa .env (DATABASE_URL o PG_* para Postgres; DB_* para MySQL). "
+            "La API arranca igual; los endpoints que usen DB fallarán hasta que configures la DB. Error: %s%s",
             e,
             hint,
         )

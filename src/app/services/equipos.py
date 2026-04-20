@@ -97,7 +97,7 @@ def get_equipos_filtered(
     imei: Optional[str] = None, 
     tipo_equipo: Optional[str] = None, 
     estado_comercial: Optional[str] = None, 
-    fecha_ingreso: Optional[datetime.datetime] = None, 
+    fecha_ingreso: Optional[datetime] = None, 
     activo: Optional[bool] = None):
     
     query = db.query(Equipos)

@@ -43,6 +43,18 @@ class ListaPrecioReparacionResponse(BaseModel):
         from_attributes = True
 
 
+class ReparacionCarritoProductoRequest(BaseModel):
+    categoria: str
+    modelo: str
+
+
+class ReparacionCarritoProductoResponse(BaseModel):
+    id_producto: int
+    nombre: str
+    precio_ars: Decimal
+    precio_usd: Optional[Decimal] = None
+
+
 class ReparacionBase(BaseModel):
     modelo: Optional[str] = None
     capacidad_gb: Optional[int] = None

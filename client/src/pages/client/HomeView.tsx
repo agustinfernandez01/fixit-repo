@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import fixitHero from '../../assets/fixit-hero.png'
 import fixitHeroVideo from '../../assets/fixit-hero.mp4'
 import familyIphone17Pro from '../../assets/family-iphone-17-pro.png'
 import familyIphone17 from '../../assets/family-iphone-17.png'
@@ -230,7 +229,6 @@ export default function Home() {
             loop
             playsInline
             preload="auto"
-            poster={fixitHero}
             aria-label="Fix It"
           >
             <source src={fixitHeroVideo} type="video/mp4" />

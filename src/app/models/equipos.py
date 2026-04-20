@@ -23,6 +23,7 @@ class Equipo(Base):
     id_modelo = Column(Integer, ForeignKey("modelos_equipo.id"), nullable=False)
     id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
     imei = Column(String(20), nullable=True, unique=True)
+    color = Column(String(50), nullable=True)
     tipo_equipo = Column(String(50), nullable=True)
     estado_comercial = Column(String(50), nullable=True)
     fecha_ingreso = Column(DateTime, nullable=True)

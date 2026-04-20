@@ -13,6 +13,7 @@ export type CategoriaListaSlug =
   | 'bateria'
   | 'camara_principal'
   | 'flex_carga'
+  | 'tapas_traseras'
 
 export type ListaPrecioReparacion = {
   id_lista_precio: number
@@ -23,4 +24,18 @@ export type ListaPrecioReparacion = {
   precio_ars_original?: string | null
   precio_usd_alternativo?: string | null
   precio_ars_alternativo?: string | null
+}
+
+export type ReparacionCarritoProductoRequest = {
+  categoria: string
+  modelo: string
+}
+
+export type ReparacionCarritoProductoResponse = {
+  id_producto: number
+  nombre: string
+  /** Decimal viene como string desde FastAPI/Pydantic */
+  precio_ars: string
+  /** Decimal viene como string desde FastAPI/Pydantic */
+  precio_usd?: string | null
 }
