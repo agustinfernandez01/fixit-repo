@@ -5,7 +5,6 @@ import { inventarioApi } from '../../services/inventarioApi'
 const emptyForm = {
   nombre_modelo: '',
   capacidad_gb: '' as string | number,
-  color: '',
   descripcion: '',
   activo: true,
 }
@@ -39,7 +38,6 @@ export function ModelosPage() {
     setForm({
       nombre_modelo: m.nombre_modelo,
       capacidad_gb: m.capacidad_gb ?? '',
-      color: m.color ?? '',
       descripcion: m.descripcion ?? '',
       activo: m.activo,
     })
@@ -60,7 +58,6 @@ export function ModelosPage() {
     const body = {
       nombre_modelo: form.nombre_modelo.trim(),
       capacidad_gb: capacidad,
-      color: form.color.trim() || null,
       descripcion: form.descripcion.trim() || null,
       activo: form.activo,
     }
@@ -131,15 +128,6 @@ export function ModelosPage() {
                 }
               />
             </label>
-            <label>
-              Color
-              <input
-                value={form.color}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, color: e.target.value }))
-                }
-              />
-            </label>
             <label style={{ gridColumn: '1 / -1' }}>
               Descripción
               <textarea
@@ -192,7 +180,6 @@ export function ModelosPage() {
                   <th>ID</th>
                   <th>Nombre</th>
                   <th>GB</th>
-                  <th>Color</th>
                   <th>Activo</th>
                   <th />
                 </tr>
@@ -203,7 +190,6 @@ export function ModelosPage() {
                     <td>{m.id}</td>
                     <td>{m.nombre_modelo}</td>
                     <td>{m.capacidad_gb ?? '—'}</td>
-                    <td>{m.color ?? '—'}</td>
                     <td>
                       <span
                         className={`badge ${m.activo ? 'badge-on' : 'badge-off'}`}

@@ -3,6 +3,18 @@ import type { EquipoConModelo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
 import { mediaUrl } from '../../services/api'
 
+const TIPOS_EQUIPO = [
+  { value: 'iphone', label: 'iPhone' },
+  { value: 'ipad', label: 'iPad' },
+  { value: 'macbook', label: 'MacBook' },
+  { value: 'airpods', label: 'AirPods' },
+]
+
+const ESTADOS_COMERCIALES = [
+  { value: 'nuevo', label: 'Nuevo' },
+  { value: 'usado', label: 'Usado' },
+]
+
 type ModeloApi = Partial<ModeloEquipo> & {
   id?: number
   id_modelo?: number
@@ -24,6 +36,19 @@ function fmtDate(iso: string | null | undefined) {
   }
 }
 
+function parseNumberEsAr(input: string | number): number {
+  if (typeof input === 'number') return input
+  const raw = String(input).trim()
+  if (!raw) return Number.NaN
+
+  // Permitir:
+  // - "700000"
+  // - "700.000" (miles con punto)
+  // - "700.000,50" (miles con punto + decimales con coma)
+  const normalized = raw.replace(/\./g, '').replace(',', '.')
+  return Number(normalized)
+}
+
 export function EquiposPage() {
   const [rows, setRows] = useState<EquipoRow[]>([])
   const [modelos, setModelos] = useState<ModeloEquipo[]>([])
@@ -34,10 +59,12 @@ export function EquiposPage() {
   const [form, setForm] = useState({
     id_modelo: '' as string | number,
     imei: '',
+    color: '',
     tipo_equipo: '',
     estado_comercial: '',
     activo: true,
-    id_producto: '' as string | number,
+    precio_ars: '' as string | number,
+    precio_usd: '' as string | number,
   })
 
   const fotoPreview = useMemo(() => {
@@ -86,10 +113,12 @@ export function EquiposPage() {
     setForm({
       id_modelo: idModelo,
       imei: e.imei ?? '',
+      color: e.color ?? '',
       tipo_equipo: e.tipo_equipo ?? '',
       estado_comercial: e.estado_comercial ?? '',
       activo: e.activo ?? true,
-      id_producto: e.id_producto ?? '',
+      precio_ars: '',
+      precio_usd: '',
     })
   }
 
@@ -99,12 +128,34 @@ export function EquiposPage() {
     setForm({
       id_modelo: '',
       imei: '',
+      color: '',
       tipo_equipo: '',
       estado_comercial: '',
       activo: true,
-      id_producto: '',
+      precio_ars: '',
+      precio_usd: '',
     })
   }
+
+  const currentTipoEquipo = form.tipo_equipo.trim().toLowerCase()
+  const currentEstadoComercial = form.estado_comercial.trim().toLowerCase()
+  const tipoEquipoOptions = TIPOS_EQUIPO.some(
+    (option) => option.value === currentTipoEquipo,
+  )
+    ? TIPOS_EQUIPO
+    : currentTipoEquipo
+      ? [...TIPOS_EQUIPO, { value: currentTipoEquipo, label: form.tipo_equipo.trim() }]
+      : TIPOS_EQUIPO
+  const estadoComercialOptions = ESTADOS_COMERCIALES.some(
+    (option) => option.value === currentEstadoComercial,
+  )
+    ? ESTADOS_COMERCIALES
+    : currentEstadoComercial
+      ? [
+          ...ESTADOS_COMERCIALES,
+          { value: currentEstadoComercial, label: form.estado_comercial.trim() },
+        ]
+      : ESTADOS_COMERCIALES
 
   async function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
@@ -114,18 +165,20 @@ export function EquiposPage() {
       setError('Elegí un modelo válido.')
       return
     }
-    const idProd =
-      form.id_producto === '' || form.id_producto === null
-        ? null
-        : Number(form.id_producto)
+    const precioArs =
+      form.precio_ars === '' || form.precio_ars === null ? null : parseNumberEsAr(form.precio_ars)
+    const precioUsd =
+      form.precio_usd === '' || form.precio_usd === null ? null : parseNumberEsAr(form.precio_usd)
     const body: Record<string, unknown> = {
       id_modelo: idModelo,
       imei: form.imei.trim() || null,
-      tipo_equipo: form.tipo_equipo.trim() || null,
-      estado_comercial: form.estado_comercial.trim() || null,
+      color: form.color.trim() || null,
+      tipo_equipo: form.tipo_equipo.trim().toLowerCase() || null,
+      estado_comercial: form.estado_comercial.trim().toLowerCase() || null,
       activo: form.activo,
-      id_producto: idProd,
     }
+    if (precioArs !== null && Number.isFinite(precioArs)) body.precio_ars = precioArs
+    if (precioUsd !== null && Number.isFinite(precioUsd)) body.precio_usd = precioUsd
     try {
       if (editingId != null) {
         await inventarioApi.equipos.patch(editingId, body)
@@ -200,34 +253,73 @@ export function EquiposPage() {
               />
             </label>
             <label>
-              Tipo
+              Color
               <input
-                placeholder="smartphone, usado…"
+                value={form.color}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, color: e.target.value }))
+                }
+                placeholder="Ej: Negro, Blanco, Azul…"
+              />
+            </label>
+            <label>
+              Tipo
+              <select
                 value={form.tipo_equipo}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, tipo_equipo: e.target.value }))
                 }
-              />
+                required
+              >
+                <option value="">Seleccionar…</option>
+                {tipoEquipoOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Estado comercial
-              <input
-                placeholder="nuevo, usado…"
+              <select
                 value={form.estado_comercial}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, estado_comercial: e.target.value }))
                 }
+                required
+              >
+                <option value="">Seleccionar…</option>
+                {estadoComercialOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Precio (ARS)
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.precio_ars}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, precio_ars: e.target.value }))
+                }
+                placeholder="Si dejás vacío, queda en 0"
               />
             </label>
             <label>
-              ID producto (catálogo)
+              Precio (USD)
               <input
                 type="number"
-                min={1}
-                value={form.id_producto}
+                min={0}
+                step="0.01"
+                value={form.precio_usd}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, id_producto: e.target.value }))
+                  setForm((f) => ({ ...f, precio_usd: e.target.value }))
                 }
+                placeholder="Opcional"
               />
             </label>
             <label>
@@ -345,7 +437,7 @@ export function EquiposPage() {
                           ? `${r.modelo.capacidad_gb} GB`
                           : '—'}
                       </td>
-                      <td>{r.modelo?.color ?? '—'}</td>
+                      <td>{r.color ?? '—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button
                           type="button"

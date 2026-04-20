@@ -9,40 +9,63 @@ def get_productos(db: Session) -> list[dict]:
     productos = db.query(Productos).all()
 
     equipos_rows = (
-        db.query(Equipos.id, Equipos.id_producto)
+        db.query(Equipos.id, Equipos.id_producto, Equipos.tipo_equipo, Equipos.foto_url)
         .filter(Equipos.id_producto.is_not(None))
         .all()
     )
-    equipos_por_producto = {id_producto: id_equipo for id_equipo, id_producto in equipos_rows}
+    equipos_por_producto = {
+        id_producto: id_equipo
+        for id_equipo, id_producto, _tipo_equipo, _foto_url in equipos_rows
+        if id_producto is not None
+    }
+    tipo_equipo_por_producto = {
+        id_producto: tipo_equipo
+        for _id_equipo, id_producto, tipo_equipo, _foto_url in equipos_rows
+        if id_producto is not None
+    }
+    foto_por_producto_equipo = {
+        id_producto: foto_url
+        for _id_equipo, id_producto, _tipo_equipo, foto_url in equipos_rows
+        if id_producto is not None
+    }
 
-    accesorios_rows = db.query(Accesorios.id, Accesorios.id_producto).all()
+    accesorios_rows = db.query(Accesorios.id, Accesorios.id_producto, Accesorios.foto_url).all()
     accesorios_por_producto = {}
-    for id_accesorio, id_producto in accesorios_rows:
+    foto_por_producto_accesorio = {}
+    for id_accesorio, id_producto, foto_url in accesorios_rows:
         if id_producto not in accesorios_por_producto:
             accesorios_por_producto[id_producto] = id_accesorio
+        if id_producto not in foto_por_producto_accesorio:
+            foto_por_producto_accesorio[id_producto] = foto_url
 
     response: list[dict] = []
     for p in productos:
         tipo_producto = None
         id_origen = None
+        foto_url = None
 
         if p.id in equipos_por_producto:
             tipo_producto = "equipo"
             id_origen = equipos_por_producto[p.id]
+            foto_url = foto_por_producto_equipo.get(p.id)
         elif p.id in accesorios_por_producto:
             tipo_producto = "accesorio"
             id_origen = accesorios_por_producto[p.id]
+            foto_url = foto_por_producto_accesorio.get(p.id)
 
         response.append(
             {
                 "id": p.id,
                 "nombre": p.nombre,
                 "descripcion": p.descripcion,
+                "foto_url": foto_url,
                 "precio": p.precio,
+                "precio_usd": getattr(p, "precio_usd", None),
                 "id_categoria": p.id_categoria,
                 "activo": p.activo,
                 "tipo_producto": tipo_producto,
                 "id_origen": id_origen,
+                "tipo_equipo": tipo_equipo_por_producto.get(p.id),
             }
         )
 
@@ -59,10 +82,12 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         "nombre": producto.nombre,
         "descripcion": producto.descripcion,
         "precio": producto.precio,
+        "precio_usd": getattr(producto, "precio_usd", None),
         "id_categoria": producto.id_categoria,
         "activo": producto.activo,
         "tipo_producto": None,
         "id_origen": None,
+        "tipo_equipo": None,
         "detalle_equipo": None,
         "detalle_accesorio": None,
     }
@@ -71,12 +96,13 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
     if equipo:
         base["tipo_producto"] = "equipo"
         base["id_origen"] = equipo.id
+        base["tipo_equipo"] = equipo.tipo_equipo
         base["detalle_equipo"] = {
             "id_equipo": equipo.id,
             "id_modelo": equipo.id_modelo,
             "nombre_modelo": equipo.modelo.nombre_modelo if equipo.modelo else None,
             "capacidad_gb": equipo.modelo.capacidad_gb if equipo.modelo else None,
-            "color": equipo.modelo.color if equipo.modelo else None,
+            "color": getattr(equipo, "color", None),
             "tipo_equipo": equipo.tipo_equipo,
             "estado_comercial": equipo.estado_comercial,
             "foto_url": equipo.foto_url,

@@ -15,7 +15,7 @@ from app.models.productos import CategoriaProducto, Productos
 from app.models.accesorios import Accesorios  # noqa: F401 - debe cargarse tras Productos para resolver relationship
 from app.models.pedido import Pedido, DetallePedido, Pago
 from app.models.reparacion import TipoReparacion, ListaPrecioReparacion, Reparacion
-from app.models.canje import EquipoOfrecidoCanje, SolicitudCanje
+from app.models.canje import ModeloCanje, EquipoOfrecidoCanje, SolicitudCanje, CotizacionCanje
 from app.models.publicacion import Publicacion, RevisionPublicacion
 
 __all__ = [
@@ -38,8 +38,10 @@ __all__ = [
     "TipoReparacion",
     "ListaPrecioReparacion",
     "Reparacion",
+    "ModeloCanje",
     "EquipoOfrecidoCanje",
     "SolicitudCanje",
+    "CotizacionCanje",
     "Publicacion",
     "RevisionPublicacion",
 ]

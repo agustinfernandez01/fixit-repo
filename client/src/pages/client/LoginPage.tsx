@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { apiUrl } from '../../services/api'
 import { setAuthTokens } from '../../lib/auth'
-import { setCartToken } from '../../lib/cart'
+import { regenerateCartToken, setCartToken } from '../../lib/cart'
 import { carritoApi } from '../../services/carritoApi'
 
 export default function LoginPage() {
@@ -13,6 +13,25 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next') || '/publicar'
+
+  async function syncCartAfterLogin() {
+    try {
+      const ensured = await carritoApi.ensure(true)
+      if (ensured.token_identificador) {
+        setCartToken(ensured.token_identificador)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : ''
+      if (!msg.includes('otro usuario')) {
+        throw err
+      }
+      regenerateCartToken()
+      const recovered = await carritoApi.ensure(true)
+      if (recovered.token_identificador) {
+        setCartToken(recovered.token_identificador)
+      }
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -42,10 +61,7 @@ export default function LoginPage() {
       setAuthTokens(j.access_token, j.refresh_token)
 
       // Sincroniza el carrito con el usuario logueado y actualiza token local.
-      const ensured = await carritoApi.ensure(true)
-      if (ensured.token_identificador) {
-        setCartToken(ensured.token_identificador)
-      }
+      await syncCartAfterLogin()
 
       navigate(next, { replace: true })
     } catch (err) {

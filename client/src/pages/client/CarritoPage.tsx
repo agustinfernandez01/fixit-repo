@@ -7,7 +7,7 @@ import {
   regenerateCartToken,
   setCartToken,
 } from '../../lib/cart'
-import { apiUrl } from '../../services/api'
+import { apiUrl, mediaUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
 import type { CarritoCheckoutResponse, CarritoResumen } from '../../types/carrito'
 
@@ -252,13 +252,29 @@ export default function CarritoPage() {
             <div className="space-y-4">
               {items.map((item) => {
                 const producto = item.producto
+                const imageSrc = mediaUrl(producto?.foto_url)
                 return (
                   <article
                     key={item.id}
                     className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm"
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
+                      <div className="flex items-start gap-4">
+                        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
+                          {imageSrc ? (
+                            <img
+                              src={imageSrc}
+                              alt={producto?.nombre ?? `Producto ${item.id_producto}`}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold tracking-wide text-gray-400 uppercase">
+                              Sin foto
+                            </div>
+                          )}
+                        </div>
+                        <div>
                         <p className="text-[11px] tracking-widest text-gray-300 uppercase">
                           {producto?.nombre ?? `Producto #${item.id_producto}`}
                         </p>
@@ -271,6 +287,7 @@ export default function CarritoPage() {
                         <p className="mt-1 text-sm text-gray-400">
                           Unitario: {fmtArs(item.precio_unitario)} · Subtotal: {fmtArs(item.subtotal)}
                         </p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -401,9 +418,21 @@ function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
       refresh_token: string
     }
     setAuthTokens(j.access_token, j.refresh_token)
-    const ensured = await carritoApi.ensure(true)
-    if (ensured.token_identificador) {
-      setCartToken(ensured.token_identificador)
+    try {
+      const ensured = await carritoApi.ensure(true)
+      if (ensured.token_identificador) {
+        setCartToken(ensured.token_identificador)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : ''
+      if (!msg.includes('otro usuario')) {
+        throw err
+      }
+      regenerateCartToken()
+      const recovered = await carritoApi.ensure(true)
+      if (recovered.token_identificador) {
+        setCartToken(recovered.token_identificador)
+      }
     }
   }
 

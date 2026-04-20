@@ -12,6 +12,7 @@ class ProductoCarritoBase(BaseModel):
     activo: bool
     tipo_producto: Optional[str] = None
     id_origen: Optional[int] = None
+    foto_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

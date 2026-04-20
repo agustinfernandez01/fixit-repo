@@ -5,7 +5,6 @@ export type ModeloEquipo = {
   id_modelo?: number
   nombre_modelo: string
   capacidad_gb: number | null
-  color: string | null
   descripcion?: string | null
   activo: boolean
 }
@@ -16,6 +15,7 @@ export type Equipo = {
   id_modelo?: number | null
   id_producto: number | null
   imei: string | null
+  color: string | null
   tipo_equipo: string | null
   estado_comercial: string | null
   activo: boolean
@@ -25,7 +25,6 @@ export type Equipo = {
     id_modelo?: number
     nombre_modelo: string
     capacidad_gb: number | null
-    color: string | null
   }
   foto_url: string | null
 }

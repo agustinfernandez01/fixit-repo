@@ -1,750 +1,631 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Link, useSearchParams } from 'react-router-dom'
 import type { CategoriaListaSlug, ListaPrecioReparacion, TipoReparacion } from '../../types/reparaciones'
+import { carritoApi } from '../../services/carritoApi'
 import { reparacionesApi } from '../../services/reparacionesApi'
 
-const STORAGE_KEY = 'fixit_reparacion_tipo_id'
+const WHATSAPP_PHONE: string = import.meta.env.VITE_WHATSAPP_CHECKOUT_PHONE ?? ''
 
-const LISTA_CATEGORIAS: {
-  id: CategoriaListaSlug
+type ProblemaOption = {
+  id: string
   label: string
-  descripcion: string
-}[] = [
-  {
-    id: 'modulo_pantalla',
-    label: 'Módulo (pantalla)',
-    descripcion: 'Original y calidad alternativa',
-  },
-  { id: 'bateria', label: 'Batería', descripcion: 'Reemplazo de batería' },
-  { id: 'camara_principal', label: 'Cámara principal', descripcion: 'Cámara trasera' },
-  { id: 'flex_carga', label: 'Flex de carga', descripcion: 'Puerto de carga' },
+  /** Texto “hint” para encontrar un `TipoReparacion` por nombre. */
+  hint: string
+}
+
+const PROBLEMAS: ProblemaOption[] = [
+  { id: 'no-encontre', label: 'No encontré mi problema', hint: '' },
+  { id: 'bateria', label: 'Batería / Carga lenta', hint: 'bater' },
+  { id: 'vidrio-trasero', label: 'Cambio de tapas traseras', hint: 'tapa' },
+  { id: 'pin-carga', label: 'Pin de carga / No carga', hint: 'carga' },
+  { id: 'camara-parlante-mic', label: 'Cambio de cámara principal', hint: 'cam' },
 ]
 
-const CATEGORIA_SLUGS = new Set<string>(LISTA_CATEGORIAS.map((c) => c.id))
-
-function parseServicioParam(raw: string | null): CategoriaListaSlug | null {
-  if (!raw) return null
-  const t = raw.trim().toLowerCase()
-  return CATEGORIA_SLUGS.has(t) ? (t as CategoriaListaSlug) : null
+function normalizePhoneForWaMe(phone: string): string {
+  return (phone || '').replace(/[^\d]/g, '')
 }
 
-function parseMonedaParam(raw: string | null): 'usd' | 'ars' | null {
-  if (raw === 'usd' || raw === 'ars') return raw
-  return null
+function buildWhatsAppUrl(phoneRaw: string, text: string): string | null {
+  const phone = normalizePhoneForWaMe(phoneRaw)
+  if (!phone) return null
+  const msg = encodeURIComponent(text)
+  return `https://wa.me/${phone}?text=${msg}`
 }
 
-function formatArs(value: string | null | undefined): string {
-  if (!value) return ''
-  const n = Number.parseFloat(value)
-  if (!Number.isFinite(n)) return value
-  return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })
+function findTipoByHint(items: TipoReparacion[], hint: string): TipoReparacion | null {
+  const h = hint.trim().toLowerCase()
+  if (!h) return null
+  return items.find((x) => (x.nombre ?? '').toLowerCase().includes(h)) ?? null
 }
 
-function formatUsd(value: string | null | undefined): string {
-  if (!value) return ''
-  const n = Number.parseFloat(value)
-  if (!Number.isFinite(n)) return ''
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n)
+type ReparacionModelo = {
+  id: number
+  nombre_modelo: string
 }
 
-function formatTiempo(minutos: number | null | undefined): string {
-  if (!minutos) return ''
-  if (minutos < 60) return `${minutos} min`
-  const h = Math.round((minutos / 60) * 10) / 10
-  return `${h} h`
-}
-
-function cellPrice(
-  usd: string | null | undefined,
-  ars: string | null | undefined,
-  mode: 'usd' | 'ars',
-): string {
-  if (mode === 'usd') {
-    if (usd != null && usd !== '') return formatUsd(usd)
-    return ''
-  }
-  if (ars != null && ars !== '') return formatArs(ars)
-  return ''
-}
-
-function isEmpty(
-  usd: string | null | undefined,
-  ars: string | null | undefined,
-  mode: 'usd' | 'ars',
-): boolean {
-  return !cellPrice(usd, ars, mode)
-}
-
-const easeOut = [0.22, 1, 0.36, 1] as const
-
-const heroContainer = {
-  hidden: {},
-  visible: {
-    transition: { staggerChildren: 0.09, delayChildren: 0.04 },
-  },
-}
-
-const heroItem = {
-  hidden: { opacity: 0, y: 18 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.45, ease: easeOut },
-  },
+function buildModeloLabel(m: ReparacionModelo): string {
+  return m.nombre_modelo
 }
 
 export default function ReparacionesPage() {
-  const reduceMotion = useReducedMotion()
-  const preciosRef = useRef<HTMLDivElement>(null)
-  const tiposRef = useRef<HTMLDivElement>(null)
-  const [searchParams, setSearchParams] = useSearchParams()
+  const topRef = useRef<HTMLDivElement | null>(null)
 
-  const [items, setItems] = useState<TipoReparacion[] | null>(null)
-  const [listaPrecios, setListaPrecios] = useState<ListaPrecioReparacion[] | null>(null)
+  const [tipos, setTipos] = useState<TipoReparacion[]>([])
+  const [modelos, setModelos] = useState<ReparacionModelo[]>([])
+  const [listaPrecios, setListaPrecios] = useState<ListaPrecioReparacion[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorTipos, setErrorTipos] = useState<string | null>(null)
-  const [errorLista, setErrorLista] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [addedFeedback, setAddedFeedback] = useState<string | null>(null)
 
-  const [query, setQuery] = useState('')
-  const [listaQuery, setListaQuery] = useState('')
-  const [listaCategoria, setListaCategoria] = useState<CategoriaListaSlug>('modulo_pantalla')
-  const [currency, setCurrency] = useState<'usd' | 'ars'>('ars')
-  /** Acordeón abierto (null = todos cerrados) */
-  const [openAccordion, setOpenAccordion] = useState<CategoriaListaSlug | null>('modulo_pantalla')
-  const [masTemasOpen, setMasTemasOpen] = useState(false)
+  const [modeloOpen, setModeloOpen] = useState(false)
+  const [modeloQuery, setModeloQuery] = useState('')
+  const [modeloSelectedId, setModeloSelectedId] = useState<number | null>(null)
 
-  const [selectedId, setSelectedId] = useState<number | null>(() => {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    const n = raw ? Number(raw) : NaN
-    return Number.isFinite(n) ? n : null
-  })
+  const [problemaOpen, setProblemaOpen] = useState(false)
+  const [problemaSelectedId, setProblemaSelectedId] = useState<string | null>(PROBLEMAS[2]?.id ?? null)
+  const [problemaDetalle, setProblemaDetalle] = useState('')
 
-  const filtered = useMemo(() => {
-    const list = items ?? []
-    const q = query.trim().toLowerCase()
-    if (!q) return list
-    return list.filter((x) => {
-      const text = `${x.nombre ?? ''} ${x.descripcion ?? ''}`.toLowerCase()
-      return text.includes(q)
-    })
-  }, [items, query])
-
-  const selected = useMemo(
-    () => items?.find((x) => x.id_tipo_reparacion === selectedId) ?? null,
-    [items, selectedId],
+  const modeloSelected = useMemo(
+    () => modelos.find((m) => m.id === modeloSelectedId) ?? null,
+    [modelos, modeloSelectedId],
   )
 
-  /** Filas por categoría (acordeón) */
-  const rowsPorCategoria = useMemo(() => {
-    const list = listaPrecios ?? []
-    const q = listaQuery.trim().toLowerCase()
-    const filt = (cat: CategoriaListaSlug) =>
-      list
-        .filter((x) => x.categoria === cat)
-        .filter((x) => (q ? x.modelo.toLowerCase().includes(q) : true))
-        .sort((a, b) => a.orden - b.orden || a.modelo.localeCompare(b.modelo))
-    return {
-      modulo_pantalla: filt('modulo_pantalla'),
-      bateria: filt('bateria'),
-      camara_principal: filt('camara_principal'),
-      flex_carga: filt('flex_carga'),
-    }
-  }, [listaPrecios, listaQuery])
+  const modelosFiltered = useMemo(() => {
+    const q = modeloQuery.trim().toLowerCase()
+    if (!q) return modelos
+    return modelos.filter((m) => buildModeloLabel(m).toLowerCase().includes(q))
+  }, [modelos, modeloQuery])
 
-  /** Lee ?servicio= y ?moneda= para enlaces compartibles (ej. /reparaciones?servicio=bateria&moneda=usd) */
-  useEffect(() => {
-    const cat = parseServicioParam(searchParams.get('servicio'))
-    if (cat) {
-      setListaCategoria(cat)
-      setOpenAccordion(cat)
-    }
-    const m = parseMonedaParam(searchParams.get('moneda'))
-    if (m) setCurrency(m)
-  }, [searchParams])
+  const problemaSelected = useMemo(
+    () => PROBLEMAS.find((p) => p.id === problemaSelectedId) ?? null,
+    [problemaSelectedId],
+  )
 
-  function applyPreciosParams(patch: { servicio?: CategoriaListaSlug; moneda?: 'usd' | 'ars' }) {
-    setSearchParams(
-      (prev) => {
-        const n = new URLSearchParams(prev)
-        if (patch.servicio !== undefined) n.set('servicio', patch.servicio)
-        if (patch.moneda !== undefined) n.set('moneda', patch.moneda)
-        return n
-      },
-      { replace: true },
-    )
-  }
+  const tipoSelected = useMemo(() => {
+    if (!problemaSelected) return null
+    return findTipoByHint(tipos, problemaSelected.hint)
+  }, [tipos, problemaSelected])
 
   useEffect(() => {
     let alive = true
-    ;(async () => {
+    async function load() {
       setLoading(true)
-      setErrorTipos(null)
-      setErrorLista(null)
-      const [rTipos, rLista] = await Promise.allSettled([
-        reparacionesApi.tipos.list(0, 100),
-        reparacionesApi.listaPrecios.list(),
-      ])
-      if (!alive) return
-      if (rTipos.status === 'fulfilled') setItems(rTipos.value)
-      else
-        setErrorTipos(
-          rTipos.reason instanceof Error ? rTipos.reason.message : 'No se pudieron cargar los tipos',
-        )
-      if (rLista.status === 'fulfilled') setListaPrecios(rLista.value)
-      else
-        setErrorLista(
-          rLista.reason instanceof Error ? rLista.reason.message : 'No se pudo cargar la lista de precios',
-        )
-      setLoading(false)
-    })()
+      setError(null)
+      try {
+        const [tiposData, listaData] = await Promise.all([
+          reparacionesApi.tipos.list(0, 100),
+          reparacionesApi.listaPrecios.list(),
+        ])
+        if (!alive) return
+        setTipos(tiposData)
+        // Siempre tomamos modelos "precargados" desde la lista de precios,
+        // para que la cotización coincida con los precios definidos.
+        const seen = new Set<string>()
+        const derived: ReparacionModelo[] = listaData
+          .slice()
+          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+          .map((x) => (x.modelo ?? '').trim())
+          .filter((x) => {
+            const key = x.toUpperCase()
+            if (!key) return false
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          .map((nombre_modelo, idx) => ({
+            id: idx + 1,
+            nombre_modelo,
+          }))
+        setModelos(derived)
+        setListaPrecios(listaData)
+      } catch (e) {
+        if (!alive) return
+        setError(e instanceof Error ? e.message : 'No se pudo cargar')
+      } finally {
+        if (!alive) return
+        setLoading(false)
+      }
+    }
+    void load()
     return () => {
       alive = false
     }
   }, [])
 
-  function choose(id: number) {
-    if (selectedId === id) {
-      setSelectedId(null)
-      localStorage.removeItem(STORAGE_KEY)
-      return
+  const categoriaPrecio: CategoriaListaSlug | null = useMemo(() => {
+    switch (problemaSelectedId) {
+      case 'bateria':
+        return 'bateria'
+      case 'pin-carga':
+        return 'flex_carga'
+      case 'camara-parlante-mic':
+        return 'camara_principal'
+      case 'vidrio-trasero':
+        return 'tapas_traseras'
+      default:
+        return null
     }
-    setSelectedId(id)
-    localStorage.setItem(STORAGE_KEY, String(id))
+  }, [problemaSelectedId])
+
+  const canWhatsApp = Boolean(WHATSAPP_PHONE) && problemaSelectedId === 'no-encontre'
+
+  function normalizeModelForPriceLookup(input: string): string {
+    return (input || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
-  function irAPrecios(cat: CategoriaListaSlug) {
-    setListaCategoria(cat)
-    setListaQuery('')
-    setOpenAccordion(cat)
-    applyPreciosParams({ servicio: cat })
-    preciosRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  const precioSelected = useMemo(() => {
+    if (!categoriaPrecio || !modeloSelected) return null
+    const wanted = normalizeModelForPriceLookup(modeloSelected.nombre_modelo)
+    const rows = listaPrecios.filter((r) => r.categoria === categoriaPrecio)
+    // match directo por contención (por diferencias como "12/12 PRO", "XR/SE 2nd GEN", etc.)
+    return (
+      rows.find((r) => normalizeModelForPriceLookup(r.modelo) === wanted) ??
+      rows.find((r) => normalizeModelForPriceLookup(r.modelo).includes(wanted)) ??
+      rows.find((r) => wanted.includes(normalizeModelForPriceLookup(r.modelo))) ??
+      null
+    )
+  }, [categoriaPrecio, listaPrecios, modeloSelected])
 
-  function abrirMasTemas(opts?: { query?: string; scroll?: boolean }) {
-    if (opts?.query !== undefined) setQuery(opts.query)
-    setMasTemasOpen(true)
-    if (opts?.scroll) {
-      window.setTimeout(() => tiposRef.current?.scrollIntoView({ behavior: 'smooth' }), 120)
+  const precioArs = precioSelected?.precio_ars_original ? Number(precioSelected.precio_ars_original) : null
+  const precioUsd = precioSelected?.precio_usd_original ? Number(precioSelected.precio_usd_original) : null
+
+  async function handleAddRepairToCart() {
+    if (!categoriaPrecio || !precioSelected || !modeloSelected) return
+    setAdding(true)
+    setAddedFeedback(null)
+    try {
+      const producto = await reparacionesApi.carritoProducto.create({
+        categoria: categoriaPrecio,
+        modelo: precioSelected.modelo,
+      })
+      await carritoApi.ensure(false)
+      await carritoApi.addItem(producto.id_producto, 1, false)
+      setAddedFeedback('Agregado al carrito.')
+    } catch (e) {
+      setAddedFeedback(e instanceof Error ? e.message : 'No se pudo agregar al carrito.')
+    } finally {
+      setAdding(false)
     }
   }
 
-  const tap = reduceMotion ? {} : { whileTap: { scale: 0.98 } }
-  const hoverCard = reduceMotion ? {} : { whileHover: { y: -3, transition: { duration: 0.2 } } }
+  const whatsAppHref = useMemo(() => {
+    if (!canWhatsApp) return null
+    const modelo = modeloSelected ? buildModeloLabel(modeloSelected) : null
+    const problema = problemaSelected?.label ?? null
+    const tipo = tipoSelected?.nombre ?? null
+    const extra = tipo && problema && tipo.toLowerCase() !== problema.toLowerCase() ? ` (ref: ${tipo})` : ''
+    const detalle = problemaDetalle.trim()
+    const textLines = [
+      'Hola Fix It 👋',
+      'Quiero cotizar una reparación.',
+      modelo ? `Modelo: ${modelo}` : 'Modelo: (sin seleccionar)',
+      problema ? `Problema: ${problema}${extra}` : 'Problema: (sin seleccionar)',
+      detalle ? `Detalle: ${detalle}` : null,
+    ]
+      .filter(Boolean) as string[]
+    return buildWhatsAppUrl(WHATSAPP_PHONE, textLines.join('\n'))
+  }, [canWhatsApp, modeloSelected, problemaSelected, tipoSelected, problemaDetalle])
+
+  function quickPickProblema(id: string) {
+    setProblemaSelectedId(id)
+    setProblemaOpen(false)
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
-    <div className="bg-white">
-      <section className="mx-auto max-w-5xl px-6 py-8">
-        <motion.div
-          className="mx-auto max-w-3xl text-center"
-          variants={reduceMotion ? undefined : heroContainer}
-          initial={reduceMotion ? false : 'hidden'}
-          animate={reduceMotion ? undefined : 'visible'}
-        >
-          <motion.div
-            variants={reduceMotion ? undefined : heroItem}
-            className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-500 shadow-lg shadow-blue-500/25"
-          >
-            <svg viewBox="0 0 24 24" className="h-8 w-8 text-white" fill="currentColor">
-              <path d="M12 2a7 7 0 0 0-4 12.74V17a2 2 0 0 0 2 2h1v-2h-1v-2.6a1 1 0 0 0-.5-.86A5 5 0 1 1 17.5 13.54a1 1 0 0 0-.5.86V17h-1v2h1a2 2 0 0 0 2-2v-2.26A7 7 0 0 0 12 2zm-1 19h2v1a1 1 0 0 1-2 0v-1z" />
-            </svg>
-          </motion.div>
-          <motion.h1
-            variants={reduceMotion ? undefined : heroItem}
-            className="mt-6 text-4xl font-black tracking-tight text-gray-900 sm:text-5xl"
-          >
-            Soporte técnico de Fix It
-          </motion.h1>
-          <motion.p
-            variants={reduceMotion ? undefined : heroItem}
-            className="mt-3 text-base leading-relaxed text-gray-400"
-          >
-            ¿Necesitás ayuda? Comenzá aquí.
-          </motion.p>
-        </motion.div>
+    <div className="bg-[#f7f9fb]">
+      <div ref={topRef} />
 
-        <div className="mt-8">
-          <motion.h2
-            className="text-center text-2xl font-extrabold tracking-tight text-gray-900"
-            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.35, ease: easeOut }}
-          >
-            Herramientas de soporte técnico
-          </motion.h2>
-          <div className="mx-auto mt-5 flex max-w-2xl flex-col gap-4 sm:flex-row sm:justify-center sm:gap-6">
-            <motion.button
-              type="button"
-              onClick={() => irAPrecios('modulo_pantalla')}
-              className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-6 py-5 text-center shadow-sm transition hover:border-gray-200 hover:bg-white"
-              {...hoverCard}
-              {...tap}
-            >
-              <p className="text-sm font-medium text-blue-700">Cambio de pantalla</p>
-              <p className="mt-1 text-xs text-gray-400">Ver precios por modelo</p>
-            </motion.button>
-            <motion.button
-              type="button"
-              onClick={() => irAPrecios('bateria')}
-              className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-6 py-5 text-center shadow-sm transition hover:border-gray-200 hover:bg-white"
-              {...hoverCard}
-              {...tap}
-            >
-              <p className="text-sm font-medium text-blue-700">Cambio de batería</p>
-              <p className="mt-1 text-xs text-gray-400">Ver precios por modelo</p>
-            </motion.button>
-          </div>
-          <p className="mt-4 text-center">
-            <motion.button
-              type="button"
-              onClick={() => abrirMasTemas({ query: 'carcaza', scroll: true })}
-              className="text-sm font-medium text-blue-700 underline-offset-4 hover:underline"
-              {...tap}
-            >
-              Carcaza y otros servicios
-            </motion.button>
-          </p>
+      <section className="mx-auto max-w-5xl px-6 pt-10 pb-14">
+        <div className="mb-10 text-center">
+          <h1 className="text-4xl font-black tracking-tight text-neutral-900 sm:text-5xl">
+            Servicio técnico Fix It
+          </h1>
         </div>
 
-        {/* ——— Lista de precios por modelo (DB lista_precios_reparacion) ——— */}
-        <div id="precios-por-modelo" ref={preciosRef} className="mt-10 scroll-mt-20">
-          <motion.h2
-            className="text-center text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl"
-            initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: easeOut }}
-          >
-            Buscá tu iPhone
-          </motion.h2>
+        <div className="mx-auto max-w-xl rounded-3xl border border-neutral-200 bg-white px-5 py-7 shadow-sm sm:px-7">
+          <h1 className="text-center text-xl font-semibold tracking-tight text-neutral-900 sm:text-2xl">
+            Cotizá tu reparación
+          </h1>
 
-          {loading ? (
-            <p className="mt-6 text-center text-sm text-gray-500">Cargando precios…</p>
-          ) : null}
-          {errorLista ? (
-            <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              {errorLista}
-            </div>
-          ) : null}
-
-          {!loading && !errorLista && (listaPrecios?.length ?? 0) === 0 ? (
-            <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-center text-sm text-gray-600">
-              No hay precios cargados. Ejecutá el seed en el backend si aún no lo hiciste.
-            </div>
-          ) : null}
-
-          {!loading && !errorLista && (listaPrecios?.length ?? 0) > 0 ? (
-            <>
-              <motion.div
-                className="mx-auto mt-6 flex max-w-3xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
-                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, ease: easeOut }}
-              >
-                <div
-                  role="tablist"
-                  aria-label="Tipo de servicio"
-                  className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          <div className="mt-7 space-y-5">
+            <div>
+              <p className="mb-2 text-sm font-medium text-neutral-900">¿Qué modelo tenés?</p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setModeloOpen((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm outline-none transition hover:border-neutral-300"
                 >
-                  {LISTA_CATEGORIAS.map((c) => {
-                    const on = c.id === listaCategoria
-                    return (
-                      <motion.button
-                        key={c.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={on}
-                        onClick={() => {
-                          setListaCategoria(c.id)
-                          setOpenAccordion(c.id)
-                          applyPreciosParams({ servicio: c.id })
-                        }}
-                        className={[
-                          'shrink-0 rounded-full px-4 py-2 text-sm font-medium transition',
-                          on
-                            ? 'bg-blue-500 text-white shadow-sm'
-                            : 'border border-gray-200 bg-white text-gray-700 hover:border-gray-300',
-                        ].join(' ')}
-                        {...(reduceMotion ? {} : { whileTap: { scale: 0.97 }} )}
-                      >
-                        {c.label}
-                      </motion.button>
-                    )
-                  })}
-                </div>
-                <div
-                  className="flex shrink-0 rounded-2xl border border-gray-200 bg-gray-50 p-1 text-sm"
-                  role="group"
-                  aria-label="Moneda"
-                >
-                  <motion.button
-                    type="button"
-                    onClick={() => {
-                      setCurrency('ars')
-                      applyPreciosParams({ moneda: 'ars' })
-                    }}
-                    className={[
-                      'rounded-xl px-4 py-2 font-medium transition',
-                      currency === 'ars' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500',
-                    ].join(' ')}
-                    {...(reduceMotion ? {} : { whileTap: { scale: 0.97 }} )}
-                  >
-                    Pesos
-                  </motion.button>
-                  <motion.button
-                    type="button"
-                    onClick={() => {
-                      setCurrency('usd')
-                      applyPreciosParams({ moneda: 'usd' })
-                    }}
-                    className={[
-                      'rounded-xl px-4 py-2 font-medium transition',
-                      currency === 'usd' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500',
-                    ].join(' ')}
-                    {...(reduceMotion ? {} : { whileTap: { scale: 0.97 }} )}
-                  >
-                    USD
-                  </motion.button>
-                </div>
-              </motion.div>
+                  <span className={modeloSelected ? 'text-neutral-900' : 'text-neutral-400'}>
+                    {modeloSelected ? buildModeloLabel(modeloSelected) : 'Seleccioná tu modelo'}
+                  </span>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
 
-              <div className="mx-auto mt-4 max-w-3xl">
-                <div className="relative">
-                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-300">
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
-                      <path d="M10 2a8 8 0 1 1 5.293 14.01l4.348 4.349-1.414 1.414-4.349-4.348A8 8 0 0 1 10 2zm0 2a6 6 0 1 0 0 12a6 6 0 0 0 0-12z" />
-                    </svg>
-                  </div>
-                  <input
-                    value={listaQuery}
-                    onChange={(e) => setListaQuery(e.target.value)}
-                    placeholder="Buscar modelo (ej. 14 Pro, mini…)"
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-12 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                  {LISTA_CATEGORIAS.map((cat) => {
-                    const rows = rowsPorCategoria[cat.id]
-                    const open = openAccordion === cat.id
-                    return (
-                      <motion.div
-                        key={cat.id}
-                        layout
-                        className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
-                        transition={{ layout: { duration: reduceMotion ? 0 : 0.25, ease: easeOut } }}
-                      >
-                        <button
-                          type="button"
-                          aria-expanded={open}
-                          aria-label={`${cat.label}: ${rows.length} modelos`}
-                          onClick={() => {
-                            if (open) {
-                              setOpenAccordion(null)
-                            } else {
-                              setListaCategoria(cat.id)
-                              setOpenAccordion(cat.id)
-                              applyPreciosParams({ servicio: cat.id })
-                            }
-                          }}
-                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-gray-50"
-                        >
-                          <span className="font-medium text-gray-900">{rows.length} modelos</span>
-                          <motion.svg
-                            className="h-5 w-5 shrink-0 text-gray-400"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            aria-hidden
-                            animate={{ rotate: open ? 180 : 0 }}
-                            transition={{ duration: reduceMotion ? 0 : 0.22, ease: easeOut }}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </motion.svg>
-                        </button>
-                        <AnimatePresence initial={false}>
-                          {open ? (
-                            <motion.div
-                              key={`${cat.id}-panel`}
-                              initial={{ opacity: 0, y: reduceMotion ? 0 : -8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: reduceMotion ? 0 : -8 }}
-                              transition={{ duration: reduceMotion ? 0 : 0.2, ease: easeOut }}
-                              className="border-t border-gray-100"
-                            >
-                              {cat.id === 'modulo_pantalla' ? (
-                                <ListaTablaModulo rows={rows} currency={currency} />
-                              ) : (
-                                <ListaTablaSimple rows={rows} currency={currency} />
-                              )}
-                            </motion.div>
-                          ) : null}
-                        </AnimatePresence>
-                      </motion.div>
-                    )
-                  })}
-              </div>
-            </>
-          ) : null}
-        </div>
-
-        <AnimatePresence mode="wait">
-          {!masTemasOpen ? (
-            <motion.div
-              key="mas-temas-cerrado"
-              className="mt-10 text-center"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: reduceMotion ? 0 : 0.22, ease: easeOut }}
-            >
-              <motion.button
-                type="button"
-                onClick={() => abrirMasTemas()}
-                className="rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-900 transition hover:border-gray-300"
-                {...(reduceMotion ? {} : { whileHover: { scale: 1.02 }, whileTap: { scale: 0.98 } })}
-              >
-                Ver otros tipos de reparación
-              </motion.button>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="mas-temas-abierto"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              transition={{ duration: reduceMotion ? 0 : 0.3, ease: easeOut }}
-            >
-          <>
-            <div id="tipos-reparacion" ref={tiposRef} className="mt-10 scroll-mt-20">
-              <h2 className="text-center text-2xl font-semibold tracking-tight text-gray-900">
-                Otros tipos de reparación
-              </h2>
-              <div className="mx-auto mt-5 max-w-3xl">
-                <div className="relative">
-                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-300">
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                      <path d="M10 2a8 8 0 1 1 5.293 14.01l4.348 4.349-1.414 1.414-4.349-4.348A8 8 0 0 1 10 2zm0 2a6 6 0 1 0 0 12a6 6 0 0 0 0-12z" />
-                    </svg>
-                  </div>
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Buscar en esta lista"
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-12 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="mt-5 text-center text-sm text-gray-500">Cargando…</div>
-            ) : null}
-            {errorTipos ? (
-              <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
-                {errorTipos}
-              </div>
-            ) : null}
-
-            {!loading && !errorTipos && (items?.length ?? 0) === 0 ? (
-              <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                Todavía no hay tipos cargados en esta tabla. Podés usar la lista de precios de arriba o cargar tipos en
-                el backend.
-              </div>
-            ) : null}
-
-            {filtered.length ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                {filtered.map((it, idx) => {
-                  const active = it.id_tipo_reparacion === selectedId
-                  return (
-                    <motion.button
-                      key={it.id_tipo_reparacion}
-                      type="button"
-                      onClick={() => choose(it.id_tipo_reparacion)}
-                      className={[
-                        'text-left rounded-2xl border px-5 py-4 transition-colors',
-                        active
-                          ? 'border-gray-900 bg-gray-900 text-white'
-                          : 'border-gray-200 bg-white hover:border-gray-400',
-                      ].join(' ')}
-                      initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                      transition={{ delay: reduceMotion ? 0 : idx * 0.04, duration: 0.25, ease: easeOut }}
-                      {...(reduceMotion ? {} : { whileHover: { y: -2 }, whileTap: { scale: 0.99 } })}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className={active ? 'text-xs text-gray-300' : 'text-xs text-gray-400'}>
-                            Tipo de reparación
-                          </p>
-                          <p className="mt-1 text-base font-semibold">{it.nombre}</p>
-                          {it.descripcion ? (
-                            <p className={active ? 'mt-2 text-sm text-gray-200' : 'mt-2 text-sm text-gray-500'}>
-                              {it.descripcion}
-                            </p>
-                          ) : null}
+                {modeloOpen ? (
+                  <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
+                    <div className="p-3">
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-neutral-400">
+                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+                            <path d="M10 2a8 8 0 1 1 5.293 14.01l4.348 4.349-1.414 1.414-4.349-4.348A8 8 0 0 1 10 2zm0 2a6 6 0 1 0 0 12a6 6 0 0 0 0-12z" />
+                          </svg>
                         </div>
-                        <div className="shrink-0 text-right">
-                          {it.precio_base ? (
-                            <p className="text-sm font-semibold">{formatArs(it.precio_base)}</p>
-                          ) : (
-                            <p className={active ? 'text-sm text-gray-300' : 'text-sm text-gray-400'}>
-                              Consultar
-                            </p>
-                          )}
-                          {it.tiempo_estimado ? (
-                            <p className={active ? 'mt-1 text-xs text-gray-300' : 'mt-1 text-xs text-gray-400'}>
-                              {formatTiempo(it.tiempo_estimado)}
-                            </p>
-                          ) : null}
-                        </div>
+                        <input
+                          value={modeloQuery}
+                          onChange={(e) => setModeloQuery(e.target.value)}
+                          placeholder="Buscar modelo…"
+                          className="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pr-3 pl-10 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                          autoFocus
+                        />
                       </div>
-                    </motion.button>
-                  )
-                })}
+                    </div>
+                    <div className="max-h-64 overflow-auto py-1">
+                      {loading ? (
+                        <div className="px-4 py-3 text-sm text-neutral-500">Cargando…</div>
+                      ) : modelosFiltered.length ? (
+                        modelosFiltered.map((m) => {
+                          const active = m.id === modeloSelectedId
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                setModeloSelectedId(m.id ?? null)
+                                setModeloOpen(false)
+                                setModeloQuery('')
+                              }}
+                              className={[
+                                'flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition',
+                                active ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-neutral-50 text-neutral-800',
+                              ].join(' ')}
+                            >
+                              <span>{buildModeloLabel(m)}</span>
+                              {active ? (
+                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
+                                </svg>
+                              ) : null}
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-neutral-500">No hay resultados.</div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : !loading && !errorTipos && (items?.length ?? 0) > 0 && query.trim() ? (
-              <p className="mt-6 text-center text-sm text-gray-500">
-                No hay resultados para <span className="font-medium text-gray-800">{query.trim()}</span>.
-              </p>
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium text-neutral-900">¿Cuál es el problema?</p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setProblemaOpen((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm outline-none transition hover:border-neutral-300"
+                >
+                  <span className={problemaSelected ? 'text-neutral-900' : 'text-neutral-400'}>
+                    {problemaSelected ? problemaSelected.label : 'Seleccioná el problema'}
+                  </span>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+
+                {problemaOpen ? (
+                  <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
+                    <div className="max-h-72 overflow-auto py-1">
+                      {PROBLEMAS.map((p, idx) => {
+                        const active = p.id === problemaSelectedId
+                        const isFallback = p.id === 'no-encontre'
+                        return (
+                          <div key={p.id}>
+                            {idx === 1 ? <div className="my-1 border-t border-neutral-100" /> : null}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProblemaSelectedId(p.id)
+                                if (p.id !== 'no-encontre') {
+                                  setProblemaDetalle('')
+                                }
+                                setProblemaOpen(false)
+                              }}
+                              className={[
+                                'flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition',
+                                active ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-neutral-50 text-neutral-800',
+                                isFallback && !active ? 'bg-neutral-50/60 font-semibold text-neutral-900' : '',
+                              ].join(' ')}
+                            >
+                              <span className="flex h-5 w-5 items-center justify-center">
+                                {active ? (
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-5 w-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
+                                  </svg>
+                                ) : (
+                                  <span
+                                    className={[
+                                      'h-2.5 w-2.5 rounded-full border',
+                                      isFallback ? 'border-neutral-400' : 'border-neutral-300',
+                                    ].join(' ')}
+                                    aria-hidden
+                                  />
+                                )}
+                              </span>
+                              <span className="flex items-center gap-2">
+                                <span>{p.label}</span>
+                                {isFallback ? (
+                                  <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[11px] font-semibold text-neutral-700">
+                                    WhatsApp
+                                  </span>
+                                ) : null}
+                              </span>
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {problemaSelectedId === 'no-encontre' ? (
+              <div>
+                <p className="mb-2 text-sm font-medium text-neutral-900">Contanos qué te pasa</p>
+                <textarea
+                  value={problemaDetalle}
+                  onChange={(e) => setProblemaDetalle(e.target.value)}
+                  placeholder="Ej: se apaga solo, no reconoce el SIM, se calentó y quedó en logo, etc."
+                  rows={4}
+                  maxLength={500}
+                  className="w-full resize-none rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm outline-none transition focus:border-neutral-400"
+                />
+                <p className="mt-1 text-xs text-neutral-400">Máx. 500 caracteres.</p>
+              </div>
             ) : null}
 
-            <div className="mt-6 text-center">
-              <motion.button
-                type="button"
-                onClick={() => setMasTemasOpen(false)}
-                className="text-sm text-gray-500 underline-offset-4 hover:text-gray-800 hover:underline"
-                {...tap}
-              >
-                Ocultar esta sección
-              </motion.button>
-            </div>
-          </>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-4 py-4 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold tracking-wide text-emerald-800 uppercase">Presupuesto</p>
+                  <p className="mt-1 text-sm font-semibold text-neutral-900">
+                    {categoriaPrecio ? (
+                      <>
+                        {problemaSelected?.label ?? 'Reparación'} {modeloSelected ? `· ${buildModeloLabel(modeloSelected)}` : ''}
+                      </>
+                    ) : (
+                      'Elegí un problema compatible para ver precio'
+                    )}
+                  </p>
+                  <p className="mt-2 text-base text-neutral-900">
+                    {categoriaPrecio && modeloSelected ? (
+                      precioArs != null && precioUsd != null ? (
+                        <>
+                          <span className="text-xl font-black tracking-tight">
+                            ${precioArs.toLocaleString('es-AR')}
+                          </span>{' '}
+                          <span className="mx-1 text-neutral-400">·</span>{' '}
+                          <span className="text-sm font-semibold text-neutral-700">
+                            USD {precioUsd.toLocaleString('en-US')}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-neutral-500">Sin precio para este modelo (todavía).</span>
+                      )
+                    ) : (
+                      <span className="text-neutral-500">—</span>
+                    )}
+                  </p>
+                </div>
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-gray-500">
-            {selected ? (
-              <>
-                Seleccionado: <span className="font-medium text-gray-900">{selected.nombre}</span>
-              </>
-            ) : (
-              'Seleccioná un arreglo para continuar.'
-            )}
-          </div>
-          <motion.div {...(reduceMotion ? {} : { whileHover: { scale: 1.02 }, whileTap: { scale: 0.98 } })}>
-            <Link
-              to="/"
-              className="inline-flex items-center justify-center rounded-full border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-900 hover:border-gray-400"
+                <button
+                  type="button"
+                  disabled={!categoriaPrecio || !modeloSelected || precioArs == null || adding}
+                  onClick={() => {
+                    void handleAddRepairToCart()
+                  }}
+                  className={[
+                    'shrink-0 rounded-2xl px-4 py-3 text-sm font-extrabold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2',
+                    !categoriaPrecio || !modeloSelected || precioArs == null || adding
+                      ? 'bg-neutral-200 text-neutral-500'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700',
+                  ].join(' ')}
+                >
+                  {adding ? 'Agregando…' : 'Agregar al carrito'}
+                </button>
+              </div>
+
+              {addedFeedback ? (
+                <p className="mt-2 text-sm text-neutral-600">{addedFeedback}</p>
+              ) : null}
+            </div>
+
+            <a
+              href={whatsAppHref ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!whatsAppHref}
+              className={[
+                'mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold shadow-sm transition',
+                whatsAppHref ? 'bg-emerald-300 text-emerald-950 hover:bg-emerald-400' : 'bg-neutral-200 text-neutral-500',
+              ].join(' ')}
+              onClick={(e) => {
+                if (!whatsAppHref) e.preventDefault()
+              }}
             >
-              Volver
-            </Link>
-          </motion.div>
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+                <path d="M12.04 2C6.58 2 2.16 6.42 2.16 11.88c0 1.93.56 3.82 1.62 5.45L2 22l4.82-1.73a9.82 9.82 0 0 0 5.22 1.48h.01c5.46 0 9.88-4.42 9.88-9.88C21.93 6.42 17.5 2 12.04 2zm5.75 14.28c-.24.68-1.4 1.3-1.93 1.38-.5.08-1.13.11-1.82-.11-.42-.13-.97-.32-1.67-.62-2.94-1.27-4.86-4.22-5-4.42-.14-.2-1.2-1.6-1.2-3.05 0-1.45.76-2.17 1.03-2.47.27-.3.6-.38.8-.38h.58c.19 0 .45-.07.7.53.25.6.85 2.08.92 2.23.07.15.12.33.03.53-.09.2-.14.33-.28.51-.14.18-.3.4-.43.54-.14.14-.28.3-.12.58.16.28.72 1.19 1.55 1.93 1.06.95 1.95 1.25 2.23 1.39.28.14.44.12.6-.07.16-.19.69-.8.87-1.07.18-.27.37-.22.62-.13.25.09 1.6.76 1.87.9.27.14.45.2.52.31.07.11.07.66-.17 1.34z" />
+              </svg>
+              Consultar por WhatsApp
+            </a>
+
+            <p className="text-center text-xs text-neutral-400">
+              Te respondemos en minutos
+              {!WHATSAPP_PHONE ? (
+                <>
+                  {' '}
+                  · Configurar{' '}
+                  <code className="rounded bg-neutral-100 px-1 py-0.5">VITE_WHATSAPP_CHECKOUT_PHONE</code>
+                </>
+              ) : null}
+            </p>
+
+            {error ? (
+              <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {error}
+              </div>
+            ) : null}
+          </div>
         </div>
+
+        <div className="mt-14 text-center">
+          <h2 className="text-3xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl">Reparaciones más comunes</h2>
+          <p className="mt-2 text-sm text-neutral-500">Seleccioná un servicio para cotizar</p>
+        </div>
+
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 3h4v4h-4V3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h10v14H7V7z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Batería</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Dura poco, se apaga o carga raro. Diagnóstico y reemplazo según modelo.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Repuestos premium</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('bateria')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 8h8" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Tapas traseras</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Cambio de tapas traseras según modelo. Te pasamos precio y disponibilidad.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Presupuesto claro</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('vidrio-trasero')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v5m6-5v5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 8h8" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 12v6" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 12v6" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 10h10a1 1 0 0 1 1 1v2a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-2a1 1 0 0 1 1-1z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Pin de carga</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Conector flojo, no carga o no reconoce el cable. Revisamos pin, flex y más.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Presupuesto claro</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('pin-carga')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="flex h-full flex-col rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 11a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 10l2-1v6l-2-1" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Cámara principal</h3>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+                  Cambio de cámara principal según modelo. Te pasamos precio y disponibilidad.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-700">Diagnóstico previo</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">Con garantía</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickPickProblema('camara-parlante-mic')}
+              className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              Cotizar <span aria-hidden>→</span>
+            </button>
+          </div>
+        </div>
+
+        {!loading && !error && tipos.length === 0 ? (
+          <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Todavía no hay reparaciones cargadas. Cargalas en el backend con{' '}
+            <code className="rounded bg-white/60 px-1 py-0.5">POST /api/v1/reparaciones/tipos</code>.
+          </div>
+        ) : null}
+
+        {/* WhatsApp solo se habilita desde el selector "No encontré mi problema" */}
       </section>
     </div>
   )
 }
 
-function ListaTablaModulo({
-  rows,
-  currency,
-}: {
-  rows: ListaPrecioReparacion[]
-  currency: 'usd' | 'ars'
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[320px] text-left text-sm">
-        <thead>
-          <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
-            <th className="px-4 py-2 font-medium">Modelo</th>
-            <th className="px-4 py-2 font-medium text-blue-700">Original</th>
-            <th className="px-4 py-2 font-medium text-gray-600">Alternativa</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {rows.map((row) => {
-            const o = cellPrice(row.precio_usd_original, row.precio_ars_original, currency)
-            const a = cellPrice(row.precio_usd_alternativo, row.precio_ars_alternativo, currency)
-            const oe = isEmpty(row.precio_usd_original, row.precio_ars_original, currency)
-            const ae = isEmpty(row.precio_usd_alternativo, row.precio_ars_alternativo, currency)
-            const allEmpty = oe && ae
-            return (
-              <tr key={row.id_lista_precio} className="hover:bg-gray-50/80">
-                <td className="px-4 py-2 font-medium text-gray-900">{row.modelo}</td>
-                <td className="px-4 py-2 tabular-nums text-gray-800">
-                  {allEmpty ? (
-                    <span className="text-gray-400">Consultar</span>
-                  ) : oe ? (
-                    <span className="text-gray-300">—</span>
-                  ) : (
-                    o
-                  )}
-                </td>
-                <td className="px-4 py-2 tabular-nums text-gray-800">
-                  {allEmpty ? (
-                    <span className="text-gray-400">Consultar</span>
-                  ) : ae ? (
-                    <span className="text-gray-300">—</span>
-                  ) : (
-                    a
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      {rows.length === 0 ? (
-        <p className="px-4 py-5 text-center text-sm text-gray-500">Ningún modelo coincide con la búsqueda.</p>
-      ) : null}
-    </div>
-  )
-}
-
-function ListaTablaSimple({
-  rows,
-  currency,
-}: {
-  rows: ListaPrecioReparacion[]
-  currency: 'usd' | 'ars'
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[280px] text-left text-sm">
-        <thead>
-          <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
-            <th className="px-4 py-2 font-medium">Modelo</th>
-            <th className="px-4 py-2 text-right font-medium">Precio</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {rows.map((row) => {
-            const p = cellPrice(row.precio_usd_original, row.precio_ars_original, currency)
-            const empty = isEmpty(row.precio_usd_original, row.precio_ars_original, currency)
-            return (
-              <tr key={row.id_lista_precio} className="hover:bg-gray-50/80">
-                <td className="px-4 py-2 font-medium text-gray-900">{row.modelo}</td>
-                <td className="px-4 py-2 text-right tabular-nums font-medium text-gray-900">
-                  {empty ? <span className="font-normal text-gray-400">Consultar</span> : p}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      {rows.length === 0 ? (
-        <p className="px-4 py-5 text-center text-sm text-gray-500">Ningún modelo coincide con la búsqueda.</p>
-      ) : null}
-    </div>
-  )
-}

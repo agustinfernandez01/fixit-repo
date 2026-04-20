@@ -56,7 +56,10 @@ def listar_modelos(
 
 @router.post("/modelos", response_model=ModeloEquipoResponse, status_code=status.HTTP_201_CREATED)
 def crear_modelo(payload: ModeloEquipoCreate, db: Session = Depends(get_db)):
-    obj = ModeloEquipo(**payload.model_dump())
+    # `ModeloEquipoCreate` incluye `descripcion` por compatibilidad con el frontend,
+    # pero la tabla `modelos_equipo` no tiene esa columna.
+    data = payload.model_dump(exclude={"descripcion"})
+    obj = ModeloEquipo(**data)
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -77,7 +80,9 @@ def actualizar_modelo(id_modelo: int, payload: ModeloEquipoUpdate, db: Session =
     if not obj:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
 
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    patch = payload.model_dump(exclude_unset=True)
+    patch.pop("descripcion", None)
+    for k, v in patch.items():
         setattr(obj, k, v)
 
     db.commit()
@@ -121,6 +126,9 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
     if not modelo:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
 
+    precio_ars = data.pop("precio_ars", None)
+    precio_usd = data.pop("precio_usd", None)
+
     if data.get("id_producto") is not None:
         prod = db.query(Productos).filter(Productos.id == data["id_producto"]).first()
         if not prod:
@@ -128,9 +136,15 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
                 status_code=400,
                 detail="El ID producto no existe en catálogo (productos).",
             )
+        if precio_ars is not None:
+            prod.precio = Decimal(str(precio_ars))
+        if precio_usd is not None:
+            prod.precio_usd = Decimal(str(precio_usd))
+        db.flush()
     else:
         capacidad = f"{modelo.capacidad_gb}GB" if modelo.capacidad_gb is not None else "s/capacidad"
-        color = (modelo.color or "sin color").strip()
+        color_equipo = (data.get("color") or "").strip()
+        color = (color_equipo or getattr(modelo, "color", None) or "sin color").strip()
         nombre_producto = f"{modelo.nombre_modelo} - {capacidad} - {color}"
 
         categoria = (
@@ -154,7 +168,8 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
             producto = Productos(
                 nombre=nombre_producto,
                 descripcion="Producto autogenerado desde inventario",
-                precio=Decimal("0.00"),
+                precio=Decimal(str(precio_ars)) if precio_ars is not None else Decimal("0.00"),
+                precio_usd=Decimal(str(precio_usd)) if precio_usd is not None else None,
                 id_categoria=categoria.id,
                 activo=True,
             )
@@ -198,6 +213,8 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
 
     patch = payload.model_dump(exclude_unset=True)
+    precio_ars = patch.pop("precio_ars", None)
+    precio_usd = patch.pop("precio_usd", None)
     if "id_producto" in patch and patch["id_producto"] is not None:
         prod = db.query(Productos).filter(Productos.id == patch["id_producto"]).first()
         if not prod:
@@ -208,6 +225,24 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
 
     for k, v in patch.items():
         setattr(obj, k, v)
+
+    if precio_ars is not None or precio_usd is not None:
+        prod_id = patch.get("id_producto", obj.id_producto)
+        if prod_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede setear precio: el equipo no tiene id_producto asociado.",
+            )
+        prod = db.query(Productos).filter(Productos.id == prod_id).first()
+        if not prod:
+            raise HTTPException(
+                status_code=400,
+                detail="El ID producto no existe en catálogo (productos).",
+            )
+        if precio_ars is not None:
+            prod.precio = Decimal(str(precio_ars))
+        if precio_usd is not None:
+            prod.precio_usd = Decimal(str(precio_usd))
 
     try:
         db.commit()

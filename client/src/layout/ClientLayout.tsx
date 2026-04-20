@@ -6,14 +6,15 @@ import {
 	regenerateCartToken,
 	setCartToken,
 } from '../lib/cart'
+import fixitLogo from '../assets/fixit-logo.png'
 import { clearAuthTokens, getAccessToken, getCurrentUserRole } from '../lib/auth'
 import { carritoApi } from '../services/carritoApi'
-import fixitLogo from '../assets/fixit-logo.png'
 
 const NAV_LINKS = [
 	{ to: '/', label: 'Inicio' },
 	{ to: '/tienda', label: 'Tienda' },
 	{ to: '/marketplace', label: 'Usados' },
+	{ to: '/canje', label: 'Canje' },
 	{ to: '/reparaciones', label: 'Reparaciones' },
 	{ to: '/publicar', label: 'Vender' },
 ]
@@ -24,6 +25,7 @@ export default function ClientLayout() {
 	const logged = !!getAccessToken()
 	const role = (getCurrentUserRole() ?? '').toLowerCase()
 	const isAdmin = role.includes('admin')
+	const canAdminLink = import.meta.env.DEV || String(import.meta.env.VITE_ADMIN_BYPASS ?? '').toLowerCase() === 'true' || isAdmin
 	const [cartCount, setCartCount] = useState(0)
 	const [cartReady, setCartReady] = useState(false)
 
@@ -100,6 +102,16 @@ export default function ClientLayout() {
 								</Link>
 							</li>
 						))}
+						{canAdminLink ? (
+							<li>
+								<Link
+									to="/admin"
+									className="text-sm font-medium text-gray-500 transition-colors duration-150 hover:text-gray-900"
+								>
+									Administración
+								</Link>
+							</li>
+						) : null}
 					</ul>
 
 					<div className="flex items-center gap-3">
@@ -111,7 +123,7 @@ export default function ClientLayout() {
 								Perfil
 							</Link>
 						) : null}
-						{logged && isAdmin ? (
+						{canAdminLink ? (
 							<Link
 								to="/admin"
 								className="hidden text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900 sm:block"

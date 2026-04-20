@@ -5,6 +5,7 @@ export type CarritoProducto = {
   activo: boolean
   tipo_producto?: 'equipo' | 'accesorio' | null
   id_origen?: number | null
+  foto_url?: string | null
 }
 
 export type CarritoDetalle = {
@@ -53,11 +54,14 @@ export type ProductoCompra = {
   id: number
   nombre: string
   descripcion: string | null
+  foto_url?: string | null
   precio: string | number
+  precio_usd?: string | number | null
   id_categoria: number
   activo: boolean
   tipo_producto?: 'equipo' | 'accesorio' | null
   id_origen?: number | null
+  tipo_equipo?: string | null
 }
 
 export type ProductoEquipoDetalle = {

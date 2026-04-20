@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import fixitHero from '../../assets/fixit-hero.png'
 import fixitHeroVideo from '../../assets/fixit-hero.mp4'
 import familyIphone17Pro from '../../assets/family-iphone-17-pro.png'
 import familyIphone17 from '../../assets/family-iphone-17.png'
@@ -67,14 +66,11 @@ type FamilyItem = {
   id: string
   title: string
   image: string
-  /** Degradado tipo vitrina Apple detrás del producto */
   imageBackdrop: string
-  /** Puntos de color decorativos (clases Tailwind por acabado) */
   swatches: readonly string[]
   isNew?: boolean
   line1: string
   line2: string
-  /** Texto tipo “desde $…” o disponibilidad */
   price: string
 }
 
@@ -134,7 +130,6 @@ const FAMILY_LINEUP: FamilyItem[] = [
   },
 ]
 
-/** Intervalo entre slides en autoplay (ms) */
 const LINEUP_AUTOPLAY_MS = 5200
 
 export default function Home() {
@@ -149,8 +144,6 @@ export default function Home() {
     const items = Array.from(el.querySelectorAll<HTMLElement>('[data-slide="1"]'))
     const target = items[next]
     if (!target) return
-    // Solo movemos el scroll horizontal del carrusel. scrollIntoView() también
-    // desplazaba la página y “centraba” el bloque, molesto con el autoplay.
     const delta = target.getBoundingClientRect().left - el.getBoundingClientRect().left
     el.scrollTo({ left: el.scrollLeft + delta, behavior: 'smooth' })
     setSliderIndex(next)
@@ -183,7 +176,6 @@ export default function Home() {
     const items = Array.from(el.querySelectorAll<HTMLElement>('[data-slide="1"]'))
     if (items.length === 0) return
     const left = el.scrollLeft
-    // Encontramos el slide cuyo offsetLeft esté más cerca de scrollLeft.
     let bestIdx = 0
     let bestDist = Number.POSITIVE_INFINITY
     for (let i = 0; i < items.length; i++) {
@@ -237,7 +229,6 @@ export default function Home() {
             loop
             playsInline
             preload="auto"
-            poster={fixitHero}
             aria-label="Fix It"
           >
             <source src={fixitHeroVideo} type="video/mp4" />
@@ -283,7 +274,6 @@ export default function Home() {
                 lineupAutoplayPauseRef.current = false
               }}
             >
-              {/* Misma altura que el bloque de imagen del slide: el centro vertical coincide con la tarjeta, no con el texto de abajo */}
               <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-[280px] items-center justify-between sm:h-[320px] md:h-[340px]">
                 <button
                   type="button"
@@ -322,74 +312,74 @@ export default function Home() {
                 className="flex gap-6 overflow-x-auto scroll-smooth pb-8 pl-10 pr-10 [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-8 sm:pl-12 sm:pr-12 [&::-webkit-scrollbar]:hidden"
                 style={{ scrollSnapType: 'x mandatory' }}
               >
-              {FAMILY_LINEUP.map((item) => (
-                <div
-                  key={item.id}
-                  data-slide="1"
-                  className="w-[min(86vw,320px)] flex-none sm:w-[360px] md:w-[380px] lg:w-[400px]"
-                  style={{ scrollSnapAlign: 'start' }}
-                >
-                  <div className="flex flex-col items-center text-center">
-                    <div
-                      className={`relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] ${item.imageBackdrop}`}
-                    >
-                      <div className="relative flex h-[280px] w-full items-center justify-center sm:h-[320px] md:h-[340px]">
-                        <img
-                          src={item.image}
-                          alt={item.title}
-                          className="max-h-full w-auto max-w-[min(100%,280px)] object-contain object-center mix-blend-multiply sm:max-w-[300px] md:max-w-[320px]"
-                          loading="lazy"
-                          decoding="async"
-                        />
+                {FAMILY_LINEUP.map((item) => (
+                  <div
+                    key={item.id}
+                    data-slide="1"
+                    className="w-[min(86vw,320px)] flex-none sm:w-[360px] md:w-[380px] lg:w-[400px]"
+                    style={{ scrollSnapAlign: 'start' }}
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <div
+                        className={`relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] ${item.imageBackdrop}`}
+                      >
+                        <div className="relative flex h-[280px] w-full items-center justify-center sm:h-[320px] md:h-[340px]">
+                          <img
+                            src={item.image}
+                            alt={item.title}
+                            className="max-h-full w-auto max-w-[min(100%,280px)] object-contain object-center mix-blend-multiply sm:max-w-[300px] md:max-w-[320px]"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
+                        {item.swatches.map((sw, i) => (
+                          <span
+                            key={`${item.id}-sw-${i}`}
+                            className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`}
+                          />
+                        ))}
+                      </div>
+
+                      {item.isNew ? (
+                        <p className="mt-3 text-[11px] font-semibold tracking-[0.02em] text-[#f56300]">Nuevo</p>
+                      ) : null}
+
+                      <h4
+                        className={`max-w-[18rem] text-[1.375rem] font-semibold leading-tight tracking-[-0.025em] text-neutral-900 sm:text-[1.5rem] ${item.isNew ? 'mt-1.5' : 'mt-4'}`}
+                      >
+                        {item.title}
+                      </h4>
+
+                      <p className="mx-auto mt-2.5 max-w-[20rem] text-[15px] leading-snug text-neutral-600">{item.line1}</p>
+                      <p className="mx-auto mt-1 max-w-[20rem] text-[15px] leading-snug text-neutral-600">{item.line2}</p>
+
+                      <p className="mx-auto mt-3 max-w-[22rem] text-xs leading-relaxed text-neutral-700 sm:text-[13px]">
+                        {item.price}
+                      </p>
+
+                      <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
+                        <Link
+                          to="/marketplace"
+                          className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] active:bg-[#006edb]"
+                        >
+                          Conocer más
+                        </Link>
+                        <Link
+                          to="/marketplace"
+                          className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
+                        >
+                          Comprar
+                          <span aria-hidden className="text-lg leading-none">
+                            ›
+                          </span>
+                        </Link>
                       </div>
                     </div>
-
-                    <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
-                      {item.swatches.map((sw, i) => (
-                        <span
-                          key={`${item.id}-sw-${i}`}
-                          className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`}
-                        />
-                      ))}
-                    </div>
-
-                    {item.isNew ? (
-                      <p className="mt-3 text-[11px] font-semibold tracking-[0.02em] text-[#f56300]">Nuevo</p>
-                    ) : null}
-
-                    <h4
-                      className={`max-w-[18rem] text-[1.375rem] font-semibold leading-tight tracking-[-0.025em] text-neutral-900 sm:text-[1.5rem] ${item.isNew ? 'mt-1.5' : 'mt-4'}`}
-                    >
-                      {item.title}
-                    </h4>
-
-                    <p className="mx-auto mt-2.5 max-w-[20rem] text-[15px] leading-snug text-neutral-600">{item.line1}</p>
-                    <p className="mx-auto mt-1 max-w-[20rem] text-[15px] leading-snug text-neutral-600">{item.line2}</p>
-
-                    <p className="mx-auto mt-3 max-w-[22rem] text-xs leading-relaxed text-neutral-700 sm:text-[13px]">
-                      {item.price}
-                    </p>
-
-                    <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
-                      <Link
-                        to="/marketplace"
-                        className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] active:bg-[#006edb]"
-                      >
-                        Conocer más
-                      </Link>
-                      <Link
-                        to="/marketplace"
-                        className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
-                      >
-                        Comprar
-                        <span aria-hidden className="text-lg leading-none">
-                          ›
-                        </span>
-                      </Link>
-                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
               </div>
             </div>
 
