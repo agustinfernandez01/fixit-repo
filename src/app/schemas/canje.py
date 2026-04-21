@@ -82,7 +82,9 @@ class SolicitudCanjeBase(BaseModel):
     id_producto_interes: int
     valor_estimado: Optional[Decimal] = None
     diferencia_a_pagar: Optional[Decimal] = None
+    metodo_pago: Optional[str] = None
     estado: Optional[str] = None
+    fecha_respuesta: Optional[datetime] = None
 
 
 class SolicitudCanjeCreate(SolicitudCanjeBase):
@@ -103,6 +105,38 @@ class SolicitudCanjeResponse(SolicitudCanjeBase):
     id_solicitud_canje: int
     id_usuario: int
     fecha_solicitud: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SolicitudCanjeDecisionRequest(BaseModel):
+    metodo_pago: Optional[str] = None
+
+
+class SolicitudCanjeAdminResponse(BaseModel):
+    id_solicitud_canje: int
+    id_usuario: int
+    cliente_nombre: Optional[str] = None
+    cliente_email: Optional[str] = None
+    id_equipo_ofrecido: int
+    equipo_modelo: Optional[str] = None
+    equipo_capacidad_gb: Optional[int] = None
+    equipo_color: Optional[str] = None
+    equipo_bateria_porcentaje: Optional[int] = None
+    equipo_estado_estetico: Optional[str] = None
+    equipo_estado_funcional: Optional[str] = None
+    id_producto_interes: int
+    producto_interes_nombre: Optional[str] = None
+    producto_interes_precio: Optional[Decimal] = None
+    producto_interes_activo: Optional[bool] = None
+    valor_estimado: Optional[Decimal] = None
+    diferencia_a_pagar: Optional[Decimal] = None
+    metodo_pago: Optional[str] = None
+    estado: Optional[str] = None
+    fecha_solicitud: Optional[datetime] = None
+    fecha_respuesta: Optional[datetime] = None
+    observaciones: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -36,6 +36,16 @@ function IconPedidos() {
   )
 }
 
+function IconCanje() {
+  return (
+    <svg className="admin-module-icon-svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path d="M12 18h24v12H12z" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M16 24h16" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path d="M18 30l-4 4M30 30l4 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function AdminHomePage() {
   return (
     <div className="admin-dashboard">
@@ -61,6 +71,24 @@ export function AdminHomePage() {
                 <span className="admin-module-name">Pedidos</span>
                 <span className="admin-module-desc">
                   Confirma pedidos pendientes y bloquea stock.
+                </span>
+              </div>
+              <span className="admin-module-arrow" aria-hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+            </Link>
+          </li>
+          <li>
+            <Link to="/admin/solicitudes-canje" className="admin-module-card">
+              <span className="admin-module-icon-wrap">
+                <IconCanje />
+              </span>
+              <div className="admin-module-body">
+                <span className="admin-module-name">Solicitudes de canje</span>
+                <span className="admin-module-desc">
+                  Revisá canjes pendientes, aprobá o rechazá y descontá stock si se completa.
                 </span>
               </div>
               <span className="admin-module-arrow" aria-hidden>

@@ -81,6 +81,21 @@ def crear_tablas_si_hay_db():
                             text("ALTER TABLE cotizaciones_canje MODIFY id_modelo INT NULL")
                         )
                     logger.info("Migración aplicada: cotizaciones_canje.id_modelo nullable")
+
+            if "solicitudes_canje" in tablas:
+                cols_solicitudes = {c.get("name") for c in insp.get_columns("solicitudes_canje")}
+                if "metodo_pago" not in cols_solicitudes:
+                    with engine.begin() as conn:
+                        conn.execute(
+                            text("ALTER TABLE solicitudes_canje ADD COLUMN metodo_pago VARCHAR(50) NULL")
+                        )
+                    logger.info("Migración aplicada: solicitudes_canje.metodo_pago")
+                if "fecha_respuesta" not in cols_solicitudes:
+                    with engine.begin() as conn:
+                        conn.execute(
+                            text("ALTER TABLE solicitudes_canje ADD COLUMN fecha_respuesta DATETIME NULL")
+                        )
+                    logger.info("Migración aplicada: solicitudes_canje.fecha_respuesta")
         except Exception as e:
             logger.warning("No se pudo verificar/migrar columna equipos.foto_url: %s", e)
         logger.info("Tablas creadas o ya existentes en la base de datos.")

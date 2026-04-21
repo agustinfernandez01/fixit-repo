@@ -7,10 +7,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.config import UPLOAD_DIR
-from app.db import get_db
+from app.deps.auth import require_admin_user_id
+from app.db import get_db, engine
 from app.models import ModeloCanje, EquipoOfrecidoCanje, SolicitudCanje, CotizacionCanje, Productos
 from app.schemas.canje import (
     ModeloCanjeCreate,
@@ -22,6 +24,8 @@ from app.schemas.canje import (
     SolicitudCanjeCreate,
     SolicitudCanjeUpdate,
     SolicitudCanjeResponse,
+    SolicitudCanjeAdminResponse,
+    SolicitudCanjeDecisionRequest,
     CotizacionCanjeCreate,
     CotizacionCanjeUpdate,
     CotizacionCanjeResponse,
@@ -31,8 +35,34 @@ from app.schemas.canje import (
     CotizarCanjeResponse,
     ResultadoCotizacionCanje,
 )
+from app.services.canje import (
+    completar_solicitud_canje,
+    listar_solicitudes_admin,
+    rechazar_solicitud_canje,
+)
 
 router = APIRouter()
+
+
+def _ensure_solicitudes_canje_columns() -> None:
+    """Asegura columnas nuevas en entornos con esquema desfasado."""
+    insp = inspect(engine)
+    tablas = set(insp.get_table_names())
+    if "solicitudes_canje" not in tablas:
+        return
+
+    cols = {c.get("name") for c in insp.get_columns("solicitudes_canje")}
+    dialect = engine.dialect.name.lower()
+
+    with engine.begin() as conn:
+        if "metodo_pago" not in cols:
+            conn.execute(text("ALTER TABLE solicitudes_canje ADD COLUMN metodo_pago VARCHAR(50) NULL"))
+
+        if "fecha_respuesta" not in cols:
+            if dialect == "postgresql":
+                conn.execute(text("ALTER TABLE solicitudes_canje ADD COLUMN fecha_respuesta TIMESTAMP NULL"))
+            else:
+                conn.execute(text("ALTER TABLE solicitudes_canje ADD COLUMN fecha_respuesta DATETIME NULL"))
 
 
 def _resolver_modelo_equipo_ofrecido(db: Session, equipo: EquipoOfrecidoCanje) -> ModeloCanje:
@@ -608,6 +638,7 @@ def listar_solicitudes_canje(
     estado: str | None = Query(None, description="Filtrar por estado"),
     db: Session = Depends(get_db),
 ):
+    _ensure_solicitudes_canje_columns()
     q = db.query(SolicitudCanje)
     if estado:
         q = q.filter(SolicitudCanje.estado == estado)
@@ -620,11 +651,14 @@ def listar_solicitudes_canje(
     status_code=status.HTTP_201_CREATED,
 )
 def crear_solicitud_canje(payload: SolicitudCanjeCreate, db: Session = Depends(get_db)):
+    _ensure_solicitudes_canje_columns()
     data = payload.model_dump()
     if data.get("fecha_solicitud") is None:
         data["fecha_solicitud"] = datetime.now(timezone.utc)
     if data.get("estado") is None:
         data["estado"] = "pendiente"
+    if data.get("metodo_pago") is None or not str(data.get("metodo_pago")).strip():
+        data["metodo_pago"] = "a definir"
 
     presupuesto = _calcular_presupuesto(
         db,
@@ -644,8 +678,69 @@ def crear_solicitud_canje(payload: SolicitudCanjeCreate, db: Session = Depends(g
     return obj
 
 
+@router.get(
+    "/solicitudes-admin",
+    response_model=list[SolicitudCanjeAdminResponse],
+)
+def listar_solicitudes_canje_admin(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    estado: str | None = Query(None, description="Filtrar por estado"),
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_solicitudes_canje_columns()
+    solicitudes = listar_solicitudes_admin(db)
+    if estado:
+        solicitudes = [s for s in solicitudes if (s.get("estado") or "").lower() == estado.lower()]
+    return solicitudes[skip : skip + limit]
+
+
+@router.post(
+    "/solicitudes-admin/{id_solicitud_canje}/completar",
+    response_model=SolicitudCanjeAdminResponse,
+)
+def completar_solicitud_canje_admin(
+    id_solicitud_canje: int,
+    payload: SolicitudCanjeDecisionRequest,
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_solicitudes_canje_columns()
+    try:
+        solicitud = completar_solicitud_canje(db, id_solicitud_canje, metodo_pago=payload.metodo_pago)
+        data = listar_solicitudes_admin(db)
+        return next(
+            item for item in data if item["id_solicitud_canje"] == solicitud.id_solicitud_canje
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/solicitudes-admin/{id_solicitud_canje}/rechazar",
+    response_model=SolicitudCanjeAdminResponse,
+)
+def rechazar_solicitud_canje_admin(
+    id_solicitud_canje: int,
+    payload: SolicitudCanjeDecisionRequest,
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_solicitudes_canje_columns()
+    try:
+        solicitud = rechazar_solicitud_canje(db, id_solicitud_canje, metodo_pago=payload.metodo_pago)
+        data = listar_solicitudes_admin(db)
+        return next(
+            item for item in data if item["id_solicitud_canje"] == solicitud.id_solicitud_canje
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/solicitudes/{id_solicitud_canje}", response_model=SolicitudCanjeResponse)
 def obtener_solicitud_canje(id_solicitud_canje: int, db: Session = Depends(get_db)):
+    _ensure_solicitudes_canje_columns()
     obj = (
         db.query(SolicitudCanje)
         .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)
@@ -662,6 +757,7 @@ def actualizar_solicitud_canje(
     payload: SolicitudCanjeUpdate,
     db: Session = Depends(get_db),
 ):
+    _ensure_solicitudes_canje_columns()
     obj = (
         db.query(SolicitudCanje)
         .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)
@@ -680,6 +776,7 @@ def actualizar_solicitud_canje(
 
 @router.delete("/solicitudes/{id_solicitud_canje}", status_code=status.HTTP_204_NO_CONTENT)
 def borrar_solicitud_canje(id_solicitud_canje: int, db: Session = Depends(get_db)):
+    _ensure_solicitudes_canje_columns()
     obj = (
         db.query(SolicitudCanje)
         .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)

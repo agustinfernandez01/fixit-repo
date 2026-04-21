@@ -120,12 +120,44 @@ export type SolicitudCanje = {
   id_producto_interes: number
   valor_estimado: number | null
   diferencia_a_pagar: number | null
+  metodo_pago: string | null
   estado: string | null
   fecha_solicitud: string | null
+  fecha_respuesta: string | null
 }
 
 export type SolicitudCanjeCreate = {
   id_usuario: number
   id_equipo_ofrecido: number
   id_producto_interes: number
+  metodo_pago?: string | null
+}
+
+export type SolicitudCanjeAdminResponse = {
+  id_solicitud_canje: number
+  id_usuario: number
+  cliente_nombre: string | null
+  cliente_email: string | null
+  id_equipo_ofrecido: number
+  equipo_modelo: string | null
+  equipo_capacidad_gb: number | null
+  equipo_color: string | null
+  equipo_bateria_porcentaje: number | null
+  equipo_estado_estetico: string | null
+  equipo_estado_funcional: string | null
+  id_producto_interes: number
+  producto_interes_nombre: string | null
+  producto_interes_precio: number | null
+  producto_interes_activo: boolean | null
+  valor_estimado: number | null
+  diferencia_a_pagar: number | null
+  metodo_pago: string | null
+  estado: string | null
+  fecha_solicitud: string | null
+  fecha_respuesta: string | null
+  observaciones: string | null
+}
+
+export type SolicitudCanjeDecisionRequest = {
+  metodo_pago?: string | null
 }

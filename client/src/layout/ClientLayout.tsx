@@ -26,14 +26,20 @@ export default function ClientLayout() {
 	const logged = !!getAccessToken()
 	const role = (getCurrentUserRole() ?? '').toLowerCase()
 	const isAdmin = role.includes('admin')
-	const canAdminLink = import.meta.env.DEV || String(import.meta.env.VITE_ADMIN_BYPASS ?? '').toLowerCase() === 'true' || isAdmin
+	const showAdminLink = logged && isAdmin
 	const [cartCount, setCartCount] = useState(0)
 	const [cartReady, setCartReady] = useState(false)
+	const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
 	function handleLogout() {
 		clearAuthTokens()
+		setMobileMenuOpen(false)
 		navigate('/', { replace: true })
 	}
+
+	useEffect(() => {
+		setMobileMenuOpen(false)
+	}, [location.pathname, location.search])
 
 	useEffect(() => {
 		let alive = true
@@ -105,16 +111,6 @@ export default function ClientLayout() {
 								</Link>
 							</li>
 						))}
-						{canAdminLink ? (
-							<li>
-								<Link
-									to="/admin"
-									className="text-sm font-medium text-gray-500 transition-colors duration-150 hover:text-gray-900"
-								>
-									Administración
-								</Link>
-							</li>
-						) : null}
 					</ul>
 
 					<div className="flex items-center gap-3">
@@ -126,7 +122,7 @@ export default function ClientLayout() {
 								Perfil
 							</Link>
 						) : null}
-						{canAdminLink ? (
+						{showAdminLink ? (
 							<Link
 								to="/admin"
 								className="hidden text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900 sm:block"
@@ -167,13 +163,84 @@ export default function ClientLayout() {
 								</span>
 							) : null}
 						</Link>
-						<button className="text-gray-400 hover:text-gray-900 md:hidden">
+						<button
+							type="button"
+							onClick={() => setMobileMenuOpen((prev) => !prev)}
+							aria-label="Abrir menú"
+							aria-expanded={mobileMenuOpen}
+							aria-controls="mobile-nav-menu"
+							className="text-gray-400 hover:text-gray-900 md:hidden"
+						>
 							<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
 							</svg>
 						</button>
 					</div>
 				</nav>
+				{mobileMenuOpen ? (
+					<div id="mobile-nav-menu" className="border-t border-gray-100 bg-white px-6 py-4 md:hidden">
+						<ul className="space-y-3">
+							{NAV_LINKS.map(({ to, label }) => (
+								<li key={`mobile-${to}`}>
+									<Link
+										to={to}
+										className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
+									>
+										{label}
+									</Link>
+								</li>
+							))}
+							<li>
+								<Link
+									to="/carrito"
+									className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
+								>
+									Carrito
+								</Link>
+							</li>
+							{showAdminLink ? (
+								<li>
+									<Link
+										to="/admin"
+										className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
+									>
+										Administración
+									</Link>
+								</li>
+							) : null}
+							{logged ? (
+								<>
+									<li>
+										<Link
+											to="/perfil"
+											className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
+										>
+											Perfil
+										</Link>
+									</li>
+									<li>
+										<button
+											type="button"
+											onClick={handleLogout}
+											className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
+										>
+											Salir
+										</button>
+									</li>
+								</>
+							) : (
+								<li>
+									<Link
+										to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+										className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
+									>
+										Ingresar
+									</Link>
+								</li>
+							)}
+						</ul>
+					</div>
+				) : null}
 			</header>
 
 			<main className="pt-16">

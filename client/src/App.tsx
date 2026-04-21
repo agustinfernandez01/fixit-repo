@@ -4,6 +4,7 @@ import ClientLayout from './layout/ClientLayout'
 import { InventarioLayout } from './components/layout/InventarioLayout'
 import { AdminHomePage } from './pages/AdminHomePage'
 import PedidosPage from './pages/admin/PedidosPage'
+import SolicitudesCanjePage from './pages/admin/SolicitudesCanjePage'
 import Home from './pages/client/HomeView'
 import MarketplaceTiendaPage from './pages/client/MarketplaceTiendaPage'
 import CanjePage from './pages/client/CanjePage'
@@ -44,6 +45,7 @@ export default function App() {
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<AdminHomePage />} />
         <Route path="pedidos" element={<PedidosPage />} />
+        <Route path="solicitudes-canje" element={<SolicitudesCanjePage />} />
         <Route path="inventario" element={<InventarioLayout />}>
           <Route
             index

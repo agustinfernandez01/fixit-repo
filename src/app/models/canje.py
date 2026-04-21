@@ -58,8 +58,10 @@ class SolicitudCanje(Base):
     id_producto_interes = Column(Integer, ForeignKey("productos.id"), nullable=False)
     valor_estimado = Column(Numeric(12, 2), nullable=True)
     diferencia_a_pagar = Column(Numeric(12, 2), nullable=True)
+    metodo_pago = Column(String(50), nullable=True)
     estado = Column(String(50), nullable=True)
     fecha_solicitud = Column(DateTime, nullable=True)
+    fecha_respuesta = Column(DateTime, nullable=True)
 
     usuario = relationship("Usuario", backref="solicitudes_canje")
     equipo_ofrecido = relationship("EquipoOfrecidoCanje", back_populates="solicitudes")

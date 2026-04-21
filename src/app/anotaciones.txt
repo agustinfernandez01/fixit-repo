@@ -80,3 +80,56 @@ que hacer 15/4:
 mejorar cards del catalogo y seccionar.
 agregar foto al producto de carrito.
 cranear plan canje
+
+--------------
+
+Contexto del proyecto:
+Estoy trabajando en una app full stack:
+
+Frontend: React + Vite + TypeScript
+Backend: FastAPI + SQLAlchemy
+DB: MySQL/MariaDB en local
+Repo con módulos de auth, catálogo, carrito/pedidos, inventario, marketplace, reparaciones y canje.
+Objetivo actual:
+Necesito ayuda para terminar y estabilizar una nueva sección administrativa de solicitudes de canje.
+
+Qué ya se hizo:
+
+Se detectó y arregló duplicación del link Administración en el navbar cliente.
+Se implementó menú mobile funcional en el layout cliente.
+Se analizó el módulo canje y se confirmó que solicitudes_canje sí se usa en backend y frontend.
+Se creó una nueva vista admin para Solicitudes de canje (tabla con datos del cliente, equipo ofrecido, producto que quiere, método de pago, fecha/hora, estado y acciones Okey/No).
+Se agregó lógica backend para:
+Listar solicitudes admin
+Completar solicitud
+Rechazar solicitud
+Al completar: descontar stock desactivando producto objetivo y equipo asociado
+Se agregaron campos nuevos en solicitudes_canje:
+metodo_pago
+fecha_respuesta
+Se agregó una prueba de integración para completar solicitud y validar descuento de stock.
+Restricción importante:
+No tocar la sección admin existente de canje (cotizaciones/modelos). Debe quedar intacta. Solo agregar flujo paralelo de Solicitudes de canje.
+
+Problema actual:
+Sigue apareciendo error 500 en la pantalla de solicitudes de canje.
+Antes era por ORDER BY con NULLS LAST (incompatible con MySQL), eso se corrigió.
+Ahora el error apunta a SQLAlchemy f405 en queries de solicitudes_canje, y sospecha de desalineación de esquema o columnas faltantes en la DB real.
+
+Lo que necesito que hagas:
+
+Revisar la causa exacta del 500 con foco en compatibilidad MySQL y columnas reales de solicitudes_canje.
+Proponer y aplicar solución robusta (no parche frágil) para migración/compatibilidad de esquema.
+Validar que la vista admin cargue sin errores y permita:
+Ver solicitudes
+Marcar Okey o No
+Persistir método de pago
+Descontar stock al completar
+Sugerir una estrategia de migraciones formal para evitar estos desajustes en el futuro.
+Entregar resumen final con:
+Archivos modificados
+Cambios aplicados
+Riesgos pendientes
+Cómo probar end-to-end manualmente.
+Si necesitás, empezá por un diagnóstico breve y luego pasá directo a cambios concretos.
+

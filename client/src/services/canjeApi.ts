@@ -14,6 +14,8 @@ import type {
   PresupuestoCanjeRequest,
   PresupuestoCanjeResponse,
   SolicitudCanje,
+  SolicitudCanjeAdminResponse,
+  SolicitudCanjeDecisionRequest,
   SolicitudCanjeCreate,
 } from '../types/canje'
 
@@ -131,6 +133,37 @@ export const canjeApi = {
   solicitudes: {
     create: (body: SolicitudCanjeCreate) =>
       fetchJson<SolicitudCanje>(`${P}/solicitudes`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(),
+        },
+        body: JSON.stringify(body),
+      }),
+  },
+  solicitudesAdmin: {
+    list: (skip = 0, limit = 50, estado?: string | null) => {
+      const params = new URLSearchParams({
+        skip: String(skip),
+        limit: String(limit),
+      })
+      if (estado) params.set('estado', estado)
+      const suffix = params.toString() ? `?${params.toString()}` : ''
+      return fetchJson<SolicitudCanjeAdminResponse[]>(`${P}/solicitudes-admin${suffix}`, {
+        headers: {
+          ...authHeaders(),
+        },
+      })
+    },
+    completar: (id: number, body: SolicitudCanjeDecisionRequest) =>
+      fetchJson<SolicitudCanjeAdminResponse>(`${P}/solicitudes-admin/${id}/completar`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(),
+        },
+        body: JSON.stringify(body),
+      }),
+    rechazar: (id: number, body: SolicitudCanjeDecisionRequest) =>
+      fetchJson<SolicitudCanjeAdminResponse>(`${P}/solicitudes-admin/${id}/rechazar`, {
         method: 'POST',
         headers: {
           ...authHeaders(),
