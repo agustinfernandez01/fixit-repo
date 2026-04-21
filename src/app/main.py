@@ -2,7 +2,6 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect, text
 
 from app.config import UPLOAD_DIR
 from app.db import Base, engine
@@ -24,80 +23,6 @@ def crear_tablas_si_hay_db():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     try:
         Base.metadata.create_all(bind=engine)
-        # Mini-migración defensiva: agrega columna foto_url si falta.
-        try:
-            insp = inspect(engine)
-            cols = {c.get("name") for c in insp.get_columns("equipos")}
-            if "foto_url" not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text("ALTER TABLE equipos ADD COLUMN foto_url VARCHAR(255) NULL"))
-                logger.info("Migración aplicada: equipos.foto_url")
-
-            if "color" not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text("ALTER TABLE equipos ADD COLUMN color VARCHAR(50) NULL"))
-                logger.info("Migración aplicada: equipos.color")
-
-            # Catálogo: precio USD opcional (para UI admin / referencia).
-            tablas = set(insp.get_table_names())
-            if "productos" in tablas:
-                cols_productos = {c.get("name") for c in insp.get_columns("productos")}
-                if "precio_usd" not in cols_productos:
-                    with engine.begin() as conn:
-                        conn.execute(text("ALTER TABLE productos ADD COLUMN precio_usd NUMERIC(12,2) NULL"))
-                    logger.info("Migración aplicada: productos.precio_usd")
-
-            # Canje: catálogo propio de modelos + FK lógica de cotizaciones.
-            if "modelos_canje" in tablas:
-                cols_modelos_canje = {
-                    c.get("name") for c in insp.get_columns("modelos_canje")
-                }
-                if "foto_url" not in cols_modelos_canje:
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text("ALTER TABLE modelos_canje ADD COLUMN foto_url VARCHAR(255) NULL")
-                        )
-                    logger.info("Migración aplicada: modelos_canje.foto_url")
-
-            if "cotizaciones_canje" in tablas:
-                columnas_cotizaciones = insp.get_columns("cotizaciones_canje")
-                cols_cotizaciones = {c.get("name") for c in columnas_cotizaciones}
-                if "id_modelo_canje" not in cols_cotizaciones:
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text(
-                                "ALTER TABLE cotizaciones_canje ADD COLUMN id_modelo_canje INT NULL"
-                            )
-                        )
-                    logger.info("Migración aplicada: cotizaciones_canje.id_modelo_canje")
-
-                col_id_modelo = next(
-                    (c for c in columnas_cotizaciones if c.get("name") == "id_modelo"),
-                    None,
-                )
-                if col_id_modelo and not col_id_modelo.get("nullable", False):
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text("ALTER TABLE cotizaciones_canje MODIFY id_modelo INT NULL")
-                        )
-                    logger.info("Migración aplicada: cotizaciones_canje.id_modelo nullable")
-
-            if "solicitudes_canje" in tablas:
-                cols_solicitudes = {c.get("name") for c in insp.get_columns("solicitudes_canje")}
-                if "metodo_pago" not in cols_solicitudes:
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text("ALTER TABLE solicitudes_canje ADD COLUMN metodo_pago VARCHAR(50) NULL")
-                        )
-                    logger.info("Migración aplicada: solicitudes_canje.metodo_pago")
-                if "fecha_respuesta" not in cols_solicitudes:
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text("ALTER TABLE solicitudes_canje ADD COLUMN fecha_respuesta DATETIME NULL")
-                        )
-                    logger.info("Migración aplicada: solicitudes_canje.fecha_respuesta")
-        except Exception as e:
-            logger.warning("No se pudo verificar/migrar columna equipos.foto_url: %s", e)
         logger.info("Tablas creadas o ya existentes en la base de datos.")
     except Exception as e:
         err = str(e)
