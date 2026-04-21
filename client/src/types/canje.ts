@@ -10,6 +10,8 @@ export type EquipoOfrecidoCanje = {
   estado_funcional: string | null
   detalle_pantalla: string | null
   detalle_carcasa: string | null
+  foto_url: string | null
+  fotos_urls: string[]
   incluye_caja: boolean
   incluye_cargador: boolean
   observaciones: string | null
@@ -28,6 +30,7 @@ export type EquipoOfrecidoCanjeCreate = {
   estado_funcional?: string | null
   detalle_pantalla?: string | null
   detalle_carcasa?: string | null
+  foto_url?: string | null
   incluye_caja?: boolean
   incluye_cargador?: boolean
   observaciones?: string | null
@@ -145,6 +148,8 @@ export type SolicitudCanjeAdminResponse = {
   equipo_bateria_porcentaje: number | null
   equipo_estado_estetico: string | null
   equipo_estado_funcional: string | null
+  equipo_foto_url: string | null
+  equipo_fotos_urls: string[]
   id_producto_interes: number
   producto_interes_nombre: string | null
   producto_interes_precio: number | null

@@ -1,16 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.routers.legacy import mark_legacy_route_used
 from app.services.productos import get_productos, get_producto_detalle
 from app.schemas.productos import ProductoResponse, ProductoDetalleResponse
 import traceback
 
 router = APIRouter()
 
+
 #GET - Listar productos
 @router.get("/get", response_model=list[ProductoResponse])
-def listar_productos(db: Session = Depends(get_db)):
+def listar_productos(raw_request: Request, response: Response, db: Session = Depends(get_db)):
+    mark_legacy_route_used(
+        response=response,
+        request=raw_request,
+        successor_path="/productos",
+        legacy_route="/productos/get",
+    )
     try:
         return get_productos(db)
     except HTTPException:
@@ -22,7 +30,18 @@ def listar_productos(db: Session = Depends(get_db)):
 
 
 @router.get("/get/{id_producto}", response_model=ProductoDetalleResponse)
-def obtener_producto_detalle(id_producto: int, db: Session = Depends(get_db)):
+def obtener_producto_detalle(
+    id_producto: int,
+    raw_request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    mark_legacy_route_used(
+        response=response,
+        request=raw_request,
+        successor_path=f"/productos/{id_producto}",
+        legacy_route="/productos/get/{id_producto}",
+    )
     try:
         detalle = get_producto_detalle(db, id_producto)
         if not detalle:

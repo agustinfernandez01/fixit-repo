@@ -8,9 +8,10 @@ from app.services.usuarios import (
     put_usuario_completo,
 )
 from app.schemas.usuarios import UsuarioCreate, UsuarioPerfilResponse, UsuarioResponse, UsuarioPut, UsuarioPatch   
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from app.db import get_db
+from app.routers.legacy import mark_legacy_route_used
 import traceback
 from typing import Optional
 from app.deps.auth import get_optional_user_id_from_access_token
@@ -22,9 +23,17 @@ router = APIRouter()
 
 @router.get("/me", response_model=UsuarioPerfilResponse)
 def obtener_mi_perfil(
+    raw_request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     id_usuario: int | None = Depends(get_optional_user_id_from_access_token),
 ):
+    mark_legacy_route_used(
+        response=response,
+        request=raw_request,
+        successor_path="/auth/me",
+        legacy_route="/usuarios/me",
+    )
     if id_usuario is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Debes iniciar sesión.")
 

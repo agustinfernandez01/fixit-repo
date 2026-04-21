@@ -88,6 +88,48 @@ export const canjeApi = {
         },
         body: JSON.stringify(body),
       }),
+    uploadFoto: async (id: number, file: File) => {
+      const fd = new FormData()
+      fd.append('foto', file)
+      const res = await fetch(apiUrl(`${P}/equipos-ofrecidos/${id}/foto`), {
+        method: 'POST',
+        body: fd,
+      })
+      const text = await res.text()
+      if (!res.ok) {
+        let detail = res.statusText
+        try {
+          const j = JSON.parse(text) as { detail?: string | unknown }
+          if (typeof j.detail === 'string') detail = j.detail
+          else if (j.detail) detail = JSON.stringify(j.detail)
+        } catch {
+          if (text) detail = text
+        }
+        throw new Error(detail || `HTTP ${res.status}`)
+      }
+      return text ? (JSON.parse(text) as EquipoOfrecidoCanje) : (undefined as unknown as EquipoOfrecidoCanje)
+    },
+    uploadFotos: async (id: number, files: File[]) => {
+      const fd = new FormData()
+      files.forEach((file) => fd.append('fotos', file))
+      const res = await fetch(apiUrl(`${P}/equipos-ofrecidos/${id}/fotos`), {
+        method: 'POST',
+        body: fd,
+      })
+      const text = await res.text()
+      if (!res.ok) {
+        let detail = res.statusText
+        try {
+          const j = JSON.parse(text) as { detail?: string | unknown }
+          if (typeof j.detail === 'string') detail = j.detail
+          else if (j.detail) detail = JSON.stringify(j.detail)
+        } catch {
+          if (text) detail = text
+        }
+        throw new Error(detail || `HTTP ${res.status}`)
+      }
+      return text ? (JSON.parse(text) as EquipoOfrecidoCanje) : (undefined as unknown as EquipoOfrecidoCanje)
+    },
   },
   cotizaciones: {
     list: (id_modelo_canje?: number | null, activo?: boolean | null) => {
@@ -169,6 +211,13 @@ export const canjeApi = {
           ...authHeaders(),
         },
         body: JSON.stringify(body),
+      }),
+    borrarHistorial: (id: number) =>
+      fetchJson<void>(`${P}/solicitudes-admin/${id}/historial`, {
+        method: 'DELETE',
+        headers: {
+          ...authHeaders(),
+        },
       }),
   },
 }

@@ -65,6 +65,83 @@ def _ensure_solicitudes_canje_columns() -> None:
                 conn.execute(text("ALTER TABLE solicitudes_canje ADD COLUMN fecha_respuesta DATETIME NULL"))
 
 
+def _ensure_equipos_ofrecidos_columns() -> None:
+    """Asegura columnas nuevas de equipos ofrecidos en entornos desfasados."""
+    insp = inspect(engine)
+    tablas = set(insp.get_table_names())
+    if "equipos_ofrecidos_canje" not in tablas:
+        return
+
+    cols = {c.get("name") for c in insp.get_columns("equipos_ofrecidos_canje")}
+    if "foto_url" in cols:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE equipos_ofrecidos_canje ADD COLUMN foto_url VARCHAR(255) NULL")
+        )
+
+
+def _listar_fotos_equipo_ofrecido(id_equipo_ofrecido: int) -> list[str]:
+    rel_dir = Path("canje_equipos") / str(id_equipo_ofrecido)
+    abs_dir = UPLOAD_DIR / rel_dir
+    if not abs_dir.exists():
+        return []
+
+    fotos: list[str] = []
+    for p in sorted(abs_dir.iterdir()):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+            continue
+        fotos.append(f"/uploads/{rel_dir.as_posix()}/{p.name}")
+    return fotos
+
+
+async def _guardar_fotos_equipo_ofrecido(
+    *,
+    obj: EquipoOfrecidoCanje,
+    fotos: list[UploadFile],
+    reemplazar: bool,
+) -> str | None:
+    if not fotos:
+        raise HTTPException(status_code=400, detail="Debes cargar al menos una imagen.")
+
+    if len(fotos) > 4:
+        raise HTTPException(status_code=400, detail="Puedes cargar un máximo de 4 fotos.")
+
+    rel_dir = Path("canje_equipos") / str(obj.id_equipo_ofrecido)
+    abs_dir = UPLOAD_DIR / rel_dir
+    abs_dir.mkdir(parents=True, exist_ok=True)
+
+    if reemplazar:
+        for p in abs_dir.iterdir():
+            if p.is_file():
+                p.unlink(missing_ok=True)
+
+    urls: list[str] = []
+    for foto in fotos:
+        if not foto.content_type or not foto.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="Todos los archivos deben ser imágenes.")
+
+        ext = Path(foto.filename or "").suffix.lower()
+        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+            ext = ".jpg"
+
+        content = await foto.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uno de los archivos está vacío.")
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Cada imagen debe pesar hasta 10 MB.")
+
+        filename = f"{uuid4().hex}{ext}"
+        abs_path = abs_dir / filename
+        abs_path.write_bytes(content)
+        urls.append(f"/uploads/{rel_dir.as_posix()}/{filename}")
+
+    return urls[0] if urls else None
+
+
 def _resolver_modelo_equipo_ofrecido(db: Session, equipo: EquipoOfrecidoCanje) -> ModeloCanje:
     if not equipo.modelo:
         raise HTTPException(
@@ -428,10 +505,17 @@ def listar_equipos_ofrecidos(
     activo: bool | None = Query(None, description="Filtrar por activo"),
     db: Session = Depends(get_db),
 ):
+    _ensure_equipos_ofrecidos_columns()
     q = db.query(EquipoOfrecidoCanje)
     if activo is not None:
         q = q.filter(EquipoOfrecidoCanje.activo == activo)
-    return q.offset(skip).limit(limit).all()
+    rows = q.offset(skip).limit(limit).all()
+    payload = []
+    for row in rows:
+        data = EquipoOfrecidoCanjeResponse.model_validate(row).model_dump()
+        data["fotos_urls"] = _listar_fotos_equipo_ofrecido(row.id_equipo_ofrecido)
+        payload.append(data)
+    return payload
 
 
 @router.post(
@@ -440,6 +524,7 @@ def listar_equipos_ofrecidos(
     status_code=status.HTTP_201_CREATED,
 )
 def crear_equipo_ofrecido(payload: EquipoOfrecidoCanjeCreate, db: Session = Depends(get_db)):
+    _ensure_equipos_ofrecidos_columns()
     data = payload.model_dump()
     if data.get("fecha_registro") is None:
         data["fecha_registro"] = datetime.now(timezone.utc)
@@ -447,14 +532,18 @@ def crear_equipo_ofrecido(payload: EquipoOfrecidoCanjeCreate, db: Session = Depe
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    return obj
+    data_resp = EquipoOfrecidoCanjeResponse.model_validate(obj).model_dump()
+    data_resp["fotos_urls"] = _listar_fotos_equipo_ofrecido(obj.id_equipo_ofrecido)
+    return data_resp
 
 
-@router.get(
-    "/equipos-ofrecidos/{id_equipo_ofrecido}",
-    response_model=EquipoOfrecidoCanjeResponse,
-)
-def obtener_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_db)):
+@router.post("/equipos-ofrecidos/{id_equipo_ofrecido}/foto", response_model=EquipoOfrecidoCanjeResponse)
+async def subir_foto_equipo_ofrecido_canje(
+    id_equipo_ofrecido: int,
+    foto: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -462,7 +551,62 @@ def obtener_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_d
     )
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo ofrecido no encontrado")
-    return obj
+
+    obj.foto_url = await _guardar_fotos_equipo_ofrecido(
+        obj=obj,
+        fotos=[foto],
+        reemplazar=True,
+    )
+    db.commit()
+    db.refresh(obj)
+    data_resp = EquipoOfrecidoCanjeResponse.model_validate(obj).model_dump()
+    data_resp["fotos_urls"] = _listar_fotos_equipo_ofrecido(obj.id_equipo_ofrecido)
+    return data_resp
+
+
+@router.post("/equipos-ofrecidos/{id_equipo_ofrecido}/fotos", response_model=EquipoOfrecidoCanjeResponse)
+async def subir_fotos_equipo_ofrecido_canje(
+    id_equipo_ofrecido: int,
+    fotos: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    _ensure_equipos_ofrecidos_columns()
+    obj = (
+        db.query(EquipoOfrecidoCanje)
+        .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
+        .first()
+    )
+    if not obj:
+        raise HTTPException(status_code=404, detail="Equipo ofrecido no encontrado")
+
+    obj.foto_url = await _guardar_fotos_equipo_ofrecido(
+        obj=obj,
+        fotos=fotos,
+        reemplazar=True,
+    )
+    db.commit()
+    db.refresh(obj)
+    data_resp = EquipoOfrecidoCanjeResponse.model_validate(obj).model_dump()
+    data_resp["fotos_urls"] = _listar_fotos_equipo_ofrecido(obj.id_equipo_ofrecido)
+    return data_resp
+
+
+@router.get(
+    "/equipos-ofrecidos/{id_equipo_ofrecido}",
+    response_model=EquipoOfrecidoCanjeResponse,
+)
+def obtener_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_db)):
+    _ensure_equipos_ofrecidos_columns()
+    obj = (
+        db.query(EquipoOfrecidoCanje)
+        .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
+        .first()
+    )
+    if not obj:
+        raise HTTPException(status_code=404, detail="Equipo ofrecido no encontrado")
+    data_resp = EquipoOfrecidoCanjeResponse.model_validate(obj).model_dump()
+    data_resp["fotos_urls"] = _listar_fotos_equipo_ofrecido(obj.id_equipo_ofrecido)
+    return data_resp
 
 
 @router.patch(
@@ -474,6 +618,7 @@ def actualizar_equipo_ofrecido(
     payload: EquipoOfrecidoCanjeUpdate,
     db: Session = Depends(get_db),
 ):
+    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -487,7 +632,9 @@ def actualizar_equipo_ofrecido(
 
     db.commit()
     db.refresh(obj)
-    return obj
+    data_resp = EquipoOfrecidoCanjeResponse.model_validate(obj).model_dump()
+    data_resp["fotos_urls"] = _listar_fotos_equipo_ofrecido(obj.id_equipo_ofrecido)
+    return data_resp
 
 
 @router.delete(
@@ -495,6 +642,7 @@ def actualizar_equipo_ofrecido(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def borrar_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_db)):
+    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -502,6 +650,15 @@ def borrar_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_db
     )
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo ofrecido no encontrado")
+
+    rel_dir = Path("canje_equipos") / str(id_equipo_ofrecido)
+    abs_dir = UPLOAD_DIR / rel_dir
+    if abs_dir.exists():
+        for p in abs_dir.iterdir():
+            if p.is_file():
+                p.unlink(missing_ok=True)
+        abs_dir.rmdir()
+
     db.delete(obj)
     db.commit()
     return None
@@ -691,6 +848,8 @@ def listar_solicitudes_canje_admin(
 ):
     _ensure_solicitudes_canje_columns()
     solicitudes = listar_solicitudes_admin(db)
+    # Requisito de negocio: las rechazadas no se muestran en la grilla admin.
+    solicitudes = [s for s in solicitudes if (s.get("estado") or "").lower() != "rechazado"]
     if estado:
         solicitudes = [s for s in solicitudes if (s.get("estado") or "").lower() == estado.lower()]
     return solicitudes[skip : skip + limit]
@@ -736,6 +895,32 @@ def rechazar_solicitud_canje_admin(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/solicitudes-admin/{id_solicitud_canje}/historial", status_code=status.HTTP_204_NO_CONTENT)
+def borrar_historial_solicitud_canje_admin(
+    id_solicitud_canje: int,
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_solicitudes_canje_columns()
+    obj = (
+        db.query(SolicitudCanje)
+        .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)
+        .first()
+    )
+    if not obj:
+        raise HTTPException(status_code=404, detail="Solicitud de canje no encontrada")
+
+    if (obj.estado or "").strip().lower() != "completado":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se puede borrar del historial una solicitud completada.",
+        )
+
+    db.delete(obj)
+    db.commit()
+    return None
 
 
 @router.get("/solicitudes/{id_solicitud_canje}", response_model=SolicitudCanjeResponse)

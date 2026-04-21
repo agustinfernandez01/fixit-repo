@@ -37,6 +37,7 @@ class EquipoOfrecidoCanje(Base):
     estado_funcional = Column(String(50), nullable=True)
     detalle_pantalla = Column(String(255), nullable=True)
     detalle_carcasa = Column(String(255), nullable=True)
+    foto_url = Column(String(255), nullable=True)
     incluye_caja = Column(Boolean, default=False)
     incluye_cargador = Column(Boolean, default=False)
     observaciones = Column(Text, nullable=True)

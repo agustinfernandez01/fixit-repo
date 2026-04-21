@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { canjeApi } from '../../services/canjeApi'
+import { mediaUrl } from '../../services/api'
 import type { SolicitudCanjeAdminResponse } from '../../types/canje'
 
 const PAYMENT_OPTIONS = ['a definir', 'efectivo', 'transferencia', 'tarjeta', 'canje'] as const
@@ -39,6 +40,7 @@ export default function SolicitudesCanjePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [previewImages, setPreviewImages] = useState<string[]>([])
 
   const load = async () => {
     setLoading(true)
@@ -67,9 +69,26 @@ export default function SolicitudesCanjePage() {
         action === 'completar'
           ? await canjeApi.solicitudesAdmin.completar(id, payload)
           : await canjeApi.solicitudesAdmin.rechazar(id, payload)
-      setRows((prev) => prev.map((row) => (row.id_solicitud_canje === id ? updated : row)))
+      if (action === 'rechazar') {
+        setRows((prev) => prev.filter((row) => row.id_solicitud_canje !== id))
+      } else {
+        setRows((prev) => prev.map((row) => (row.id_solicitud_canje === id ? updated : row)))
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo procesar la solicitud')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleBorrarHistorial(id: number) {
+    setBusyId(id)
+    setError(null)
+    try {
+      await canjeApi.solicitudesAdmin.borrarHistorial(id)
+      setRows((prev) => prev.filter((row) => row.id_solicitud_canje !== id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo borrar la solicitud del historial')
     } finally {
       setBusyId(null)
     }
@@ -78,6 +97,8 @@ export default function SolicitudesCanjePage() {
   function updateMetodoPago(id: number, value: string) {
     setRows((prev) => prev.map((row) => (row.id_solicitud_canje === id ? { ...row, metodo_pago: value } : row)))
   }
+
+  const closePreview = () => setPreviewImages([])
 
   return (
     <div className="bg-white">
@@ -126,7 +147,10 @@ export default function SolicitudesCanjePage() {
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const disabled = busyId === row.id_solicitud_canje || ['completado', 'rechazado'].includes((row.estado ?? '').toLowerCase())
+                  const estado = (row.estado ?? '').toLowerCase()
+                  const isBusy = busyId === row.id_solicitud_canje
+                  const canDecide = estado !== 'completado' && estado !== 'rechazado'
+                  const canDeleteHistory = estado === 'completado'
                   return (
                     <tr key={row.id_solicitud_canje} className="border-b border-gray-100 align-top hover:bg-gray-50">
                       <td className="px-4 py-3 font-semibold text-gray-900">#{row.id_solicitud_canje}</td>
@@ -141,6 +165,33 @@ export default function SolicitudesCanjePage() {
                         <div className="text-xs text-gray-500">
                           Bateria: {row.equipo_bateria_porcentaje ?? '—'}% · Estado: {row.equipo_estado_estetico ?? '—'} / {row.equipo_estado_funcional ?? '—'}
                         </div>
+                        {(row.equipo_fotos_urls?.length ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImages(row.equipo_fotos_urls.map((url) => mediaUrl(url)))}
+                            className="mt-2 overflow-hidden rounded-xl border border-gray-200"
+                          >
+                            <img
+                              src={mediaUrl(row.equipo_fotos_urls[0])}
+                              alt="Equipo ofrecido"
+                              className="h-16 w-16 object-cover"
+                            />
+                          </button>
+                        ) : row.equipo_foto_url ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImages([mediaUrl(row.equipo_foto_url as string)])}
+                            className="mt-2 overflow-hidden rounded-xl border border-gray-200"
+                          >
+                            <img
+                              src={mediaUrl(row.equipo_foto_url)}
+                              alt="Equipo ofrecido"
+                              className="h-16 w-16 object-cover"
+                            />
+                          </button>
+                        ) : (
+                          <div className="mt-1 text-xs text-gray-400">Sin foto adjunta</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         <div className="font-medium text-gray-900">{row.producto_interes_nombre ?? '—'}</div>
@@ -151,7 +202,7 @@ export default function SolicitudesCanjePage() {
                           value={row.metodo_pago ?? 'a definir'}
                           onChange={(e) => updateMetodoPago(row.id_solicitud_canje, e.target.value)}
                           className="w-full rounded-xl border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
-                          disabled={disabled}
+                          disabled={isBusy || !canDecide}
                         >
                           {PAYMENT_OPTIONS.map((option) => (
                             <option key={option} value={option}>
@@ -172,7 +223,7 @@ export default function SolicitudesCanjePage() {
                         <div className="flex flex-wrap items-center justify-center gap-2">
                           <button
                             type="button"
-                            disabled={disabled}
+                            disabled={isBusy || !canDecide}
                             onClick={() => void handleDecision(row.id_solicitud_canje, 'completar')}
                             className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
                           >
@@ -180,12 +231,22 @@ export default function SolicitudesCanjePage() {
                           </button>
                           <button
                             type="button"
-                            disabled={disabled}
+                            disabled={isBusy || !canDecide}
                             onClick={() => void handleDecision(row.id_solicitud_canje, 'rechazar')}
                             className="rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-40"
                           >
                             {busyId === row.id_solicitud_canje ? 'Procesando…' : 'No'}
                           </button>
+                          {canDeleteHistory ? (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void handleBorrarHistorial(row.id_solicitud_canje)}
+                              className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-40"
+                            >
+                              Borrar historial
+                            </button>
+                          ) : null}
                         </div>
                         {row.fecha_respuesta ? (
                           <div className="mt-2 text-xs text-gray-500">
@@ -201,6 +262,32 @@ export default function SolicitudesCanjePage() {
           </div>
         )}
       </section>
+      {previewImages.length > 0 ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
+          <div className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Fotos del equipo</h3>
+              <button
+                type="button"
+                onClick={closePreview}
+                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {previewImages.map((img, idx) => (
+                <img
+                  key={`${img}-${idx}`}
+                  src={img}
+                  alt={`Equipo ${idx + 1}`}
+                  className="h-32 w-full rounded-xl object-cover sm:h-40"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

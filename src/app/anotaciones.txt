@@ -39,97 +39,13 @@ LOGOUT
 → el refresh deja de servir
 
 
-## QUE HACER
+que hacer:
 
-* Checkout/pago real conectado.
-* Tests automáticos del carrito (backend + frontend).
-* Manejo de stock en tiempo real al confirmar compra.
-* dejar un único flujo oficial (Inventario) y marcar equipos/post como deprecated para no mantener dos lógicas en paralelo
-*Backfill de equipos viejos sin producto
-Actualizar los registros existentes con id_producto nulo para que también queden comprables desde Home y Tienda.
+canje :
 
-*Consolidar un único flujo de creación
-Definir oficialmente si queda solo Inventario como alta de equipos y dejar equipos/post como deprecado para evitar doble lógica futura.
+- finalizar metodo de pago y mensajes en whatsapp
 
-*End-to-end completo de carrito desde Home
-Probar flujo real: Agregar desde card, ver contador en header, editar cantidad, eliminar, vaciar carrito y persistencia al recargar.
+marketplace:
 
-*Mejorar Ver detalle en la card
-Hoy navega a Tienda; falta resaltar o abrir directamente el producto específico para que el botón tenga comportamiento de detalle real.
-
-*Ajustar UX de card para casos sin vínculo
-Si aparece un equipo sin producto, mostrar CTA de corrección en admin o esconder botón Agregar según decisión de negocio.
-
-*Normalizar reglas de deduplicación y prioridad
-Documentar y dejar estable la regla actual de Home por modelo para evitar regresiones visuales cuando entren más equipos.
-
-*Validaciones de datos en alta de equipos
-Asegurar validaciones consistentes de IMEI, estado comercial, categoría, precio por defecto y mensajes claros de error.
-
-*Pruebas automáticas mínimas
-Agregar tests de backend para creación de equipo con auto-creación de producto y tests frontend para botones de la card y estados de carrito.
-
-*Revisión de endpoints legacy con columnas antiguas
-Hacer una pasada completa para detectar referencias antiguas id_equipo o id_producto en rutas legacy y unificarlas.
-
-*Checklist de release local
-Verificar build frontend, creación de equipo, upload de imagen, visualización en Home, y compra en carrito en una corrida de punta a punta.
-
-que hacer 15/4:
-
-mejorar cards del catalogo y seccionar.
-agregar foto al producto de carrito.
-cranear plan canje
-
---------------
-
-Contexto del proyecto:
-Estoy trabajando en una app full stack:
-
-Frontend: React + Vite + TypeScript
-Backend: FastAPI + SQLAlchemy
-DB: MySQL/MariaDB en local
-Repo con módulos de auth, catálogo, carrito/pedidos, inventario, marketplace, reparaciones y canje.
-Objetivo actual:
-Necesito ayuda para terminar y estabilizar una nueva sección administrativa de solicitudes de canje.
-
-Qué ya se hizo:
-
-Se detectó y arregló duplicación del link Administración en el navbar cliente.
-Se implementó menú mobile funcional en el layout cliente.
-Se analizó el módulo canje y se confirmó que solicitudes_canje sí se usa en backend y frontend.
-Se creó una nueva vista admin para Solicitudes de canje (tabla con datos del cliente, equipo ofrecido, producto que quiere, método de pago, fecha/hora, estado y acciones Okey/No).
-Se agregó lógica backend para:
-Listar solicitudes admin
-Completar solicitud
-Rechazar solicitud
-Al completar: descontar stock desactivando producto objetivo y equipo asociado
-Se agregaron campos nuevos en solicitudes_canje:
-metodo_pago
-fecha_respuesta
-Se agregó una prueba de integración para completar solicitud y validar descuento de stock.
-Restricción importante:
-No tocar la sección admin existente de canje (cotizaciones/modelos). Debe quedar intacta. Solo agregar flujo paralelo de Solicitudes de canje.
-
-Problema actual:
-Sigue apareciendo error 500 en la pantalla de solicitudes de canje.
-Antes era por ORDER BY con NULLS LAST (incompatible con MySQL), eso se corrigió.
-Ahora el error apunta a SQLAlchemy f405 en queries de solicitudes_canje, y sospecha de desalineación de esquema o columnas faltantes en la DB real.
-
-Lo que necesito que hagas:
-
-Revisar la causa exacta del 500 con foco en compatibilidad MySQL y columnas reales de solicitudes_canje.
-Proponer y aplicar solución robusta (no parche frágil) para migración/compatibilidad de esquema.
-Validar que la vista admin cargue sin errores y permita:
-Ver solicitudes
-Marcar Okey o No
-Persistir método de pago
-Descontar stock al completar
-Sugerir una estrategia de migraciones formal para evitar estos desajustes en el futuro.
-Entregar resumen final con:
-Archivos modificados
-Cambios aplicados
-Riesgos pendientes
-Cómo probar end-to-end manualmente.
-Si necesitás, empezá por un diagnóstico breve y luego pasá directo a cambios concretos.
-
+- empezar
+- finalizar metodo de pago y mensajes en whatsapp

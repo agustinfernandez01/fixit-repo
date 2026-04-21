@@ -69,6 +69,8 @@ function mapCanjeError(raw: string): string {
 
 export default function CanjePage() {
   const [form, setForm] = useState<CanjeForm>(emptyForm)
+  const [equipoFotos, setEquipoFotos] = useState<File[]>([])
+  const [fotoError, setFotoError] = useState<string | null>(null)
   const [productos, setProductos] = useState<ProductoCompra[]>([])
   const [modelos, setModelos] = useState<ModeloCanje[]>([])
   const [cotizaciones, setCotizaciones] = useState<CotizacionCanje[]>([])
@@ -107,6 +109,17 @@ export default function CanjePage() {
     () => productosCanjeables.find((p) => p.id === selectedProductId) ?? null,
     [productosCanjeables, selectedProductId],
   )
+
+  const equipoFotoPreviews = useMemo(
+    () => equipoFotos.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [equipoFotos],
+  )
+
+  useEffect(() => {
+    return () => {
+      equipoFotoPreviews.forEach((item) => URL.revokeObjectURL(item.url))
+    }
+  }, [equipoFotoPreviews])
 
   const intervalosBateria = useMemo(() => {
     const idModelo = Number(form.id_modelo_canje)
@@ -282,12 +295,18 @@ export default function CanjePage() {
         activo: true,
       })
 
+      if (equipoFotos.length > 0) {
+        await canjeApi.equiposOfrecidos.uploadFotos(equipo.id_equipo_ofrecido, equipoFotos)
+      }
+
       await canjeApi.solicitudes.create({
         id_usuario: currentUserId,
         id_equipo_ofrecido: equipo.id_equipo_ofrecido,
         id_producto_interes: selectedProductId,
       })
       setSuccess('Solicitud de canje enviada. Te contactaremos para la validacion final del equipo.')
+      setEquipoFotos([])
+      setFotoError(null)
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'No se pudo crear la solicitud de canje'
       setError(mapCanjeError(raw))
@@ -421,6 +440,56 @@ export default function CanjePage() {
                     className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
                     placeholder="Detalle extra que quieras sumar"
                   />
+                </label>
+                <label className="sm:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-gray-500">
+                    Fotos de tu equipo (hasta 4)
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    onChange={(ev) => {
+                      const selected = Array.from(ev.target.files ?? [])
+                      if (selected.length > 4) {
+                        setFotoError('Puedes seleccionar hasta 4 fotos. Se usarán las primeras 4.')
+                      } else {
+                        setFotoError(null)
+                      }
+                      const files = selected.slice(0, 4)
+                      if (files.some((f) => f.size > 10 * 1024 * 1024)) {
+                        setFotoError('Cada foto debe pesar hasta 10 MB.')
+                        setEquipoFotos(files.filter((f) => f.size <= 10 * 1024 * 1024))
+                        return
+                      }
+                      ev.currentTarget.value = ''
+                      // Reemplaza la selección para evitar acumulaciones no deseadas.
+                      // El usuario siempre ve exactamente las fotos que se enviarán.
+                      setEquipoFotos(files)
+                    }}
+                    className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none file:mr-3 file:rounded-xl file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-xs file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+                  />
+                  {fotoError ? (
+                    <p className="mt-2 text-xs font-medium text-amber-700">{fotoError}</p>
+                  ) : null}
+                  {equipoFotos.length > 0 ? (
+                    <p className="mt-2 text-xs text-gray-500">
+                      {equipoFotos.length} foto{equipoFotos.length > 1 ? 's' : ''} seleccionada
+                      {equipoFotos.length > 1 ? 's' : ''}.
+                    </p>
+                  ) : null}
+                  {equipoFotoPreviews.length > 0 ? (
+                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {equipoFotoPreviews.map(({ file, url }, idx) => (
+                        <div key={`${file.name}-${idx}`} className="overflow-hidden rounded-xl border border-gray-200">
+                          <img src={url} alt={`Foto equipo ${idx + 1}`} className="h-20 w-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="mt-1 text-xs text-gray-400">
+                    Formatos permitidos: JPG, PNG y WEBP. Máximo 4 fotos, hasta 10 MB por imagen.
+                  </p>
                 </label>
               </div>
 

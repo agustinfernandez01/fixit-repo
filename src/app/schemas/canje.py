@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 
@@ -40,6 +40,7 @@ class EquipoOfrecidoCanjeBase(BaseModel):
     estado_funcional: Optional[str] = None
     detalle_pantalla: Optional[str] = None
     detalle_carcasa: Optional[str] = None
+    foto_url: Optional[str] = None
     incluye_caja: bool = False
     incluye_cargador: bool = False
     observaciones: Optional[str] = None
@@ -72,6 +73,7 @@ class EquipoOfrecidoCanjeResponse(EquipoOfrecidoCanjeBase):
     id_equipo_ofrecido: int
     id_usuario: int
     fecha_registro: Optional[datetime] = None
+    fotos_urls: list[str] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -126,6 +128,8 @@ class SolicitudCanjeAdminResponse(BaseModel):
     equipo_bateria_porcentaje: Optional[int] = None
     equipo_estado_estetico: Optional[str] = None
     equipo_estado_funcional: Optional[str] = None
+    equipo_foto_url: Optional[str] = None
+    equipo_fotos_urls: list[str] = Field(default_factory=list)
     id_producto_interes: int
     producto_interes_nombre: Optional[str] = None
     producto_interes_precio: Optional[Decimal] = None

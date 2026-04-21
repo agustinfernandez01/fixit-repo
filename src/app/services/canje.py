@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import case
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import UPLOAD_DIR
 from app.models.canje import EquipoOfrecidoCanje, SolicitudCanje
 from app.models.equipos import Equipo
 from app.models.productos import Productos
@@ -14,6 +16,22 @@ def _formatear_decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+def _listar_fotos_equipo_ofrecido(id_equipo_ofrecido: int) -> list[str]:
+    rel_dir = Path("canje_equipos") / str(id_equipo_ofrecido)
+    abs_dir = UPLOAD_DIR / rel_dir
+    if not abs_dir.exists():
+        return []
+
+    fotos: list[str] = []
+    for p in sorted(abs_dir.iterdir()):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+            continue
+        fotos.append(f"/uploads/{rel_dir.as_posix()}/{p.name}")
+    return fotos
 
 
 def _aplicar_descuento_stock(db: Session, id_producto: int) -> None:
@@ -67,6 +85,12 @@ def listar_solicitudes_admin(db: Session) -> list[dict[str, Any]]:
                 "equipo_bateria_porcentaje": equipo.bateria_porcentaje if equipo else None,
                 "equipo_estado_estetico": equipo.estado_estetico if equipo else None,
                 "equipo_estado_funcional": equipo.estado_funcional if equipo else None,
+                "equipo_foto_url": (equipo.foto_url if equipo else None),
+                "equipo_fotos_urls": (
+                    _listar_fotos_equipo_ofrecido(solicitud.id_equipo_ofrecido)
+                    if equipo
+                    else []
+                ),
                 "id_producto_interes": solicitud.id_producto_interes,
                 "producto_interes_nombre": producto.nombre if producto else None,
                 "producto_interes_precio": _formatear_decimal(producto.precio) if producto else None,
