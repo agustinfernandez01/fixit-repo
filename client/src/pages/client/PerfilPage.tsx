@@ -1,16 +1,42 @@
+import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { getAccessToken, getCurrentUserProfile, getCurrentUserRole } from '../../lib/auth'
+import { getAccessToken } from '../../lib/auth'
+import { usuarioApi } from '../../services/usuarioApi'
+import type { UsuarioPerfil } from '../../types/usuario'
 
 export default function PerfilPage() {
   const token = getAccessToken()
-  const perfil = getCurrentUserProfile()
-  const role = (getCurrentUserRole() ?? '').toLowerCase()
-  const isAdmin = role.includes('admin')
-  const canAdmin = isAdmin || import.meta.env.DEV || String(import.meta.env.VITE_ADMIN_BYPASS ?? '').toLowerCase() === 'true'
+  const [perfil, setPerfil] = useState<UsuarioPerfil | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   if (!token) {
     return <Navigate to="/login?next=%2Fperfil" replace />
   }
+
+  useEffect(() => {
+    let mounted = true
+    async function loadProfile() {
+      setLoading(true)
+      setError(null)
+      try {
+        const me = await usuarioApi.me()
+        if (!mounted) return
+        setPerfil(me)
+      } catch (e) {
+        if (!mounted) return
+        setError(e instanceof Error ? e.message : 'No se pudo cargar tu perfil.')
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    void loadProfile()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const isAdmin = (perfil?.rol_nombre ?? '').toLowerCase().includes('admin')
 
   return (
     <section className="mx-auto max-w-4xl px-6 py-10">
@@ -24,7 +50,11 @@ export default function PerfilPage() {
         </Link>
       </div>
 
-      {perfil ? (
+      {loading ? (
+        <div className="rounded-3xl border border-gray-100 bg-white p-8 text-gray-500">Cargando perfil...</div>
+      ) : error ? (
+        <div className="rounded-3xl border border-red-100 bg-red-50 p-8 text-red-700">{error}</div>
+      ) : perfil ? (
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <article className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
             <p className="mb-2 text-xs font-semibold tracking-[0.18em] text-gray-400 uppercase">Datos de cuenta</p>
@@ -37,8 +67,12 @@ export default function PerfilPage() {
                 <dd className="mt-1 text-sm text-gray-700">{perfil.email ?? 'No disponible'}</dd>
               </div>
               <div>
+                <dt className="text-xs font-semibold tracking-widest text-gray-300 uppercase">Teléfono</dt>
+                <dd className="mt-1 text-sm text-gray-700">{perfil.telefono ?? 'No disponible'}</dd>
+              </div>
+              <div>
                 <dt className="text-xs font-semibold tracking-widest text-gray-300 uppercase">Estado</dt>
-                <dd className="mt-1 text-sm text-gray-700">Activo</dd>
+                <dd className="mt-1 text-sm text-gray-700">{perfil.activo ? 'Activo' : 'Inactivo'}</dd>
               </div>
             </dl>
           </article>
@@ -46,9 +80,9 @@ export default function PerfilPage() {
           <aside className="rounded-3xl border border-gray-200 bg-gray-900 p-8 text-white shadow-sm">
             <p className="mb-2 text-xs font-semibold tracking-[0.18em] text-white/50 uppercase">Acceso</p>
             <h3 className="text-xl font-bold">Tu tipo de usuario</h3>
-            {canAdmin ? (
+            {isAdmin ? (
               <p className="mt-4 text-sm text-white/80">
-                Sos <span className="font-semibold">{perfil.role}</span>. Tenés acceso al panel de administración.
+                Sos <span className="font-semibold">{perfil.rol_nombre}</span>. Tenés acceso al panel de administración.
               </p>
             ) : (
               <p className="mt-4 text-sm text-white/80">
@@ -59,15 +93,15 @@ export default function PerfilPage() {
             {isAdmin ? (
               <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-xs font-semibold tracking-widest text-white/50 uppercase">Tipo</p>
-                <p className="mt-1 text-lg font-bold">{perfil.role}</p>
+                <p className="mt-1 text-lg font-bold">{perfil.rol_nombre}</p>
               </div>
             ) : null}
 
             <Link
-              to={canAdmin ? '/admin' : '/tienda'}
+              to={isAdmin ? '/admin' : '/tienda'}
               className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-white px-4 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-100"
             >
-              {canAdmin ? 'Ir al panel' : 'Ir a tienda'}
+              {isAdmin ? 'Ir al panel' : 'Ir a tienda'}
             </Link>
           </aside>
         </div>

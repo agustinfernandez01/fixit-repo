@@ -8,7 +8,14 @@ import {
 	setCartToken,
 } from '../lib/cart'
 import fixitLogo from '../assets/fixit-logo.png'
-import { clearAuthTokens, getAccessToken, getCurrentUserRole } from '../lib/auth'
+import {
+	AUTH_REFRESH_STATE_EVENT,
+	AUTH_UPDATED_EVENT,
+	clearAuthTokens,
+	getAccessToken,
+	getCurrentUserRole,
+	isAuthRefreshInProgress,
+} from '../lib/auth'
 import { carritoApi } from '../services/carritoApi'
 
 const NAV_LINKS = [
@@ -23,10 +30,15 @@ const NAV_LINKS = [
 export default function ClientLayout() {
 	const location = useLocation()
 	const navigate = useNavigate()
-	const logged = !!getAccessToken()
-	const role = (getCurrentUserRole() ?? '').toLowerCase()
+	const [authSnapshot, setAuthSnapshot] = useState({
+		logged: !!getAccessToken(),
+		role: (getCurrentUserRole() ?? '').toLowerCase(),
+	})
+	const [isRefreshingAuth, setIsRefreshingAuth] = useState(isAuthRefreshInProgress())
+	const logged = authSnapshot.logged
+	const role = authSnapshot.role
 	const isAdmin = role.includes('admin')
-	const showAdminLink = logged && isAdmin
+	const showAdminLink = logged && isAdmin && !isRefreshingAuth
 	const [cartCount, setCartCount] = useState(0)
 	const [cartReady, setCartReady] = useState(false)
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -40,6 +52,34 @@ export default function ClientLayout() {
 	useEffect(() => {
 		setMobileMenuOpen(false)
 	}, [location.pathname, location.search])
+
+	useEffect(() => {
+		const refreshSnapshot = () =>
+			setAuthSnapshot({
+				logged: !!getAccessToken(),
+				role: (getCurrentUserRole() ?? '').toLowerCase(),
+			})
+
+		const onAuthUpdated = () => {
+			refreshSnapshot()
+		}
+		const onRefreshState = (ev: Event) => {
+			const detail = (ev as CustomEvent<{ inProgress?: boolean }>).detail
+			if (typeof detail?.inProgress === 'boolean') {
+				setIsRefreshingAuth(detail.inProgress)
+			}
+			if (!detail?.inProgress) {
+				refreshSnapshot()
+			}
+		}
+
+		window.addEventListener(AUTH_UPDATED_EVENT, onAuthUpdated)
+		window.addEventListener(AUTH_REFRESH_STATE_EVENT, onRefreshState)
+		return () => {
+			window.removeEventListener(AUTH_UPDATED_EVENT, onAuthUpdated)
+			window.removeEventListener(AUTH_REFRESH_STATE_EVENT, onRefreshState)
+		}
+	}, [])
 
 	useEffect(() => {
 		let alive = true
@@ -114,6 +154,11 @@ export default function ClientLayout() {
 					</ul>
 
 					<div className="flex items-center gap-3">
+						{isRefreshingAuth ? (
+							<span className="hidden text-xs font-medium text-gray-400 sm:block">
+								Actualizando sesión...
+							</span>
+						) : null}
 						{logged ? (
 							<Link
 								to="/perfil"

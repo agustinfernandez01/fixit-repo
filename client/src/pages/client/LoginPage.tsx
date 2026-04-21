@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { apiUrl } from '../../services/api'
+import { loginWithFallback } from '../../services/api'
 import { setAuthTokens } from '../../lib/auth'
 import { regenerateCartToken, setCartToken } from '../../lib/cart'
 import { carritoApi } from '../../services/carritoApi'
@@ -38,26 +38,7 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
     try {
-      const res = await fetch(apiUrl('/login/post'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const text = await res.text()
-      if (!res.ok) {
-        let detail = res.statusText
-        try {
-          const j = JSON.parse(text) as { detail?: string }
-          if (typeof j.detail === 'string') detail = j.detail
-        } catch {
-          if (text) detail = text
-        }
-        throw new Error(detail || `HTTP ${res.status}`)
-      }
-      const j = JSON.parse(text) as {
-        access_token: string
-        refresh_token: string
-      }
+      const j = await loginWithFallback(email, password)
       setAuthTokens(j.access_token, j.refresh_token)
 
       // Sincroniza el carrito con el usuario logueado y actualiza token local.

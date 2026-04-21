@@ -8,7 +8,7 @@ import {
   setLastKnownCartCount,
   setCartToken,
 } from '../../lib/cart'
-import { apiUrl, mediaUrl } from '../../services/api'
+import { apiUrl, loginWithFallback, mediaUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
 import type { CarritoCheckoutResponse, CarritoResumen } from '../../types/carrito'
 
@@ -468,18 +468,7 @@ function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
   }
 
   async function login(email: string, password: string) {
-    const res = await fetch(apiUrl('/login/post'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    if (!res.ok) {
-      throw new Error(await parseError(res))
-    }
-    const j = (await res.json()) as {
-      access_token: string
-      refresh_token: string
-    }
+    const j = await loginWithFallback(email, password)
     setAuthTokens(j.access_token, j.refresh_token)
     try {
       const ensured = await carritoApi.ensure(true)

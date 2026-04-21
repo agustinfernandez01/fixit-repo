@@ -1,4 +1,5 @@
 import {
+  setAuthRefreshInProgress,
   clearAuthTokens,
   getAccessToken,
   getRefreshToken,
@@ -44,6 +45,12 @@ type RefreshResponse = {
   token_type: string
 }
 
+export type LoginResponse = {
+  access_token: string
+  refresh_token: string
+  token_type?: string
+}
+
 function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
   if (!headers) return {}
   if (headers instanceof Headers) {
@@ -63,11 +70,16 @@ async function tryRefreshAccessToken(): Promise<boolean> {
   const refresh = getRefreshToken()
   if (!refresh) return false
 
+  setAuthRefreshInProgress(true)
   try {
-    const res = await fetch(
-      apiUrl(`/refresh/post?refresh_token=${encodeURIComponent(refresh)}`),
-      { method: 'POST' },
-    )
+    const refreshQuery = `?refresh_token=${encodeURIComponent(refresh)}`
+    let res = await fetch(apiUrl(`/api/v1/auth/refresh${refreshQuery}`), {
+      method: 'POST',
+    })
+    if (res.status === 404) {
+      // Fallback during gradual migration from legacy routes.
+      res = await fetch(apiUrl(`/refresh/post${refreshQuery}`), { method: 'POST' })
+    }
     if (!res.ok) {
       clearAuthTokens()
       return false
@@ -87,6 +99,8 @@ async function tryRefreshAccessToken(): Promise<boolean> {
   } catch {
     clearAuthTokens()
     return false
+  } finally {
+    setAuthRefreshInProgress(false)
   }
 }
 
@@ -149,4 +163,35 @@ export async function fetchJson<T>(
   }
   if (!text) return undefined as T
   return JSON.parse(text) as T
+}
+
+export async function loginWithFallback(email: string, password: string): Promise<LoginResponse> {
+  const body = JSON.stringify({ email, password })
+
+  async function doLogin(path: string): Promise<Response> {
+    return fetch(apiUrl(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+  }
+
+  let res = await doLogin('/api/v1/auth/login')
+  if (res.status === 404) {
+    res = await doLogin('/login/post')
+  }
+
+  const text = await res.text()
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const j = JSON.parse(text) as { detail?: string }
+      if (typeof j.detail === 'string') detail = j.detail
+    } catch {
+      if (text) detail = text
+    }
+    throw new Error(detail || `HTTP ${res.status}`)
+  }
+
+  return JSON.parse(text) as LoginResponse
 }
