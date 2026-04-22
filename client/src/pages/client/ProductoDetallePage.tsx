@@ -17,6 +17,16 @@ function money(value: string | number): string {
   }).format(amount)
 }
 
+function moneyUsd(value: string | number): string {
+  const amount = typeof value === 'string' ? Number(value) : value
+  if (!Number.isFinite(amount)) return 'USD 0'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
 function buildWhatsAppUrl(productName: string): string {
   const phone = WHATSAPP_PHONE.replace(/\D/g, '')
   const message = `Hola, quisiera consultar disponibilidad de ${productName}.`
@@ -30,6 +40,9 @@ export default function ProductoDetallePage() {
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [showUsdPrice, setShowUsdPrice] = useState(false)
+  const [dolarRate, setDolarRate] = useState<number | null>(null)
+  const [loadingDolar, setLoadingDolar] = useState(true)
 
   useEffect(() => {
     let alive = true
@@ -47,6 +60,7 @@ export default function ProductoDetallePage() {
         const data = await productosApi.get(parsedId)
         if (!alive) return
         setProducto(data)
+        setShowUsdPrice(false)
       } catch (e) {
         if (!alive) return
         setError(e instanceof Error ? e.message : 'No se pudo cargar el detalle del producto')
@@ -61,6 +75,35 @@ export default function ProductoDetallePage() {
       alive = false
     }
   }, [id])
+
+  useEffect(() => {
+    let alive = true
+
+    async function loadDolarRate() {
+      setLoadingDolar(true)
+      try {
+        const res = await fetch('https://dolarapi.com/v1/dolares/blue')
+        if (!res.ok) throw new Error('No se pudo obtener dolar blue')
+        const data = (await res.json()) as { venta?: number }
+        if (!alive) return
+        if (typeof data.venta === 'number' && data.venta > 0) {
+          setDolarRate(data.venta)
+        } else {
+          setDolarRate(1100)
+        }
+      } catch {
+        if (!alive) return
+        setDolarRate(1100)
+      } finally {
+        if (alive) setLoadingDolar(false)
+      }
+    }
+
+    void loadDolarRate()
+    return () => {
+      alive = false
+    }
+  }, [])
 
   async function handleAddToCart() {
     if (!producto) return
@@ -80,6 +123,17 @@ export default function ProductoDetallePage() {
     if (!producto) return
     window.open(buildWhatsAppUrl(producto.nombre), '_self')
   }
+
+  const precioArsNumber =
+    producto != null
+      ? typeof producto.precio === 'string'
+        ? Number(producto.precio)
+        : producto.precio
+      : NaN
+  const precioUsdConvertido =
+    Number.isFinite(precioArsNumber) && dolarRate && dolarRate > 0
+      ? precioArsNumber / dolarRate
+      : null
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-10">
@@ -105,7 +159,47 @@ export default function ProductoDetallePage() {
               {producto.tipo_producto ?? 'producto'}
             </p>
             <h1 className="mb-3 text-3xl font-black tracking-tight text-gray-900">{producto.nombre}</h1>
-            <p className="mb-6 text-4xl font-black text-gray-900">{money(producto.precio)}</p>
+            {producto.detalle_equipo?.estado_comercial?.toLowerCase() === 'usado' ? (
+              <div className="mb-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={showUsdPrice}
+                  aria-label="Mostrar precio en USD"
+                  onClick={() => {
+                    if (!precioUsdConvertido) return
+                    setShowUsdPrice((v) => !v)
+                  }}
+                  disabled={!precioUsdConvertido}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    showUsdPrice ? 'bg-gray-900' : 'bg-gray-300'
+                  } ${!precioUsdConvertido ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                      showUsdPrice ? 'translate-x-5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="text-xs font-semibold tracking-wide text-gray-600 uppercase">
+                  Mostrar precio en USD
+                </span>
+              </div>
+            ) : null}
+            <p className="mb-6 text-4xl font-black text-gray-900">
+              {showUsdPrice && precioUsdConvertido != null
+                ? moneyUsd(precioUsdConvertido)
+                : money(producto.precio)}
+            </p>
+            {producto.detalle_equipo?.estado_comercial?.toLowerCase() === 'usado' ? (
+              <p className="mb-4 text-xs text-gray-500">
+                {loadingDolar
+                  ? 'Cotizacion USD: cargando...'
+                  : dolarRate
+                    ? `Cotizacion USD oficial: ${money(dolarRate)}`
+                    : 'Cotizacion USD no disponible'}
+              </p>
+            ) : null}
             <p className="mb-7 text-sm leading-relaxed text-gray-600">
               {producto.descripcion?.trim() || 'Sin descripción disponible.'}
             </p>

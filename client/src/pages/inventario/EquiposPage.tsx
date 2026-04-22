@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EquipoConModelo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
 import { mediaUrl } from '../../services/api'
+import { productosApi } from '../../services/productosApi'
+import type { ProductoCompra } from '../../types/carrito'
 
 const TIPOS_EQUIPO = [
   { value: 'iphone', label: 'iPhone' },
@@ -49,9 +51,43 @@ function parseNumberEsAr(input: string | number): number {
   return Number(normalized)
 }
 
+function fmtArs(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = typeof value === 'string' ? Number(value) : value
+  if (!Number.isFinite(n)) return String(value)
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(n)
+}
+
+function fmtUsd(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = typeof value === 'string' ? Number(value) : value
+  if (!Number.isFinite(n)) return String(value)
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+function formatUsdInput(value: number): string {
+  if (!Number.isFinite(value)) return ''
+  if (value === 0) return '0.00'
+  if (Math.abs(value) < 0.01) return value.toFixed(6)
+  return value.toFixed(2)
+}
+
 export function EquiposPage() {
   const [rows, setRows] = useState<EquipoRow[]>([])
   const [modelos, setModelos] = useState<ModeloEquipo[]>([])
+  const [productosById, setProductosById] = useState<Record<number, ProductoCompra>>({})
+  const [tableCurrency, setTableCurrency] = useState<'ars' | 'usd'>('ars')
+  const [dolarRate, setDolarRate] = useState<number | null>(null)
+  const [loadingDolar, setLoadingDolar] = useState(true)
+  const [dolarUpdatedAt, setDolarUpdatedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -78,16 +114,62 @@ export function EquiposPage() {
     }
   }, [fotoPreview])
 
+  useEffect(() => {
+    let alive = true
+
+    async function loadDolarRate() {
+      setLoadingDolar(true)
+      try {
+        const res = await fetch('https://dolarapi.com/v1/dolares/blue')
+        if (!res.ok) throw new Error('No se pudo obtener dolar blue')
+        const data = (await res.json()) as { venta?: number; fechaActualizacion?: string }
+        if (!alive) return
+        if (typeof data.venta === 'number' && data.venta > 0) {
+          setDolarRate(data.venta)
+          setDolarUpdatedAt(data.fechaActualizacion ?? null)
+        } else {
+          setDolarRate(1100)
+          setDolarUpdatedAt(null)
+        }
+      } catch {
+        if (!alive) return
+        setDolarRate(1100)
+        setDolarUpdatedAt(null)
+      } finally {
+        if (alive) setLoadingDolar(false)
+      }
+    }
+
+    void loadDolarRate()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const precioUsdCalculado = useMemo(() => {
+    const arsRaw = String(form.precio_ars ?? '').trim()
+    if (!arsRaw) return ''
+    const ars = parseNumberEsAr(arsRaw)
+    if (!Number.isFinite(ars) || ars < 0 || !dolarRate || dolarRate <= 0) return ''
+    return formatUsdInput(ars / dolarRate)
+  }, [form.precio_ars, dolarRate])
+
   const load = useCallback(async () => {
     setError(null)
     setLoading(true)
     try {
-      const [eq, mo] = await Promise.all([
+      const [eq, mo, productos] = await Promise.all([
         inventarioApi.equipos.list(0, 100),
         inventarioApi.modelos.list(0, 100),
+        productosApi.list(),
       ])
       setRows(eq as EquipoRow[])
       setModelos(mo.filter((m) => m.activo))
+      const index: Record<number, ProductoCompra> = {}
+      for (const p of productos) {
+        index[p.id] = p
+      }
+      setProductosById(index)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar')
     } finally {
@@ -110,6 +192,7 @@ export function EquiposPage() {
 
     setEditingId(idEquipo)
     setFotoFile(null)
+    const producto = e.id_producto ? productosById[e.id_producto] : undefined
     setForm({
       id_modelo: idModelo,
       imei: e.imei ?? '',
@@ -117,8 +200,8 @@ export function EquiposPage() {
       tipo_equipo: e.tipo_equipo ?? '',
       estado_comercial: e.estado_comercial ?? '',
       activo: e.activo ?? true,
-      precio_ars: '',
-      precio_usd: '',
+      precio_ars: producto?.precio ?? '',
+      precio_usd: producto?.precio_usd ?? '',
     })
   }
 
@@ -168,7 +251,9 @@ export function EquiposPage() {
     const precioArs =
       form.precio_ars === '' || form.precio_ars === null ? null : parseNumberEsAr(form.precio_ars)
     const precioUsd =
-      form.precio_usd === '' || form.precio_usd === null ? null : parseNumberEsAr(form.precio_usd)
+      precioArs !== null && Number.isFinite(precioArs) && dolarRate && dolarRate > 0
+        ? precioArs / dolarRate
+        : null
     const body: Record<string, unknown> = {
       id_modelo: idModelo,
       imei: form.imei.trim() || null,
@@ -303,25 +388,38 @@ export function EquiposPage() {
                 min={0}
                 step="0.01"
                 value={form.precio_ars}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, precio_ars: e.target.value }))
-                }
+                onChange={(e) => {
+                  const arsRaw = e.target.value
+                  if (arsRaw === '') {
+                    setForm((f) => ({ ...f, precio_ars: '' }))
+                    return
+                  }
+                  const ars = parseNumberEsAr(arsRaw)
+                  if (!Number.isFinite(ars) || ars < 0) {
+                    setForm((f) => ({ ...f, precio_ars: arsRaw }))
+                    return
+                  }
+                  setForm((f) => ({
+                    ...f,
+                    precio_ars: arsRaw,
+                  }))
+                }}
                 placeholder="Si dejás vacío, queda en 0"
               />
             </label>
             <label>
               Precio (USD)
               <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.precio_usd}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, precio_usd: e.target.value }))
-                }
-                placeholder="Opcional"
+                type="text"
+                value={precioUsdCalculado}
+                readOnly
+                placeholder="Se calcula automáticamente"
               />
             </label>
+            <div className="msg-muted" style={{ alignSelf: 'end' }}>
+              Cotización API: {loadingDolar ? 'cargando...' : dolarRate ? fmtArs(dolarRate) : 'no disponible'}
+              {dolarUpdatedAt ? ` · ${new Date(dolarUpdatedAt).toLocaleString('es-AR')}` : ''}
+            </div>
             <label>
               Foto del equipo
               <input
@@ -378,6 +476,23 @@ export function EquiposPage() {
 
       <div className="panel">
         <h2>Listado</h2>
+        <div className="toolbar" style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+          <span className="msg-muted">Moneda:</span>
+          <button
+            type="button"
+            className={`btn btn-sm ${tableCurrency === 'ars' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setTableCurrency('ars')}
+          >
+            ARS
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${tableCurrency === 'usd' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setTableCurrency('usd')}
+          >
+            USD
+          </button>
+        </div>
 
         {loading ? (
           <p className="msg-muted">Cargando…</p>
@@ -389,12 +504,12 @@ export function EquiposPage() {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>ID producto</th>
                   <th>Foto</th>
                   <th>Modelo</th>
                   <th>IMEI</th>
                   <th>Tipo</th>
                   <th>Estado comercial</th>
+                  <th>Precio</th>
                   <th>Ingreso</th>
                   <th>Activo</th>
                   <th>Capacidad</th>
@@ -405,10 +520,10 @@ export function EquiposPage() {
               <tbody>
                 {rows.map((r) => {
                   const idEquipo = r.id_equipo ?? r.id
+                  const producto = r.id_producto ? productosById[r.id_producto] : undefined
                   return (
                     <tr key={idEquipo ?? `${r.id_producto ?? 'eq'}-${r.imei ?? 'sin-imei'}`}>
                       <td>{idEquipo ?? '—'}</td>
-                      <td>{r.id_producto ?? '—'}</td>
                       <td>
                         {r.foto_url ? (
                           <img
@@ -430,6 +545,13 @@ export function EquiposPage() {
                       <td>{r.imei ?? '—'}</td>
                       <td>{r.tipo_equipo ?? '—'}</td>
                       <td>{r.estado_comercial ?? '—'}</td>
+                      <td>
+                        {tableCurrency === 'ars'
+                          ? fmtArs(producto?.precio)
+                          : producto?.precio != null && dolarRate && dolarRate > 0
+                            ? fmtUsd(Number(producto.precio) / dolarRate)
+                            : '—'}
+                      </td>
                       <td>{fmtDate(r.fecha_ingreso)}</td>
                       <td>{r.activo ? 'Sí' : 'No'}</td>
                       <td>

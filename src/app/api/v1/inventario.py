@@ -45,6 +45,38 @@ from app.schemas.inventario import (
 router = APIRouter()
 
 
+def _foto_url_si_existe(foto_url: str | None) -> str | None:
+    if not foto_url:
+        return None
+    path = foto_url.strip()
+    if not path.startswith("/uploads/"):
+        return path
+    rel = path[len("/uploads/") :]
+    abs_path = UPLOAD_DIR / rel
+    return path if abs_path.exists() else None
+
+
+def _clonar_producto_para_equipo_usado(
+    db: Session,
+    *,
+    producto_base: Productos,
+    nombre_producto: str,
+    precio_ars: Decimal | None,
+    precio_usd: Decimal | None,
+) -> Productos:
+    nuevo_producto = Productos(
+        nombre=nombre_producto,
+        descripcion=producto_base.descripcion,
+        precio=Decimal(str(precio_ars)) if precio_ars is not None else producto_base.precio,
+        precio_usd=Decimal(str(precio_usd)) if precio_usd is not None else producto_base.precio_usd,
+        id_categoria=producto_base.id_categoria,
+        activo=True,
+    )
+    db.add(nuevo_producto)
+    db.flush()
+    return nuevo_producto
+
+
 @router.get("/modelos", response_model=list[ModeloEquipoResponse])
 def listar_modelos(
     skip: int = Query(0, ge=0),
@@ -107,13 +139,16 @@ def listar_equipos(
     db: Session = Depends(get_db),
 ):
     """Lista equipos trayendo en la misma consulta el modelo (join)."""
-    return (
+    rows = (
         db.query(Equipo)
         .options(joinedload(Equipo.modelo))
         .offset(skip)
         .limit(limit)
         .all()
     )
+    for row in rows:
+        row.foto_url = _foto_url_si_existe(row.foto_url)
+    return rows
 
 
 @router.post("/equipos", response_model=EquipoResponse, status_code=status.HTTP_201_CREATED)
@@ -145,7 +180,9 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
         capacidad = f"{modelo.capacidad_gb}GB" if modelo.capacidad_gb is not None else "s/capacidad"
         color_equipo = (data.get("color") or "").strip()
         color = (color_equipo or getattr(modelo, "color", None) or "sin color").strip()
-        nombre_producto = f"{modelo.nombre_modelo} - {capacidad} - {color}"
+        estado_comercial = (data.get("estado_comercial") or "").strip().lower()
+        estado_suffix = "Usado" if estado_comercial == "usado" else "Nuevo"
+        nombre_producto = f"{modelo.nombre_modelo} - {capacidad} - {color} - {estado_suffix}"
 
         categoria = (
             db.query(CategoriaProducto)
@@ -159,11 +196,15 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
             db.add(categoria)
             db.flush()
 
-        producto = (
-            db.query(Productos)
-            .filter(Productos.id_categoria == categoria.id, Productos.nombre == nombre_producto)
-            .first()
-        )
+        # Para equipos usados, cada alta debe crear su propio producto para no
+        # pisar precio/stock de equipos nuevos (y viceversa).
+        producto = None
+        if estado_comercial != "usado":
+            producto = (
+                db.query(Productos)
+                .filter(Productos.id_categoria == categoria.id, Productos.nombre == nombre_producto)
+                .first()
+            )
         if not producto:
             producto = Productos(
                 nombre=nombre_producto,
@@ -203,6 +244,7 @@ def obtener_equipo(id_equipo: int, db: Session = Depends(get_db)):
     )
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    obj.foto_url = _foto_url_si_existe(obj.foto_url)
     return obj
 
 
@@ -239,6 +281,28 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
                 status_code=400,
                 detail="El ID producto no existe en catálogo (productos).",
             )
+
+        estado_objetivo = (patch.get("estado_comercial", obj.estado_comercial) or "").strip().lower()
+        # Si el equipo es usado, forzamos producto propio para no mezclar
+        # precios con "nuevos" u otros usados históricos.
+        if estado_objetivo == "usado":
+            capacidad = (
+                f"{obj.modelo.capacidad_gb}GB"
+                if obj.modelo and obj.modelo.capacidad_gb is not None
+                else "s/capacidad"
+            )
+            color = ((patch.get("color", obj.color) or getattr(obj.modelo, "color", None) or "sin color")).strip()
+            nombre_producto = f"{obj.modelo.nombre_modelo if obj.modelo else 'Equipo'} - {capacidad} - {color} - Usado"
+            nuevo_prod = _clonar_producto_para_equipo_usado(
+                db,
+                producto_base=prod,
+                nombre_producto=nombre_producto,
+                precio_ars=precio_ars,
+                precio_usd=precio_usd,
+            )
+            obj.id_producto = nuevo_prod.id
+            prod = nuevo_prod
+
         if precio_ars is not None:
             prod.precio = Decimal(str(precio_ars))
         if precio_usd is not None:

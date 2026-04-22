@@ -3,31 +3,54 @@ from app.models.productos import Productos
 from app.models.accesorios import Accesorios
 from app.models.equipos import Equipos
 from app.schemas.productos import ProductoCreate, ProductoPatch, ProductoBase
+from app.config import UPLOAD_DIR
+
+
+def _foto_url_si_existe(foto_url: str | None) -> str | None:
+    if not foto_url:
+        return None
+    path = foto_url.strip()
+    if not path.startswith("/uploads/"):
+        return path
+    rel = path[len("/uploads/") :]
+    abs_path = UPLOAD_DIR / rel
+    return path if abs_path.exists() else None
 
 #get - listar productos
 def get_productos(db: Session) -> list[dict]:
     productos = db.query(Productos).all()
 
     equipos_rows = (
-        db.query(Equipos.id, Equipos.id_producto, Equipos.tipo_equipo, Equipos.foto_url)
+        db.query(
+            Equipos.id,
+            Equipos.id_producto,
+            Equipos.tipo_equipo,
+            Equipos.estado_comercial,
+            Equipos.foto_url,
+        )
         .filter(Equipos.id_producto.is_not(None))
         .all()
     )
-    equipos_por_producto = {
-        id_producto: id_equipo
-        for id_equipo, id_producto, _tipo_equipo, _foto_url in equipos_rows
-        if id_producto is not None
-    }
-    tipo_equipo_por_producto = {
-        id_producto: tipo_equipo
-        for _id_equipo, id_producto, tipo_equipo, _foto_url in equipos_rows
-        if id_producto is not None
-    }
-    foto_por_producto_equipo = {
-        id_producto: foto_url
-        for _id_equipo, id_producto, _tipo_equipo, foto_url in equipos_rows
-        if id_producto is not None
-    }
+    equipos_por_producto = {}
+    tipo_equipo_por_producto = {}
+    estado_comercial_por_producto = {}
+    foto_por_producto_equipo = {}
+    for id_equipo, id_producto, tipo_equipo, estado_comercial, foto_url in equipos_rows:
+        if id_producto is None:
+            continue
+        if id_producto not in equipos_por_producto:
+            equipos_por_producto[id_producto] = id_equipo
+        if id_producto not in tipo_equipo_por_producto and tipo_equipo:
+            tipo_equipo_por_producto[id_producto] = tipo_equipo
+        if id_producto not in foto_por_producto_equipo and foto_url:
+            foto_por_producto_equipo[id_producto] = _foto_url_si_existe(foto_url)
+
+        estado_norm = (estado_comercial or "").strip().lower()
+        previo = estado_comercial_por_producto.get(id_producto)
+        # Si hay cualquier equipo usado ligado al producto, prevalece "usado"
+        # para evitar que se cuele en la tienda de nuevos.
+        if estado_norm == "usado" or previo is None:
+            estado_comercial_por_producto[id_producto] = estado_norm or previo
 
     accesorios_rows = db.query(Accesorios.id, Accesorios.id_producto, Accesorios.foto_url).all()
     accesorios_por_producto = {}
@@ -36,7 +59,7 @@ def get_productos(db: Session) -> list[dict]:
         if id_producto not in accesorios_por_producto:
             accesorios_por_producto[id_producto] = id_accesorio
         if id_producto not in foto_por_producto_accesorio:
-            foto_por_producto_accesorio[id_producto] = foto_url
+            foto_por_producto_accesorio[id_producto] = _foto_url_si_existe(foto_url)
 
     response: list[dict] = []
     for p in productos:
@@ -66,6 +89,7 @@ def get_productos(db: Session) -> list[dict]:
                 "tipo_producto": tipo_producto,
                 "id_origen": id_origen,
                 "tipo_equipo": tipo_equipo_por_producto.get(p.id),
+                "estado_comercial": estado_comercial_por_producto.get(p.id),
             }
         )
 
@@ -105,7 +129,7 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
             "color": getattr(equipo, "color", None),
             "tipo_equipo": equipo.tipo_equipo,
             "estado_comercial": equipo.estado_comercial,
-            "foto_url": equipo.foto_url,
+            "foto_url": _foto_url_si_existe(equipo.foto_url),
         }
         return base
 

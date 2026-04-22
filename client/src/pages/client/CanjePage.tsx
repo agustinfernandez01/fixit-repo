@@ -41,8 +41,20 @@ function money(value: number | string | null | undefined) {
 }
 
 function getProductCondition(producto: ProductoCompra): 'nuevo' | 'usado' {
+  const estado = (producto.estado_comercial ?? '').toLowerCase().trim()
+  if (estado === 'nuevo' || estado === 'usado') {
+    return estado
+  }
   const raw = (producto.tipo_equipo ?? '').toLowerCase()
-  if (raw.includes('usad') || raw.includes('reacond') || raw.includes('semi')) {
+  const nombre = (producto.nombre ?? '').toLowerCase()
+  if (
+    raw.includes('usad') ||
+    raw.includes('reacond') ||
+    raw.includes('semi') ||
+    nombre.includes('usado') ||
+    nombre.includes('reacondicionado') ||
+    nombre.endsWith('- usado')
+  ) {
     return 'usado'
   }
   return 'nuevo'

@@ -14,6 +14,7 @@ class ProductoBase(BaseModel):
     tipo_producto: Optional[str] = None
     id_origen: Optional[int] = None
     tipo_equipo: Optional[str] = None
+    estado_comercial: Optional[str] = None
     
     class Config:
         orm_mode = True
@@ -46,6 +47,7 @@ class ProductoResponse(BaseModel):
     tipo_producto: Optional[str] = None
     id_origen: Optional[int] = None
     tipo_equipo: Optional[str] = None
+    estado_comercial: Optional[str] = None
     
     class Config:
         orm_mode = True

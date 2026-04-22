@@ -215,8 +215,8 @@ export function CanjeCotizacionesPage() {
     async function loadDolarRate() {
       setLoadingDolar(true)
       try {
-        const res = await fetch('https://dolarapi.com/v1/dolares/oficial')
-        if (!res.ok) throw new Error('No se pudo obtener dolar oficial')
+        const res = await fetch('https://dolarapi.com/v1/dolares/blue')
+        if (!res.ok) throw new Error('No se pudo obtener dolar blue')
         const data = (await res.json()) as { venta?: number; fechaActualizacion?: string }
         if (!alive) return
         if (typeof data.venta === 'number' && data.venta > 0) {

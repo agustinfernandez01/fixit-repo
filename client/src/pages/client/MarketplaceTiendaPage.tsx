@@ -50,8 +50,20 @@ function isRepairProduct(producto: ProductoCompra): boolean {
 }
 
 function isUsedProduct(producto: ProductoCompra): boolean {
+  const estado = normalize(producto.estado_comercial)
+  if (estado) {
+    return estado === 'usado'
+  }
   const t = normalize(producto.tipo_equipo)
-  return t.includes('usad') || t.includes('reacond') || t.includes('semi')
+  const n = normalize(producto.nombre)
+  return (
+    t.includes('usad') ||
+    t.includes('reacond') ||
+    t.includes('semi') ||
+    n.includes('usado') ||
+    n.includes('reacondicionado') ||
+    n.endsWith('- usado')
+  )
 }
 
 function modelLabelFromProduct(producto: ProductoCompra): string {

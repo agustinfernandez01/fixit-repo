@@ -62,6 +62,7 @@ export type ProductoCompra = {
   tipo_producto?: 'equipo' | 'accesorio' | null
   id_origen?: number | null
   tipo_equipo?: string | null
+  estado_comercial?: string | null
 }
 
 export type ProductoEquipoDetalle = {
