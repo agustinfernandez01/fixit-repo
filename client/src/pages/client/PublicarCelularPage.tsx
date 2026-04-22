@@ -24,6 +24,11 @@ const empty = {
   precio_publicado: '' as string | number,
 }
 
+const CAPACIDAD_OPTIONS = [64, 128, 256, 512, 1024] as const
+const BATERIA_OPTIONS = [100, 95, 90, 85, 80, 75, 70] as const
+const ESTADO_ESTETICO_OPTIONS = ['excelente', 'muy bueno', 'bueno', 'con detalles'] as const
+const ESTADO_FUNCIONAL_OPTIONS = ['todo funciona', 'detalle menor', 'requiere revisión'] as const
+
 export default function PublicarCelularPage() {
   const location = useLocation()
   const logged = !!getAccessToken()
@@ -208,16 +213,20 @@ export default function PublicarCelularPage() {
                     <label className="mb-1 block text-xs font-medium text-gray-500">
                       Capacidad (GB)
                     </label>
-                    <input
-                      type="number"
-                      min={0}
+                    <select
                       value={form.capacidad_gb}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, capacidad_gb: e.target.value }))
                       }
                       className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                      placeholder="Ej. 128"
-                    />
+                    >
+                      <option value="">Seleccionar…</option>
+                      {CAPACIDAD_OPTIONS.map((cap) => (
+                        <option key={cap} value={cap}>
+                          {cap} GB
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">Color</label>
@@ -251,17 +260,20 @@ export default function PublicarCelularPage() {
                     <label className="mb-1 block text-xs font-medium text-gray-500">
                       Batería (%)
                     </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
+                    <select
                       value={form.bateria_porcentaje}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, bateria_porcentaje: e.target.value }))
                       }
                       className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                      placeholder="Ej. 92"
-                    />
+                    >
+                      <option value="">Seleccionar…</option>
+                      {BATERIA_OPTIONS.map((bat) => (
+                        <option key={bat} value={bat}>
+                          {bat}%
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">Precio</label>
@@ -287,27 +299,39 @@ export default function PublicarCelularPage() {
                     <label className="mb-1 block text-xs font-medium text-gray-500">
                       Estado estético
                     </label>
-                    <input
+                    <select
                       value={form.estado_estetico}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, estado_estetico: e.target.value }))
                       }
                       className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                      placeholder="Ej. 9/10, sin golpes"
-                    />
+                    >
+                      <option value="">Seleccionar…</option>
+                      {ESTADO_ESTETICO_OPTIONS.map((estado) => (
+                        <option key={estado} value={estado}>
+                          {estado}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">
                       Estado funcional
                     </label>
-                    <input
+                    <select
                       value={form.estado_funcional}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, estado_funcional: e.target.value }))
                       }
                       className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                      placeholder="Ej. Todo OK, FaceID OK"
-                    />
+                    >
+                      <option value="">Seleccionar…</option>
+                      {ESTADO_FUNCIONAL_OPTIONS.map((estado) => (
+                        <option key={estado} value={estado}>
+                          {estado}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

@@ -75,3 +75,33 @@ class RevisionPublicacionResponse(RevisionPublicacionBase):
 
     class Config:
         from_attributes = True
+
+
+class InteresPublicacionBase(BaseModel):
+    mensaje: Optional[str] = None
+    estado: Optional[str] = None
+
+
+class InteresPublicacionCreate(InteresPublicacionBase):
+    id_publicacion: int
+
+
+class InteresPublicacionUpdate(BaseModel):
+    mensaje: Optional[str] = None
+    estado: Optional[str] = None
+
+
+class InteresPublicacionResponse(InteresPublicacionBase):
+    id_interes: int
+    id_publicacion: int
+    id_usuario_interesado: int
+    fecha_interes: Optional[datetime] = None
+    comprador_nombre: Optional[str] = None
+    comprador_email: Optional[str] = None
+    comprador_telefono: Optional[str] = None
+    publicacion_titulo: Optional[str] = None
+    publicacion_modelo: Optional[str] = None
+    whatsapp_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True

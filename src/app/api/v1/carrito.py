@@ -1,11 +1,11 @@
 """API del carrito de compras."""
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
 from app.deps.auth import get_optional_user_id_from_access_token, require_admin_user_id
-from app.models.pedido import Pedido
+from app.models.pedido import DetallePedido, Pedido
 from app.schemas.carrito import (
     CarritoBase,
     CarritoCheckoutRequest,
@@ -248,6 +248,11 @@ def listar_pedidos_pendientes(
         pedidos = (
             db.query(Pedido)
             .filter(Pedido.estado == "pendiente_confirmacion")
+            .options(
+                joinedload(Pedido.usuario),
+                joinedload(Pedido.detalle_pedido).joinedload(DetallePedido.producto),
+            )
+            .order_by(Pedido.fecha_pedido.desc(), Pedido.id.desc())
             .offset(skip)
             .limit(limit)
             .all()
@@ -260,6 +265,34 @@ def listar_pedidos_pendientes(
                 "estado": p.estado,
                 "total": str(p.total) if p.total else "0",
                 "observaciones": p.observaciones,
+                "cliente": {
+                    "id": p.usuario.id if p.usuario else p.id_usuario,
+                    "nombre": " ".join(
+                        part
+                        for part in [
+                            (p.usuario.nombre if p.usuario else None),
+                            (p.usuario.apellido if p.usuario else None),
+                        ]
+                        if part and part.strip()
+                    )
+                    or None,
+                    "email": p.usuario.email if p.usuario else None,
+                    "telefono": p.usuario.telefono if p.usuario else None,
+                },
+                "items": [
+                    {
+                        "id_producto": item.id_producto,
+                        "producto_nombre": item.producto.nombre if item.producto else f"Producto #{item.id_producto}",
+                        "cantidad": item.cantidad,
+                        "precio_unitario": str(item.precio_unitario) if item.precio_unitario else "0",
+                        "subtotal": str(item.subtotal) if item.subtotal else "0",
+                    }
+                    for item in p.detalle_pedido
+                ],
+                "resumen": {
+                    "total_items": len(p.detalle_pedido),
+                    "total_unidades": sum(item.cantidad or 0 for item in p.detalle_pedido),
+                },
             }
             for p in pedidos
         ]

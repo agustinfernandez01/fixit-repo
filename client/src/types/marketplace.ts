@@ -25,3 +25,18 @@ export type RevisionPublicacion = {
   observaciones: string | null
   fecha_revision: string | null
 }
+
+export type InteresPublicacion = {
+  id_interes: number
+  id_publicacion: number
+  id_usuario_interesado: number
+  mensaje: string | null
+  estado: string | null
+  fecha_interes: string | null
+  comprador_nombre: string | null
+  comprador_email: string | null
+  comprador_telefono: string | null
+  publicacion_titulo: string | null
+  publicacion_modelo: string | null
+  whatsapp_url: string | null
+}

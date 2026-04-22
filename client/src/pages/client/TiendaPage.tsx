@@ -6,8 +6,6 @@ import type { ProductoCompra } from '../../types/carrito'
 import { getAccessToken } from '../../lib/auth'
 import { mediaUrl } from '../../services/api'
 import productosAppleFilterImg from '../../assets/filtradocatalogoimg/productos-apple.svg'
-import accesoriosFilterImg from '../../assets/filtradocatalogoimg/accesorios.svg'
-import reparacionesFilterImg from '../../assets/filtradocatalogoimg/reparaciones.svg'
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -34,7 +32,7 @@ function fmtUsd(v: string | number | null | undefined) {
   }).format(n)
 }
 
-type CatalogCategory = 'apple' | 'accesorios' | 'reparaciones'
+type CatalogCategory = 'apple'
 type SortMode = 'featured' | 'price-asc' | 'price-desc' | 'name'
 type VisibleCategory = CatalogCategory
 type CatalogSubcategory =
@@ -65,22 +63,6 @@ const APPLE_SUBCATEGORY_OPTIONS: Array<{
   { id: 'watch', label: 'Apple Watch' },
   { id: 'airpods', label: 'AirPods' },
 ]
-
-const ACCESORIOS_SUBCATEGORY_OPTIONS: Array<{
-  id: CatalogSubcategory
-  label: string
-}> = [
-  { id: 'all', label: 'Todos' },
-  { id: 'funda', label: 'Fundas' },
-  { id: 'templado', label: 'Templados' },
-  { id: 'cabezal', label: 'Cabezales' },
-  { id: 'cable', label: 'Cables' },
-]
-
-const REPARACIONES_SUBCATEGORY_OPTIONS: Array<{
-  id: CatalogSubcategory
-  label: string
-}> = [{ id: 'all', label: 'Todos' }]
 
 const ITEMS_PER_PAGE = 9
 
@@ -142,44 +124,25 @@ function inferFamilyFromTipoEquipo(tipoEquipo: string | null | undefined): strin
   return t
 }
 
-function classifyCategory(producto: ProductoCompra): CatalogCategory {
+function isRepairProduct(producto: ProductoCompra): boolean {
   const name = normalize(producto.nombre)
   const desc = normalize(producto.descripcion ?? '')
-
-  const isRepair =
+  return (
     name.startsWith('reparación') ||
     name.startsWith('reparacion') ||
     name.includes('reparación -') ||
     name.includes('reparacion -') ||
     desc.includes('servicio de reparación') ||
     desc.includes('servicio de reparacion')
+  )
+}
 
-  if (isRepair) return 'reparaciones'
+function isUsedProduct(producto: ProductoCompra): boolean {
+  const t = normalize(producto.tipo_equipo)
+  return t.includes('usad') || t.includes('reacond') || t.includes('semi')
+}
 
-  if (producto.tipo_producto === 'accesorio') return 'accesorios'
-
-  const tipoEquipo = normalize(producto.tipo_equipo)
-  if (
-    tipoEquipo.includes('airpods') ||
-    tipoEquipo.includes('funda') ||
-    tipoEquipo.includes('cable') ||
-    tipoEquipo.includes('cabezal') ||
-    tipoEquipo.includes('accesorio')
-  ) {
-    return 'accesorios'
-  }
-
-  if (
-    tipoEquipo.includes('iphone') ||
-    tipoEquipo.includes('ipad') ||
-    tipoEquipo.includes('macbook')
-  ) {
-    return 'apple'
-  }
-
-  if (producto.tipo_producto === 'equipo') return 'apple'
-
-  if (isAccessoryByName(name)) return 'accesorios'
+function classifyCategory(_producto: ProductoCompra): CatalogCategory {
   return 'apple'
 }
 
@@ -230,20 +193,6 @@ function paletteByCategory(category: CatalogCategory): {
   swatches: string[]
   tag: string
 } {
-  if (category === 'reparaciones') {
-    return {
-      backdrop: 'bg-gradient-to-b from-sky-200/60 via-blue-50 to-white',
-      swatches: ['bg-slate-200', 'bg-violet-200', 'bg-neutral-900'],
-      tag: 'Reparaciones',
-    }
-  }
-  if (category === 'accesorios') {
-    return {
-      backdrop: 'bg-gradient-to-b from-amber-100/75 via-orange-50/70 to-white',
-      swatches: ['bg-amber-100', 'bg-orange-200', 'bg-zinc-700'],
-      tag: 'Accesorio',
-    }
-  }
   return {
     backdrop: 'bg-gradient-to-b from-neutral-200/90 via-stone-100/80 to-white',
     swatches: ['bg-stone-200', 'bg-neutral-100', 'bg-slate-800'],
@@ -428,8 +377,6 @@ export default function TiendaPage() {
     image: string
   }> = [
     { id: 'apple', label: 'Productos Apple', image: productosAppleFilterImg },
-    { id: 'accesorios', label: 'Accesorios', image: accesoriosFilterImg },
-    { id: 'reparaciones', label: 'Reparaciones', image: reparacionesFilterImg },
   ]
 
   const load = useCallback(async () => {
@@ -437,7 +384,15 @@ export default function TiendaPage() {
     setLoading(true)
     try {
       const data = await productosApi.list()
-      setItems(data.filter((p) => p.activo))
+      setItems(
+        data.filter(
+          (p) =>
+            p.activo &&
+            (p.tipo_producto === 'equipo' || p.tipo_producto == null) &&
+            !isRepairProduct(p) &&
+            !isUsedProduct(p),
+        ),
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar la tienda')
     } finally {
@@ -494,19 +449,9 @@ export default function TiendaPage() {
     }
   }, [currentPage, totalPages])
 
-  const subcategoryOptions =
-    visibleCategory === 'apple'
-      ? APPLE_SUBCATEGORY_OPTIONS
-      : visibleCategory === 'accesorios'
-        ? ACCESORIOS_SUBCATEGORY_OPTIONS
-        : REPARACIONES_SUBCATEGORY_OPTIONS
+  const subcategoryOptions = APPLE_SUBCATEGORY_OPTIONS
 
-  const sectionTitle =
-    visibleCategory === 'apple'
-      ? 'Productos Apple'
-      : visibleCategory === 'accesorios'
-        ? 'Accesorios'
-        : 'Reparaciones'
+  const sectionTitle = 'Equipos nuevos'
 
   return (
     <div className="bg-white">
@@ -520,7 +465,7 @@ export default function TiendaPage() {
               Tienda de productos
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
-              Explorá dos categorías claras para vender mejor: <strong className="font-semibold text-neutral-700">Productos Apple</strong> y <strong className="font-semibold text-neutral-700">Accesorios</strong>. Buscá, filtrá y agregá al carrito en un flujo de catálogo profesional.
+              Explorá equipos nuevos disponibles para compra inmediata: iPhone, iPad, MacBook, Apple Watch y AirPods. Buscá, filtrá y agregá al carrito en un flujo claro.
             </p>
           </div>
         </div>

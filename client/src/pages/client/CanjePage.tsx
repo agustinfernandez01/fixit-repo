@@ -52,6 +52,23 @@ function conditionLabel(condition: 'nuevo' | 'usado') {
   return condition === 'usado' ? 'Usado' : 'Nuevo'
 }
 
+function normalize(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function isRepairProduct(producto: ProductoCompra): boolean {
+  const name = normalize(producto.nombre)
+  const desc = normalize(producto.descripcion ?? '')
+  return (
+    name.startsWith('reparación') ||
+    name.startsWith('reparacion') ||
+    name.includes('reparación -') ||
+    name.includes('reparacion -') ||
+    desc.includes('servicio de reparación') ||
+    desc.includes('servicio de reparacion')
+  )
+}
+
 function modelLabel(modelo: ModeloCanje) {
   const extra = modelo.capacidad_gb != null ? ` ${modelo.capacidad_gb} GB` : ''
   return `${modelo.nombre_modelo}${extra}`
@@ -88,7 +105,10 @@ export default function CanjePage() {
   const currentUserId = getCurrentUserId()
 
   const productosCanjeables = useMemo(
-    () => productos.filter((p) => p.activo && (p.tipo_producto === 'equipo' || p.tipo_producto == null)),
+    () =>
+      productos.filter(
+        (p) => p.activo && (p.tipo_producto === 'equipo' || p.tipo_producto == null) && !isRepairProduct(p),
+      ),
     [productos],
   )
 

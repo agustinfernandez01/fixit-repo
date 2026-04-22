@@ -7,6 +7,8 @@ import PedidosPage from './pages/admin/PedidosPage'
 import SolicitudesCanjePage from './pages/admin/SolicitudesCanjePage'
 import Home from './pages/client/HomeView'
 import MarketplaceTiendaPage from './pages/client/MarketplaceTiendaPage'
+import MarketplacePublicacionesPage from './pages/client/MarketplacePublicacionesPage'
+import MarketplaceDetallePage from './pages/client/MarketplaceDetallePage'
 import CanjePage from './pages/client/CanjePage'
 import PublicarCelularPage from './pages/client/PublicarCelularPage'
 import LoginPage from './pages/client/LoginPage'
@@ -24,7 +26,6 @@ import { EquipoDepositoPage } from './pages/inventario/EquipoDepositoPage'
 import { EquiposUsadosDetallePage } from './pages/inventario/EquiposUsadosDetallePage'
 import { MarketplaceLayout } from './components/layout/MarketplaceLayout'
 import { PublicacionesPage } from './pages/marketplace/PublicacionesPage'
-import { RevisionesPage } from './pages/marketplace/RevisionesPage'
 
 export default function App() {
   return (
@@ -32,7 +33,9 @@ export default function App() {
       <Route path="/" element={<ClientLayout />}>
         <Route index element={<Home />} />
         <Route path="tienda" element={<TiendaPage />} />
-        <Route path="marketplace" element={<MarketplaceTiendaPage />} />
+        <Route path="usados" element={<MarketplaceTiendaPage />} />
+        <Route path="marketplace" element={<MarketplacePublicacionesPage />} />
+        <Route path="marketplace/:id" element={<MarketplaceDetallePage />} />
         <Route path="canje" element={<CanjePage />} />
         <Route path="reparaciones" element={<ReparacionesPage />} />
         <Route path="publicar" element={<PublicarCelularPage />} />
@@ -76,7 +79,6 @@ export default function App() {
             element={<Navigate to="/admin/marketplace/publicaciones" replace />}
           />
           <Route path="publicaciones" element={<PublicacionesPage />} />
-          <Route path="revisiones" element={<RevisionesPage />} />
         </Route>
       </Route>
 

@@ -10,6 +10,23 @@ type Pedido = {
   estado: string
   total: string
   observaciones?: string | null
+  cliente?: {
+    id: number
+    nombre: string | null
+    email: string | null
+    telefono: string | null
+  } | null
+  items?: Array<{
+    id_producto: number
+    producto_nombre: string
+    cantidad: number
+    precio_unitario: string
+    subtotal: string
+  }>
+  resumen?: {
+    total_items: number
+    total_unidades: number
+  } | null
 }
 
 type ConfirmResponse = {
@@ -35,6 +52,18 @@ function fmtDate(d: string | null | undefined) {
   return new Date(d).toLocaleString('es-AR')
 }
 
+function getClienteDisplay(pedido: Pedido) {
+  const nombre = pedido.cliente?.nombre?.trim()
+  const email = pedido.cliente?.email?.trim()
+  const telefono = pedido.cliente?.telefono?.trim()
+
+  return {
+    titulo: nombre || `Usuario #${pedido.id_usuario}`,
+    subtitulo: email || telefono || `ID: ${pedido.id_usuario}`,
+    extra: email && telefono ? telefono : null,
+  }
+}
+
 export default function PedidosPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -48,6 +77,7 @@ export default function PedidosPage() {
     message: string
   } | null>(null)
   const [warningMsg, setWarningMsg] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   function handleAuthError(message: string) {
     const m = message.toLowerCase()
@@ -76,6 +106,7 @@ export default function PedidosPage() {
         },
       })
       setPedidos(data)
+      setExpandedId(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : 'No se pudieron cargar los pedidos'
       if (!handleAuthError(message)) {
@@ -237,10 +268,10 @@ export default function PedidosPage() {
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Pedido</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Usuario</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Cliente</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Items</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Observaciones</th>
                   <th className="px-4 py-3 text-center font-semibold text-gray-700">Acciones</th>
                 </tr>
               </thead>
@@ -248,13 +279,65 @@ export default function PedidosPage() {
                 {pedidos.map((pedido) => (
                   <tr key={pedido.id_pedido} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-3 font-semibold text-gray-900">#{pedido.id_pedido}</td>
-                    <td className="px-4 py-3 text-gray-700">ID: {pedido.id_usuario}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      <p className="font-medium text-gray-900">{getClienteDisplay(pedido).titulo}</p>
+                      <p className="text-xs text-gray-500">{getClienteDisplay(pedido).subtitulo}</p>
+                      {getClienteDisplay(pedido).extra ? (
+                        <p className="text-xs text-gray-500">{getClienteDisplay(pedido).extra}</p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      <button
+                        type="button"
+                        className="text-left"
+                        onClick={() =>
+                          setExpandedId((prev) => (prev === pedido.id_pedido ? null : pedido.id_pedido))
+                        }
+                      >
+                        <p className="text-sm font-medium text-gray-900">
+                          {pedido.resumen?.total_items ?? pedido.items?.length ?? 0} productos
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {pedido.resumen?.total_unidades ??
+                            pedido.items?.reduce((acc, item) => acc + (item.cantidad || 0), 0) ??
+                            0}{' '}
+                          unidades · {expandedId === pedido.id_pedido ? 'Ocultar detalle' : 'Ver detalle'}
+                        </p>
+                      </button>
+                      {expandedId === pedido.id_pedido ? (
+                        <div className="mt-2 rounded-xl border border-gray-200 bg-white p-3">
+                          <p className="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                            Detalle del pedido
+                          </p>
+                          {pedido.items && pedido.items.length > 0 ? (
+                            <ul className="space-y-1">
+                              {pedido.items.map((item) => (
+                                <li
+                                  key={`${pedido.id_pedido}-${item.id_producto}`}
+                                  className="flex items-center justify-between gap-3 text-sm"
+                                >
+                                  <span className="text-gray-800">
+                                    {item.cantidad} x {item.producto_nombre}
+                                  </span>
+                                  <span className="font-medium text-gray-900">{fmtArs(item.subtotal)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-500">Sin items disponibles para este pedido.</p>
+                          )}
+                          {pedido.observaciones ? (
+                            <p className="mt-3 border-t border-gray-100 pt-2 text-xs text-gray-600">
+                              <span className="font-semibold text-gray-700">Observaciones:</span>{' '}
+                              {pedido.observaciones}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{fmtDate(pedido.fecha_pedido)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-900">
                       {fmtArs(pedido.total)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {pedido.observaciones || '—'}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-2">

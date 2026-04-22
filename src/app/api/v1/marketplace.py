@@ -3,14 +3,15 @@ Módulo Marketplace de usados: publicaciones y revisión de publicaciones.
 """
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.config import UPLOAD_DIR
+from app.config import UPLOAD_DIR, WHATSAPP_CHECKOUT_PHONE
 from app.deps.auth import get_optional_user_id_from_access_token, require_admin_user_id
 from app.db import get_db
-from app.models import Publicacion, RevisionPublicacion
+from app.models import InteresPublicacion, Publicacion, RevisionPublicacion, Usuario
 from app.schemas.marketplace import (
     PublicacionCreate,
     PublicacionUpdate,
@@ -18,6 +19,9 @@ from app.schemas.marketplace import (
     RevisionPublicacionCreate,
     RevisionPublicacionUpdate,
     RevisionPublicacionResponse,
+    InteresPublicacionCreate,
+    InteresPublicacionResponse,
+    InteresPublicacionUpdate,
 )
 
 router = APIRouter()
@@ -28,6 +32,24 @@ _FOTO_CT = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+
+
+def _build_marketplace_whatsapp_url(publicacion: Publicacion, comprador: Usuario | None) -> str:
+    phone = "".join(ch for ch in WHATSAPP_CHECKOUT_PHONE if ch.isdigit())
+    titulo = publicacion.titulo or publicacion.modelo or f"Publicación #{publicacion.id_publicacion}"
+    comprador_nombre = (
+        " ".join(part for part in [comprador.nombre if comprador else None, comprador.apellido if comprador else None] if part and part.strip())
+        or f"Usuario #{comprador.id}" if comprador else "Cliente interesado"
+    )
+    comprador_contacto = comprador.telefono if comprador and comprador.telefono else (comprador.email if comprador else "sin contacto")
+    mensaje = (
+        f"Hola! Nuevo interés en Marketplace.\n"
+        f"Publicación #{publicacion.id_publicacion}: {titulo}\n"
+        f"Comprador: {comprador_nombre}\n"
+        f"Contacto comprador: {comprador_contacto}\n"
+        f"Por favor coordinar seguimiento."
+    )
+    return f"https://wa.me/{phone}?text={quote(mensaje)}"
 
 
 @router.post("/upload-foto")
@@ -199,3 +221,148 @@ def borrar_revision(
     db.delete(obj)
     db.commit()
     return None
+
+
+@router.get("/intereses", response_model=list[InteresPublicacionResponse])
+def listar_intereses(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(InteresPublicacion)
+        .order_by(InteresPublicacion.fecha_interes.desc(), InteresPublicacion.id_interes.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    result: list[InteresPublicacionResponse] = []
+    for row in rows:
+        comprador = db.query(Usuario).filter(Usuario.id == row.id_usuario_interesado).first()
+        publicacion = db.query(Publicacion).filter(Publicacion.id_publicacion == row.id_publicacion).first()
+        result.append(
+            InteresPublicacionResponse(
+                id_interes=row.id_interes,
+                id_publicacion=row.id_publicacion,
+                id_usuario_interesado=row.id_usuario_interesado,
+                mensaje=row.mensaje,
+                estado=row.estado,
+                fecha_interes=row.fecha_interes,
+                comprador_nombre=(
+                    " ".join(
+                        part
+                        for part in [comprador.nombre if comprador else None, comprador.apellido if comprador else None]
+                        if part and part.strip()
+                    )
+                    or None
+                ),
+                comprador_email=comprador.email if comprador else None,
+                comprador_telefono=comprador.telefono if comprador else None,
+                publicacion_titulo=publicacion.titulo if publicacion else None,
+                publicacion_modelo=publicacion.modelo if publicacion else None,
+                whatsapp_url=_build_marketplace_whatsapp_url(publicacion, comprador) if publicacion else None,
+            )
+        )
+    return result
+
+
+@router.post(
+    "/intereses",
+    response_model=InteresPublicacionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_interes(
+    payload: InteresPublicacionCreate,
+    db: Session = Depends(get_db),
+    id_desde_token: int | None = Depends(get_optional_user_id_from_access_token),
+):
+    if id_desde_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Debes iniciar sesión para registrar interés.",
+        )
+
+    publicacion = db.query(Publicacion).filter(Publicacion.id_publicacion == payload.id_publicacion).first()
+    if not publicacion:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+    if (publicacion.estado or "").lower() != "publicada":
+        raise HTTPException(status_code=400, detail="La publicación no está disponible para compra.")
+    if publicacion.id_usuario == id_desde_token:
+        raise HTTPException(status_code=400, detail="No puedes registrar interés sobre tu propia publicación.")
+
+    obj = InteresPublicacion(
+        id_publicacion=payload.id_publicacion,
+        id_usuario_interesado=id_desde_token,
+        mensaje=payload.mensaje,
+        estado=payload.estado or "pendiente_contacto",
+        fecha_interes=datetime.now(timezone.utc),
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+
+    comprador = db.query(Usuario).filter(Usuario.id == id_desde_token).first()
+    return InteresPublicacionResponse(
+        id_interes=obj.id_interes,
+        id_publicacion=obj.id_publicacion,
+        id_usuario_interesado=obj.id_usuario_interesado,
+        mensaje=obj.mensaje,
+        estado=obj.estado,
+        fecha_interes=obj.fecha_interes,
+        comprador_nombre=(
+            " ".join(
+                part
+                for part in [comprador.nombre if comprador else None, comprador.apellido if comprador else None]
+                if part and part.strip()
+            )
+            or None
+        ),
+        comprador_email=comprador.email if comprador else None,
+        comprador_telefono=comprador.telefono if comprador else None,
+        publicacion_titulo=publicacion.titulo,
+        publicacion_modelo=publicacion.modelo,
+        whatsapp_url=_build_marketplace_whatsapp_url(publicacion, comprador),
+    )
+
+
+@router.patch("/intereses/{id_interes}", response_model=InteresPublicacionResponse)
+def actualizar_interes(
+    id_interes: int,
+    payload: InteresPublicacionUpdate,
+    _id_admin: int = Depends(require_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(InteresPublicacion).filter(InteresPublicacion.id_interes == id_interes).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Interés no encontrado")
+
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(obj, k, v)
+
+    db.commit()
+    db.refresh(obj)
+
+    comprador = db.query(Usuario).filter(Usuario.id == obj.id_usuario_interesado).first()
+    publicacion = db.query(Publicacion).filter(Publicacion.id_publicacion == obj.id_publicacion).first()
+    return InteresPublicacionResponse(
+        id_interes=obj.id_interes,
+        id_publicacion=obj.id_publicacion,
+        id_usuario_interesado=obj.id_usuario_interesado,
+        mensaje=obj.mensaje,
+        estado=obj.estado,
+        fecha_interes=obj.fecha_interes,
+        comprador_nombre=(
+            " ".join(
+                part
+                for part in [comprador.nombre if comprador else None, comprador.apellido if comprador else None]
+                if part and part.strip()
+            )
+            or None
+        ),
+        comprador_email=comprador.email if comprador else None,
+        comprador_telefono=comprador.telefono if comprador else None,
+        publicacion_titulo=publicacion.titulo if publicacion else None,
+        publicacion_modelo=publicacion.modelo if publicacion else None,
+        whatsapp_url=_build_marketplace_whatsapp_url(publicacion, comprador) if publicacion else None,
+    )

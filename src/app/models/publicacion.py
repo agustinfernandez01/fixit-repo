@@ -37,3 +37,17 @@ class RevisionPublicacion(Base):
     fecha_revision = Column(DateTime, nullable=True)
 
     publicacion = relationship("Publicacion", back_populates="revisiones")
+
+
+class InteresPublicacion(Base):
+    __tablename__ = "interes_publicacion"
+
+    id_interes = Column(Integer, primary_key=True, autoincrement=True)
+    id_publicacion = Column(Integer, ForeignKey("publicaciones.id_publicacion"), nullable=False)
+    id_usuario_interesado = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    mensaje = Column(Text, nullable=True)
+    estado = Column(String(50), nullable=True)  # pendiente_contacto, contactado, cerrado
+    fecha_interes = Column(DateTime, nullable=True)
+
+    publicacion = relationship("Publicacion", backref="intereses")
+    usuario_interesado = relationship("Usuario", backref="intereses_publicacion")

@@ -2,7 +2,6 @@ import { NavLink, Outlet } from 'react-router-dom'
 
 const links = [
   { to: '/admin/marketplace/publicaciones', label: 'Publicaciones' },
-  { to: '/admin/marketplace/revisiones', label: 'Revisiones' },
 ] as const
 
 export function MarketplaceLayout() {

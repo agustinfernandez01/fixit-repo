@@ -1,4 +1,4 @@
-import type { Publicacion, RevisionPublicacion } from '../types/marketplace'
+import type { InteresPublicacion, Publicacion, RevisionPublicacion } from '../types/marketplace'
 import { authHeaders } from '../lib/auth'
 import { apiUrl, fetchJson } from './api'
 
@@ -73,5 +73,20 @@ export const marketplaceApi = {
       }),
     delete: (id: number) =>
       fetchJson<void>(`${P}/revisiones/${id}`, { method: 'DELETE' }),
+  },
+  intereses: {
+    list: (skip = 0, limit = 50) =>
+      fetchJson<InteresPublicacion[]>(`${P}/intereses${q(skip, limit)}`),
+    create: (body: Record<string, unknown>) =>
+      fetchJson<InteresPublicacion>(`${P}/intereses`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { ...authHeaders() },
+      }),
+    patch: (id: number, body: Record<string, unknown>) =>
+      fetchJson<InteresPublicacion>(`${P}/intereses/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
   },
 }

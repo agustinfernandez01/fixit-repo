@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { mediaUrl } from '../../services/api'
-import type { Publicacion } from '../../types/marketplace'
-import { marketplaceApi, uploadMarketplaceFoto } from '../../services/marketplaceApi'
+import { marketplaceApi } from '../../services/marketplaceApi'
+import type { InteresPublicacion, Publicacion } from '../../types/marketplace'
 
-const ESTADOS = [
-  '',
-  'borrador',
-  'pendiente_revision',
-  'publicada',
-  'vendida',
-] as const
+type EstadoFiltro = 'todos' | 'pendiente_revision' | 'publicada'
+
+function fmtFecha(iso: string | null) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
+}
 
 function fmtPrecio(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -22,411 +25,106 @@ function fmtPrecio(v: string | number | null | undefined) {
   }).format(n)
 }
 
-function fmtFecha(iso: string | null) {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
-  }
-}
-
-const emptyForm = {
-  id_usuario: '' as string | number,
-  modelo: '',
-  capacidad_gb: '' as string | number,
-  color: '',
-  imei: '',
-  bateria_porcentaje: '' as string | number,
-  estado_estetico: '',
-  estado_funcional: '',
-  titulo: '',
-  descripcion: '',
-  precio_publicado: '' as string | number,
-  estado: '',
-  fotos_lines: '',
-}
-
 export function PublicacionesPage() {
   const [rows, setRows] = useState<Publicacion[]>([])
+  const [intereses, setIntereses] = useState<InteresPublicacion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [filtroEstado, setFiltroEstado] = useState<string>('')
-  const [form, setForm] = useState(emptyForm)
-  const [uploadingFotos, setUploadingFotos] = useState(false)
-  const [uploadingCount, setUploadingCount] = useState(0)
-
-  async function handleUploadFotos(files: FileList | null) {
-    if (!files?.length) return
-    setError(null)
-    setUploadingFotos(true)
-    setUploadingCount(files.length)
-    try {
-      const urls: string[] = []
-      for (const f of Array.from(files)) {
-        const url = await uploadMarketplaceFoto(f)
-        urls.push(url)
-      }
-      setForm((prev) => {
-        const current = prev.fotos_lines
-          .split('\n')
-          .map((s) => s.trim())
-          .filter(Boolean)
-        const next = [...current, ...urls]
-        return { ...prev, fotos_lines: next.join('\n') }
-      })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al subir fotos')
-    } finally {
-      setUploadingFotos(false)
-      setUploadingCount(0)
-    }
-  }
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [filtro, setFiltro] = useState<EstadoFiltro>('pendiente_revision')
+  const [previewImages, setPreviewImages] = useState<string[]>([])
 
   const load = useCallback(async () => {
     setError(null)
     setLoading(true)
     try {
-      const data = await marketplaceApi.publicaciones.list(
-        0,
-        100,
-        filtroEstado || null,
-      )
-      setRows(data)
+      const [pubs, ints] = await Promise.all([
+        marketplaceApi.publicaciones.list(0, 100, null),
+        marketplaceApi.intereses.list(0, 100),
+      ])
+      setRows(pubs)
+      setIntereses(ints)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cargar')
+      setError(e instanceof Error ? e.message : 'No se pudo cargar marketplace admin')
     } finally {
       setLoading(false)
     }
-  }, [filtroEstado])
+  }, [])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  function startEdit(p: Publicacion) {
-    setEditingId(p.id_publicacion)
-    setForm({
-      id_usuario: p.id_usuario,
-      modelo: p.modelo ?? '',
-      capacidad_gb: p.capacidad_gb ?? '',
-      color: p.color ?? '',
-      imei: p.imei ?? '',
-      bateria_porcentaje: p.bateria_porcentaje ?? '',
-      estado_estetico: p.estado_estetico ?? '',
-      estado_funcional: p.estado_funcional ?? '',
-      titulo: p.titulo ?? '',
-      descripcion: p.descripcion ?? '',
-      precio_publicado:
-        p.precio_publicado === null || p.precio_publicado === undefined
-          ? ''
-          : String(p.precio_publicado),
-      estado: p.estado ?? '',
-      fotos_lines: (p.fotos_urls ?? []).join('\n'),
-    })
-  }
+  const rowsFiltradas = useMemo(() => {
+    if (filtro === 'todos') return rows
+    return rows.filter((r) => (r.estado ?? '').toLowerCase() === filtro)
+  }, [filtro, rows])
 
-  function cancelEdit() {
-    setEditingId(null)
-    setForm(emptyForm)
-  }
-
-  function toNullableInt(v: string | number): number | null {
-    if (v === '' || v === null || v === undefined) return null
-    const n = Number(v)
-    return Number.isFinite(n) ? n : null
-  }
-
-  function toNullableDecimal(v: string | number): string | number | null {
-    if (v === '' || v === null || v === undefined) return null
-    const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v
-    return Number.isFinite(n) ? n : null
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-
-    const fotos_urls = form.fotos_lines
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const bodyBase = {
-      modelo: form.modelo.trim() || null,
-      capacidad_gb: toNullableInt(form.capacidad_gb),
-      color: form.color.trim() || null,
-      imei: form.imei.trim() || null,
-      bateria_porcentaje: toNullableInt(form.bateria_porcentaje),
-      estado_estetico: form.estado_estetico.trim() || null,
-      estado_funcional: form.estado_funcional.trim() || null,
-      titulo: form.titulo.trim() || null,
-      descripcion: form.descripcion.trim() || null,
-      precio_publicado: toNullableDecimal(form.precio_publicado),
-      estado: form.estado.trim() || null,
-      fotos_urls: fotos_urls.length ? fotos_urls : null,
-    }
-
-    try {
-      if (editingId != null) {
-        await marketplaceApi.publicaciones.patch(editingId, bodyBase)
-      } else {
-        const idU = Number(form.id_usuario)
-        if (!Number.isFinite(idU) || idU < 1) {
-          setError('El ID de usuario es obligatorio para crear.')
-          return
-        }
-        await marketplaceApi.publicaciones.create({
-          id_usuario: idU,
-          ...bodyBase,
-        })
-      }
-      cancelEdit()
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar')
+  function resumenInteres(idPublicacion: number) {
+    const data = intereses.filter((i) => i.id_publicacion === idPublicacion)
+    const ultimo = data[0] ?? null
+    return {
+      count: data.length,
+      ultimo,
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!window.confirm('¿Eliminar esta publicación?')) return
+  async function cambiarEstado(idPublicacion: number, estado: 'publicada' | 'rechazada' | 'dada_baja') {
+    setBusyId(idPublicacion)
     setError(null)
     try {
-      await marketplaceApi.publicaciones.delete(id)
-      if (editingId === id) cancelEdit()
+      await marketplaceApi.publicaciones.patch(idPublicacion, {
+        estado,
+      })
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al eliminar')
+      setError(e instanceof Error ? e.message : 'No se pudo actualizar estado')
+    } finally {
+      setBusyId(null)
     }
+  }
+
+  function closePreview() {
+    setPreviewImages([])
+  }
+
+  async function darDeBaja(idPublicacion: number) {
+    const motivo = window.prompt('Motivo de baja de la publicación:')
+    if (motivo == null) return
+    const cleaned = motivo.trim()
+    if (!cleaned) {
+      setError('Debes indicar un motivo para dar de baja la publicación.')
+      return
+    }
+    await cambiarEstado(idPublicacion, 'dada_baja')
   }
 
   return (
     <>
-      <h1>Publicaciones (usados)</h1>
+      <h1>Marketplace · Publicaciones</h1>
       <p className="lead">
-        Avisos del marketplace: datos del equipo, precio y estado del flujo
-        (revisión, publicada, vendida).
+        Panel resumido: aprobá o rechazá publicaciones, y revisá si hay interés de compra.
       </p>
 
       {error ? <div className="msg-error">{error}</div> : null}
 
       <div className="toolbar">
         <label className="filter-estado">
-          <span className="filter-estado-label">Estado</span>
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-          >
-            <option value="">Todos</option>
-            {ESTADOS.filter(Boolean).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+          <span className="filter-estado-label">Mostrar</span>
+          <select value={filtro} onChange={(e) => setFiltro(e.target.value as EstadoFiltro)}>
+            <option value="pendiente_revision">Pendientes de aprobación</option>
+            <option value="publicada">Publicadas</option>
+            <option value="todos">Todas</option>
           </select>
         </label>
-      </div>
-
-      <div className="panel">
-        <h2>{editingId != null ? 'Editar publicación' : 'Nueva publicación'}</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="form-grid">
-            <label>
-              ID usuario
-              <input
-                type="number"
-                min={1}
-                value={form.id_usuario}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, id_usuario: e.target.value }))
-                }
-                required={editingId == null}
-                disabled={editingId != null}
-                title={
-                  editingId != null
-                    ? 'No se puede cambiar desde esta pantalla'
-                    : undefined
-                }
-              />
-            </label>
-            <label>
-              Título
-              <input
-                value={form.titulo}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, titulo: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Estado
-              <select
-                value={form.estado}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, estado: e.target.value }))
-                }
-              >
-                <option value="">(sin definir)</option>
-                {ESTADOS.filter(Boolean).map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Modelo
-              <input
-                value={form.modelo}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, modelo: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Capacidad (GB)
-              <input
-                type="number"
-                min={0}
-                value={form.capacidad_gb}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, capacidad_gb: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Color
-              <input
-                value={form.color}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, color: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              IMEI
-              <input
-                value={form.imei}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, imei: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Batería (%)
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={form.bateria_porcentaje}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    bateria_porcentaje: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Estado estético
-              <input
-                value={form.estado_estetico}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, estado_estetico: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Estado funcional
-              <input
-                value={form.estado_funcional}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, estado_funcional: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Precio
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="0"
-                value={form.precio_publicado}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    precio_publicado: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label style={{ gridColumn: '1 / -1' }}>
-              Descripción
-              <textarea
-                value={form.descripcion}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, descripcion: e.target.value }))
-                }
-              />
-            </label>
-            <label style={{ gridColumn: '1 / -1' }}>
-              Fotos
-              <div style={{ marginTop: '0.5rem' }}>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  disabled={uploadingFotos}
-                  onChange={(e) => void handleUploadFotos(e.target.files)}
-                />
-                <div className="msg-muted" style={{ marginTop: '0.35rem' }}>
-                  {uploadingFotos
-                    ? `Subiendo ${uploadingCount} foto(s)…`
-                    : 'También podés subir fotos desde acá (JPG/PNG/WebP, hasta 5 MB c/u).'}
-                </div>
-                {form.fotos_lines.trim() ? (
-                  <div className="msg-muted" style={{ marginTop: '0.35rem' }}>
-                    {form.fotos_lines
-                      .split('\n')
-                      .map((s) => s.trim())
-                      .filter(Boolean).length}{' '}
-                    foto(s) cargadas.
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      style={{ marginLeft: '0.5rem' }}
-                      onClick={() => setForm((f) => ({ ...f, fotos_lines: '' }))}
-                    >
-                      Limpiar
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </label>
-          </div>
-          <div className="toolbar" style={{ marginTop: '0.75rem' }}>
-            <button type="submit" className="btn btn-primary">
-              {editingId != null ? 'Guardar' : 'Crear publicación'}
-            </button>
-            {editingId != null ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={cancelEdit}
-              >
-                Cancelar
-              </button>
-            ) : null}
-          </div>
-        </form>
       </div>
 
       <div className="panel">
         <h2>Listado</h2>
         {loading ? (
           <p className="msg-muted">Cargando…</p>
-        ) : rows.length === 0 ? (
-          <p className="msg-muted">No hay publicaciones con este criterio.</p>
+        ) : rowsFiltradas.length === 0 ? (
+          <p className="msg-muted">No hay publicaciones para este filtro.</p>
         ) : (
           <div className="table-wrap">
             <table className="data">
@@ -434,63 +132,145 @@ export function PublicacionesPage() {
                 <tr>
                   <th>ID</th>
                   <th>Foto</th>
-                  <th>Usuario</th>
-                  <th>Título</th>
+                  <th>Publicación</th>
+                  <th>Equipo</th>
                   <th>Precio</th>
                   <th>Estado</th>
+                  <th>Interés</th>
                   <th>Fecha</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((p) => (
-                  <tr key={p.id_publicacion}>
-                    <td>{p.id_publicacion}</td>
-                    <td>
-                      {p.fotos_urls?.[0] ? (
-                        <img
-                          src={mediaUrl(p.fotos_urls[0])}
-                          alt=""
-                          width={40}
-                          height={40}
-                          style={{
-                            objectFit: 'cover',
-                            borderRadius: 6,
-                            display: 'block',
-                          }}
-                        />
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>{p.id_usuario}</td>
-                    <td>{p.titulo ?? p.modelo ?? '—'}</td>
-                    <td>{fmtPrecio(p.precio_publicado)}</td>
-                    <td>{p.estado ?? '—'}</td>
-                    <td>{fmtFecha(p.fecha_publicacion)}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => startEdit(p)}
-                      >
-                        Editar
-                      </button>{' '}
-                      <button
-                        type="button"
-                        className="btn btn-danger btn-sm"
-                        onClick={() => void handleDelete(p.id_publicacion)}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {rowsFiltradas.map((p) => {
+                  const interes = resumenInteres(p.id_publicacion)
+                  const estadoActual = (p.estado ?? '').toLowerCase()
+                  const canApproveReject = estadoActual === 'pendiente_revision'
+                  const canBaja = estadoActual === 'publicada'
+                  return (
+                    <tr key={p.id_publicacion}>
+                      <td>{p.id_publicacion}</td>
+                      <td>
+                        {p.fotos_urls?.[0] ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImages((p.fotos_urls ?? []).map((url) => mediaUrl(url)))}
+                            className="btn btn-ghost btn-sm"
+                            title="Ver fotos del equipo"
+                          >
+                            <img
+                              src={mediaUrl(p.fotos_urls[0])}
+                              alt="Miniatura del equipo"
+                              width={40}
+                              height={40}
+                              style={{ objectFit: 'cover', borderRadius: 6, display: 'block' }}
+                            />
+                          </button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td>
+                        <div>{p.titulo ?? p.modelo ?? '—'}</div>
+                        <div className="msg-muted">{p.modelo ?? 'Sin modelo'} · Usuario #{p.id_usuario}</div>
+                      </td>
+                      <td>
+                        <div>{p.modelo ?? '—'}</div>
+                        <div className="msg-muted">
+                          {p.capacidad_gb != null ? `${p.capacidad_gb} GB` : 'Capacidad s/d'} · {p.color ?? 'Color s/d'}
+                        </div>
+                        <div className="msg-muted">Batería: {p.bateria_porcentaje != null ? `${p.bateria_porcentaje}%` : 's/d'}</div>
+                      </td>
+                      <td>{fmtPrecio(p.precio_publicado)}</td>
+                      <td>
+                        <div>{p.estado ?? '—'}</div>
+                        {estadoActual === 'dada_baja' ? <div className="msg-muted">Publicación dada de baja</div> : null}
+                      </td>
+                      <td>
+                        {interes.count === 0 ? (
+                          <span className="msg-muted">Sin interés</span>
+                        ) : (
+                          <div>
+                            <div>{interes.count} interesado(s)</div>
+                            <div className="msg-muted">
+                              {interes.ultimo?.comprador_nombre ?? interes.ultimo?.comprador_email ?? 'Cliente'}
+                            </div>
+                            {interes.ultimo?.whatsapp_url ? (
+                              <a href={interes.ultimo.whatsapp_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                                WhatsApp
+                              </a>
+                            ) : null}
+                          </div>
+                        )}
+                      </td>
+                      <td>{fmtFecha(p.fecha_publicacion)}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {canApproveReject ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              disabled={busyId === p.id_publicacion}
+                              onClick={() => void cambiarEstado(p.id_publicacion, 'publicada')}
+                            >
+                              {busyId === p.id_publicacion ? 'Guardando…' : 'Aprobar'}
+                            </button>{' '}
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              disabled={busyId === p.id_publicacion}
+                              onClick={() => void cambiarEstado(p.id_publicacion, 'rechazada')}
+                            >
+                              Rechazar
+                            </button>
+                          </>
+                        ) : null}
+                        {canBaja ? (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            disabled={busyId === p.id_publicacion}
+                            onClick={() => void darDeBaja(p.id_publicacion)}
+                          >
+                            Dar de baja
+                          </button>
+                        ) : null}
+                        {!canApproveReject && !canBaja ? <span className="msg-muted">Sin acciones</span> : null}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+      {previewImages.length > 0 ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
+          <div className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Fotos del equipo</h3>
+              <button
+                type="button"
+                onClick={closePreview}
+                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {previewImages.map((img, idx) => (
+                <img
+                  key={`${img}-${idx}`}
+                  src={img}
+                  alt={`Equipo ${idx + 1}`}
+                  className="h-32 w-full rounded-xl object-cover sm:h-40"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }

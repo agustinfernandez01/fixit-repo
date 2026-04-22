@@ -16,7 +16,7 @@ from app.models.accesorios import Accesorios  # noqa: F401 - debe cargarse tras 
 from app.models.pedido import Pedido, DetallePedido, Pago
 from app.models.reparacion import TipoReparacion, ListaPrecioReparacion, Reparacion
 from app.models.canje import ModeloCanje, EquipoOfrecidoCanje, SolicitudCanje, CotizacionCanje
-from app.models.publicacion import Publicacion, RevisionPublicacion
+from app.models.publicacion import Publicacion, RevisionPublicacion, InteresPublicacion
 
 __all__ = [
     "Rol",
@@ -44,4 +44,5 @@ __all__ = [
     "CotizacionCanje",
     "Publicacion",
     "RevisionPublicacion",
+    "InteresPublicacion",
 ]

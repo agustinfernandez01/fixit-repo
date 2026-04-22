@@ -1,42 +1,17 @@
-yo :
-
-autenticación / usuarios
-catálogo de productos
-carrito / compra / pedido / pago
-
-
-matias :
-
-inventario de equipos
-marketplace de usados
-reparaciones
-canje
-
 .\venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
 
-funcionamiento tokens
+---------------------------
+Credenciales del admin creado:
 
-LOGIN
-→ se crea sesión en Db
-→ se dan access + refresh
+Email: admin.render@fixit.local
+Contraseña: AdminRender2026!
 
-REQUESTS
-→ usan access (rápido, sin DB)
+Además te dejé un usuario cliente demo:
 
-ACCESS EXPIRE
-→ se usa refresh
-
-REFRESH
-→ backend valida:
-   1. el token (JWT)
-   2. la sesión (DB)
-
-→ si todo ok → nuevo access
-
-LOGOUT
-→ se revoca sesión en DB
-→ el refresh deja de servir
+Email: cliente.demo@fixit.local
+Contraseña: ClienteDemo2026!
+---------------------------
 
 
 que hacer:
