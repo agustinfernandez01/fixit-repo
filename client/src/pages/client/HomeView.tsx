@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import fixitHeroVideo from '../../assets/fixit-hero.mp4'
 import familyIphone17Pro from '../../assets/family-iphone-17-pro.png'
-import familyIphone17 from '../../assets/family-iphone-17.png'
-import familyIphone17Air from '../../assets/family-iphone-17-air.png'
-import familyIphone16Pro from '../../assets/family-iphone-16-pro.png'
-import familyIphone15 from '../../assets/family-iphone-15.png'
+import familyMacbook from '../../assets/family-macbook.png'
+import familyIpad from '../../assets/family-ipad.png'
 
 const FEATURES = [
   {
@@ -87,106 +85,29 @@ const FAMILY_LINEUP: FamilyItem[] = [
     image: familyIphone17Pro,
   },
   {
-    id: '17',
-    title: 'iPhone 17',
-    isNew: true,
-    imageBackdrop: 'bg-gradient-to-b from-violet-200/70 via-purple-100/50 to-white',
-    swatches: ['bg-sky-200', 'bg-teal-300', 'bg-rose-200', 'bg-white', 'bg-neutral-800'],
-    line1: 'Equilibrio perfecto entre diseño y rendimiento.',
-    line2: 'Pantalla brillante y batería para todo el día.',
-    price: 'Valores actualizados en marketplace.',
-    image: familyIphone17,
+    id: 'macbook',
+    title: 'MacBook Air',
+    imageBackdrop: 'bg-gradient-to-b from-sky-200/50 via-blue-50/60 to-white',
+    swatches: ['bg-slate-200', 'bg-sky-200', 'bg-neutral-900'],
+    line1: 'Potencia para estudiar, trabajar y crear.',
+    line2: 'Consultá modelos disponibles y condiciones.',
+    price: 'Stock sujeto a disponibilidad · Financiación disponible.',
+    image: familyMacbook,
   },
   {
-    id: '17-air',
-    title: 'iPhone 17 Air',
-    isNew: true,
-    imageBackdrop: 'bg-gradient-to-b from-sky-200/60 via-blue-50 to-white',
-    swatches: ['bg-slate-200', 'bg-violet-200', 'bg-neutral-900'],
-    line1: 'Ultraliviano. Listo para acompañarte a todas partes.',
-    line2: 'Construcción fina sin renunciar a lo esencial.',
-    price: 'Elegí color y condición en la tienda.',
-    image: familyIphone17Air,
-  },
-  {
-    id: '16-pro',
-    title: 'iPhone 16 Pro',
-    imageBackdrop: 'bg-gradient-to-b from-amber-100/80 via-orange-50/60 to-white',
-    swatches: ['bg-stone-300', 'bg-amber-100', 'bg-zinc-800'],
-    line1: 'Titanium y sistema pro de cámaras.',
-    line2: 'Ideal si buscás máxima calidad con mejor precio.',
-    price: 'Stock usado y nuevos verificados.',
-    image: familyIphone16Pro,
-  },
-  {
-    id: '15',
-    title: 'iPhone 15',
-    imageBackdrop: 'bg-gradient-to-b from-rose-200/50 via-pink-50/70 to-white',
-    swatches: ['bg-blue-100', 'bg-pink-100', 'bg-yellow-100', 'bg-neutral-700'],
-    line1: 'Dynamic Island y USB-C. Clásico que rinde.',
-    line2: 'Entrada perfecta al ecosistema Apple con garantía.',
-    price: 'Desde valores accesibles en Fix It.',
-    image: familyIphone15,
+    id: 'ipad',
+    title: 'iPad',
+    imageBackdrop: 'bg-gradient-to-b from-emerald-100/60 via-teal-50/70 to-white',
+    swatches: ['bg-emerald-100', 'bg-sky-100', 'bg-neutral-800'],
+    line1: 'Versátil y liviano. Ideal para todos los días.',
+    line2: 'Te ayudamos a elegir según uso y presupuesto.',
+    price: 'Consultá stock y precios por WhatsApp.',
+    image: familyIpad,
   },
 ]
 
-const LINEUP_AUTOPLAY_MS = 5200
-
 export default function Home() {
-  const sliderRef = useRef<HTMLDivElement | null>(null)
-  const lineupIndexRef = useRef(0)
-  const lineupAutoplayPauseRef = useRef(false)
-  const [sliderIndex, setSliderIndex] = useState(0)
-
-  const scrollToIndex = useCallback((next: number) => {
-    const el = sliderRef.current
-    if (!el) return
-    const items = Array.from(el.querySelectorAll<HTMLElement>('[data-slide="1"]'))
-    const target = items[next]
-    if (!target) return
-    const delta = target.getBoundingClientRect().left - el.getBoundingClientRect().left
-    el.scrollTo({ left: el.scrollLeft + delta, behavior: 'smooth' })
-    setSliderIndex(next)
-  }, [])
-
-  useEffect(() => {
-    lineupIndexRef.current = sliderIndex
-  }, [sliderIndex])
-
-  useEffect(() => {
-    const n = FAMILY_LINEUP.length
-    const id = window.setInterval(() => {
-      if (lineupAutoplayPauseRef.current) return
-      const next = (lineupIndexRef.current + 1) % n
-      scrollToIndex(next)
-    }, LINEUP_AUTOPLAY_MS)
-    return () => window.clearInterval(id)
-  }, [scrollToIndex])
-
-  function pauseLineupAutoplay(ms: number) {
-    lineupAutoplayPauseRef.current = true
-    window.setTimeout(() => {
-      lineupAutoplayPauseRef.current = false
-    }, ms)
-  }
-
-  function handleSliderScroll() {
-    const el = sliderRef.current
-    if (!el) return
-    const items = Array.from(el.querySelectorAll<HTMLElement>('[data-slide="1"]'))
-    if (items.length === 0) return
-    const left = el.scrollLeft
-    let bestIdx = 0
-    let bestDist = Number.POSITIVE_INFINITY
-    for (let i = 0; i < items.length; i++) {
-      const d = Math.abs(items[i].offsetLeft - left)
-      if (d < bestDist) {
-        bestDist = d
-        bestIdx = i
-      }
-    }
-    setSliderIndex(bestIdx)
-  }
+  const lineupAnchorRef = useRef<HTMLDivElement | null>(null)
 
   return (
     <>
@@ -239,7 +160,7 @@ export default function Home() {
       <div className="border-t border-neutral-200/60" />
 
       <section className="bg-white">
-        <div className="mx-auto max-w-6xl px-6 pt-14 pb-20">
+        <div className="mx-auto max-w-7xl px-6 pt-16 pb-24">
           <div className="mb-12 flex items-end justify-between gap-6">
             <div>
               <p className="mb-2 text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">Lineup</p>
@@ -252,10 +173,10 @@ export default function Home() {
             </Link>
           </div>
 
-          <div>
+          <div ref={lineupAnchorRef}>
             <div className="mb-10 flex flex-col gap-4 sm:mb-12 sm:flex-row sm:items-end sm:justify-between">
-              <h3 className="max-w-xl text-3xl font-semibold leading-[1.15] tracking-[-0.03em] text-neutral-900 sm:text-4xl">
-                Conocé a la familia.
+              <h3 className="max-w-xl text-4xl font-semibold leading-[1.12] tracking-[-0.03em] text-neutral-900 sm:text-5xl">
+                Productos destacados
               </h3>
               <Link
                 to="/marketplace"
@@ -265,143 +186,61 @@ export default function Home() {
               </Link>
             </div>
 
-            <div
-              className="relative"
-              onMouseEnter={() => {
-                lineupAutoplayPauseRef.current = true
-              }}
-              onMouseLeave={() => {
-                lineupAutoplayPauseRef.current = false
-              }}
-            >
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-[280px] items-center justify-between sm:h-[320px] md:h-[340px]">
-                <button
-                  type="button"
-                  aria-label="Modelo anterior"
-                  onClick={() => {
-                    pauseLineupAutoplay(14000)
-                    const n = FAMILY_LINEUP.length
-                    scrollToIndex((sliderIndex - 1 + n) % n)
-                  }}
-                  className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-200/90 bg-white/95 text-neutral-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white hover:text-neutral-900 sm:h-12 sm:w-12"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  aria-label="Modelo siguiente"
-                  onClick={() => {
-                    pauseLineupAutoplay(14000)
-                    const n = FAMILY_LINEUP.length
-                    scrollToIndex((sliderIndex + 1) % n)
-                  }}
-                  className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-200/90 bg-white/95 text-neutral-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white hover:text-neutral-900 sm:h-12 sm:w-12"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                  </svg>
-                </button>
-              </div>
-
-              <div
-                ref={sliderRef}
-                onScroll={handleSliderScroll}
-                onPointerDown={() => pauseLineupAutoplay(14000)}
-                className="flex gap-6 overflow-x-auto scroll-smooth pb-8 pl-10 pr-10 [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-8 sm:pl-12 sm:pr-12 [&::-webkit-scrollbar]:hidden"
-                style={{ scrollSnapType: 'x mandatory' }}
-              >
-                {FAMILY_LINEUP.map((item) => (
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+              {FAMILY_LINEUP.map((item) => (
+                <div key={item.id} className="flex flex-col items-center text-center">
                   <div
-                    key={item.id}
-                    data-slide="1"
-                    className="w-[min(86vw,320px)] flex-none sm:w-[360px] md:w-[380px] lg:w-[400px]"
-                    style={{ scrollSnapAlign: 'start' }}
+                    className={`relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] ${item.imageBackdrop}`}
                   >
-                    <div className="flex flex-col items-center text-center">
-                      <div
-                        className={`relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] ${item.imageBackdrop}`}
-                      >
-                        <div className="relative flex h-[280px] w-full items-center justify-center sm:h-[320px] md:h-[340px]">
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            className="max-h-full w-auto max-w-[min(100%,280px)] object-contain object-center mix-blend-multiply sm:max-w-[300px] md:max-w-[320px]"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
-                        {item.swatches.map((sw, i) => (
-                          <span
-                            key={`${item.id}-sw-${i}`}
-                            className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`}
-                          />
-                        ))}
-                      </div>
-
-                      {item.isNew ? (
-                        <p className="mt-3 text-[11px] font-semibold tracking-[0.02em] text-[#f56300]">Nuevo</p>
-                      ) : null}
-
-                      <h4
-                        className={`max-w-[18rem] text-[1.375rem] font-semibold leading-tight tracking-[-0.025em] text-neutral-900 sm:text-[1.5rem] ${item.isNew ? 'mt-1.5' : 'mt-4'}`}
-                      >
-                        {item.title}
-                      </h4>
-
-                      <p className="mx-auto mt-2.5 max-w-[20rem] text-[15px] leading-snug text-neutral-600">{item.line1}</p>
-                      <p className="mx-auto mt-1 max-w-[20rem] text-[15px] leading-snug text-neutral-600">{item.line2}</p>
-
-                      <p className="mx-auto mt-3 max-w-[22rem] text-xs leading-relaxed text-neutral-700 sm:text-[13px]">
-                        {item.price}
-                      </p>
-
-                      <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
-                        <Link
-                          to="/marketplace"
-                          className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] active:bg-[#006edb]"
-                        >
-                          Conocer más
-                        </Link>
-                        <Link
-                          to="/marketplace"
-                          className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
-                        >
-                          Comprar
-                          <span aria-hidden className="text-lg leading-none">
-                            ›
-                          </span>
-                        </Link>
-                      </div>
+                    <div className="relative flex h-[300px] w-full items-center justify-center sm:h-[340px] md:h-[380px]">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="h-full w-full object-contain object-center mix-blend-multiply p-7"
+                        loading="lazy"
+                        decoding="async"
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            <div className="flex items-center justify-center gap-1 pt-2 sm:gap-1.5">
-              {FAMILY_LINEUP.map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  aria-label={`Ir a modelo ${i + 1}`}
-                  aria-current={i === sliderIndex ? 'true' : undefined}
-                  onClick={() => {
-                    pauseLineupAutoplay(14000)
-                    scrollToIndex(i)
-                  }}
-                  className="flex min-h-10 min-w-10 items-center justify-center p-2"
-                >
-                  <span
-                    className={`block h-1 rounded-full transition-all duration-300 ease-out ${
-                      i === sliderIndex ? 'w-7 bg-neutral-800' : 'w-1.5 bg-neutral-300/90 hover:bg-neutral-400'
-                    }`}
-                  />
-                </button>
+                  <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
+                    {item.swatches.map((sw, i) => (
+                      <span
+                        key={`${item.id}-sw-${i}`}
+                        className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`}
+                      />
+                    ))}
+                  </div>
+
+                  {item.isNew ? <p className="mt-3 text-[11px] font-semibold tracking-[0.02em] text-[#f56300]">Nuevo</p> : null}
+
+                  <h4 className={`max-w-[18rem] text-[1.5rem] font-semibold leading-tight tracking-[-0.025em] text-neutral-900 sm:text-[1.7rem] ${item.isNew ? 'mt-1.5' : 'mt-4'}`}>
+                    {item.title}
+                  </h4>
+
+                  <p className="mx-auto mt-3 max-w-[22rem] text-[16px] leading-snug text-neutral-600">{item.line1}</p>
+                  <p className="mx-auto mt-1 max-w-[22rem] text-[16px] leading-snug text-neutral-600">{item.line2}</p>
+
+                  <p className="mx-auto mt-3 max-w-[24rem] text-sm leading-relaxed text-neutral-700">{item.price}</p>
+
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
+                    <Link
+                      to="/marketplace"
+                      className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] active:bg-[#006edb]"
+                    >
+                      Conocer más
+                    </Link>
+                    <Link
+                      to="/marketplace"
+                      className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
+                    >
+                      Comprar
+                      <span aria-hidden className="text-lg leading-none">
+                        ›
+                      </span>
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
           </div>

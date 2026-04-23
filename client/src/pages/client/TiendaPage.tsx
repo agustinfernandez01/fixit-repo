@@ -7,7 +7,6 @@ import { getAccessToken } from '../../lib/auth'
 import { mediaUrl } from '../../services/api'
 import productosAppleFilterImg from '../../assets/filtradocatalogoimg/productos-apple.svg'
 import accesoriosFilterImg from '../../assets/filtradocatalogoimg/accesorios.svg'
-import reparacionesFilterImg from '../../assets/filtradocatalogoimg/reparaciones.svg'
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -34,7 +33,7 @@ function fmtUsd(v: string | number | null | undefined) {
   }).format(n)
 }
 
-type CatalogCategory = 'apple' | 'accesorios' | 'reparaciones'
+type CatalogCategory = 'apple' | 'accesorios'
 type SortMode = 'featured' | 'price-asc' | 'price-desc' | 'name'
 type VisibleCategory = CatalogCategory
 type CatalogSubcategory =
@@ -76,11 +75,6 @@ const ACCESORIOS_SUBCATEGORY_OPTIONS: Array<{
   { id: 'cabezal', label: 'Cabezales' },
   { id: 'cable', label: 'Cables' },
 ]
-
-const REPARACIONES_SUBCATEGORY_OPTIONS: Array<{
-  id: CatalogSubcategory
-  label: string
-}> = [{ id: 'all', label: 'Todos' }]
 
 const ITEMS_PER_PAGE = 9
 
@@ -142,19 +136,21 @@ function inferFamilyFromTipoEquipo(tipoEquipo: string | null | undefined): strin
   return t
 }
 
-function classifyCategory(producto: ProductoCompra): CatalogCategory {
+function isRepairProduct(producto: ProductoCompra): boolean {
   const name = normalize(producto.nombre)
   const desc = normalize(producto.descripcion ?? '')
-
-  const isRepair =
+  return (
     name.startsWith('reparación') ||
     name.startsWith('reparacion') ||
     name.includes('reparación -') ||
     name.includes('reparacion -') ||
     desc.includes('servicio de reparación') ||
     desc.includes('servicio de reparacion')
+  )
+}
 
-  if (isRepair) return 'reparaciones'
+function classifyCategory(producto: ProductoCompra): CatalogCategory {
+  const name = normalize(producto.nombre)
 
   if (producto.tipo_producto === 'accesorio') return 'accesorios'
 
@@ -230,13 +226,6 @@ function paletteByCategory(category: CatalogCategory): {
   swatches: string[]
   tag: string
 } {
-  if (category === 'reparaciones') {
-    return {
-      backdrop: 'bg-gradient-to-b from-sky-200/60 via-blue-50 to-white',
-      swatches: ['bg-slate-200', 'bg-violet-200', 'bg-neutral-900'],
-      tag: 'Reparaciones',
-    }
-  }
   if (category === 'accesorios') {
     return {
       backdrop: 'bg-gradient-to-b from-amber-100/75 via-orange-50/70 to-white',
@@ -429,7 +418,6 @@ export default function TiendaPage() {
   }> = [
     { id: 'apple', label: 'Productos Apple', image: productosAppleFilterImg },
     { id: 'accesorios', label: 'Accesorios', image: accesoriosFilterImg },
-    { id: 'reparaciones', label: 'Reparaciones', image: reparacionesFilterImg },
   ]
 
   const load = useCallback(async () => {
@@ -437,7 +425,7 @@ export default function TiendaPage() {
     setLoading(true)
     try {
       const data = await productosApi.list()
-      setItems(data.filter((p) => p.activo))
+      setItems(data.filter((p) => p.activo && !isRepairProduct(p)))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar la tienda')
     } finally {
@@ -497,16 +485,12 @@ export default function TiendaPage() {
   const subcategoryOptions =
     visibleCategory === 'apple'
       ? APPLE_SUBCATEGORY_OPTIONS
-      : visibleCategory === 'accesorios'
-        ? ACCESORIOS_SUBCATEGORY_OPTIONS
-        : REPARACIONES_SUBCATEGORY_OPTIONS
+      : ACCESORIOS_SUBCATEGORY_OPTIONS
 
   const sectionTitle =
     visibleCategory === 'apple'
       ? 'Productos Apple'
-      : visibleCategory === 'accesorios'
-        ? 'Accesorios'
-        : 'Reparaciones'
+      : 'Accesorios'
 
   return (
     <div className="bg-white">

@@ -134,15 +134,11 @@ export default function CarritoPage() {
   }
 
   async function checkout() {
-    if (!getAccessToken()) {
-      setError(null)
-      setShowAuthModal(true)
-      return
-    }
     setCheckoutBusy(true)
     setError(null)
     try {
-      const result = await carritoApi.checkout({ metodo_pago: metodoPago }, true)
+      const withAuth = Boolean(getAccessToken())
+      const result = await carritoApi.checkout({ metodo_pago: metodoPago }, withAuth)
       setCheckoutInfo(result)
       if (summary) {
         setSummary({

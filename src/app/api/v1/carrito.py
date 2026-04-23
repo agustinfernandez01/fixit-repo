@@ -152,11 +152,6 @@ def confirmar_checkout(
     token: str = Depends(_require_carrito_token),
     id_usuario: int | None = Depends(get_optional_user_id_from_access_token),
 ):
-    if id_usuario is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Debes iniciar sesión para confirmar la compra.",
-        )
     try:
         pedido, pago, whatsapp_url = checkout_carrito(
             db,

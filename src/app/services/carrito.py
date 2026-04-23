@@ -13,6 +13,8 @@ from app.models.carrito import Carrito, CarritoDetalle
 from app.models.equipos import Equipo
 from app.models.pedido import DetallePedido, Pago, Pedido
 from app.models.productos import Productos
+from app.models.roles import Rol
+from app.models.usuarios import Usuario
 from app.schemas.carrito import CarritoResumen
 
 
@@ -28,6 +30,37 @@ AVAILABILITY_CHECK_STATES = {
 }
 
 BLOCKED_STATES = {"vendido", "cancelado", "baja"}
+
+_GUEST_USER_EMAIL = "invitado.checkout@fixit.local"
+
+
+def _get_or_create_guest_user_id(db: Session) -> int:
+    """
+    Checkout sin login requiere un `id_usuario` por restricción NOT NULL en `pedidos.id_usuario`.
+    Creamos (o reutilizamos) un usuario interno "invitado" para asociar el pedido.
+    """
+    existing = db.query(Usuario).filter(Usuario.email == _GUEST_USER_EMAIL).first()
+    if existing:
+        return int(existing.id)
+
+    roles = db.query(Rol).all()
+    rol_cliente = next(
+        (r for r in roles if (r.nombre or "").strip().lower().find("cliente") >= 0),
+        None,
+    )
+    rol_id = int((rol_cliente or (roles[0] if roles else None)).id) if roles else None
+
+    u = Usuario(
+        nombre="Invitado",
+        apellido="Checkout",
+        email=_GUEST_USER_EMAIL,
+        telefono="",
+        password_hash="",
+        id_rol=rol_id,
+    )
+    db.add(u)
+    db.flush()  # asegura `u.id` dentro de la transacción
+    return int(u.id)
 
 
 def _carrito_activo_query(db: Session, token: str):
@@ -416,7 +449,7 @@ def count_items_in_carrito(db: Session, id_carrito: int) -> int:
 def checkout_carrito(
     db: Session,
     token: str,
-    id_usuario: int,
+    id_usuario: Optional[int],
     metodo_pago: str,
     observaciones: Optional[str] = None,
 ) -> tuple[Pedido, Pago, str]:
@@ -436,6 +469,8 @@ def checkout_carrito(
         if carrito.id_pedido is not None:
             raise ValueError("El carrito ya fue procesado")
 
+        effective_user_id = id_usuario if id_usuario is not None else _get_or_create_guest_user_id(db)
+
         total = Decimal("0")
 
         for linea in items:
@@ -454,7 +489,7 @@ def checkout_carrito(
 
         now = datetime.now(timezone.utc)
         pedido = Pedido(
-            id_usuario=id_usuario,
+            id_usuario=effective_user_id,
             fecha_pedido=now,
             estado="pendiente_confirmacion",
             total=total,
@@ -485,7 +520,7 @@ def checkout_carrito(
         )
         db.add(pago)
 
-        carrito.id_usuario = id_usuario
+        carrito.id_usuario = effective_user_id
         carrito.id_pedido = pedido.id
         carrito.estado = False
 

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CategoriaListaSlug, ListaPrecioReparacion, TipoReparacion } from '../../types/reparaciones'
-import { carritoApi } from '../../services/carritoApi'
 import { reparacionesApi } from '../../services/reparacionesApi'
 
 const WHATSAPP_PHONE: string = import.meta.env.VITE_WHATSAPP_CHECKOUT_PHONE ?? ''
@@ -54,8 +53,6 @@ export default function ReparacionesPage() {
   const [listaPrecios, setListaPrecios] = useState<ListaPrecioReparacion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
-  const [addedFeedback, setAddedFeedback] = useState<string | null>(null)
 
   const [modeloOpen, setModeloOpen] = useState(false)
   const [modeloQuery, setModeloQuery] = useState('')
@@ -147,7 +144,7 @@ export default function ReparacionesPage() {
     }
   }, [problemaSelectedId])
 
-  const canWhatsApp = Boolean(WHATSAPP_PHONE) && problemaSelectedId === 'no-encontre'
+  const canWhatsApp = Boolean(WHATSAPP_PHONE)
 
   function normalizeModelForPriceLookup(input: string): string {
     return (input || '')
@@ -174,25 +171,6 @@ export default function ReparacionesPage() {
   const precioArs = precioSelected?.precio_ars_original ? Number(precioSelected.precio_ars_original) : null
   const precioUsd = precioSelected?.precio_usd_original ? Number(precioSelected.precio_usd_original) : null
 
-  async function handleAddRepairToCart() {
-    if (!categoriaPrecio || !precioSelected || !modeloSelected) return
-    setAdding(true)
-    setAddedFeedback(null)
-    try {
-      const producto = await reparacionesApi.carritoProducto.create({
-        categoria: categoriaPrecio,
-        modelo: precioSelected.modelo,
-      })
-      await carritoApi.ensure(false)
-      await carritoApi.addItem(producto.id_producto, 1, false)
-      setAddedFeedback('Agregado al carrito.')
-    } catch (e) {
-      setAddedFeedback(e instanceof Error ? e.message : 'No se pudo agregar al carrito.')
-    } finally {
-      setAdding(false)
-    }
-  }
-
   const whatsAppHref = useMemo(() => {
     if (!canWhatsApp) return null
     const modelo = modeloSelected ? buildModeloLabel(modeloSelected) : null
@@ -200,16 +178,21 @@ export default function ReparacionesPage() {
     const tipo = tipoSelected?.nombre ?? null
     const extra = tipo && problema && tipo.toLowerCase() !== problema.toLowerCase() ? ` (ref: ${tipo})` : ''
     const detalle = problemaDetalle.trim()
+    const precio =
+      precioArs != null && precioUsd != null
+        ? `Precio estimado: $${precioArs.toLocaleString('es-AR')} (USD ${precioUsd.toLocaleString('en-US')})`
+        : null
     const textLines = [
       'Hola Fix It 👋',
       'Quiero cotizar una reparación.',
       modelo ? `Modelo: ${modelo}` : 'Modelo: (sin seleccionar)',
       problema ? `Problema: ${problema}${extra}` : 'Problema: (sin seleccionar)',
+      precio,
       detalle ? `Detalle: ${detalle}` : null,
     ]
       .filter(Boolean) as string[]
     return buildWhatsAppUrl(WHATSAPP_PHONE, textLines.join('\n'))
-  }, [canWhatsApp, modeloSelected, problemaSelected, tipoSelected, problemaDetalle])
+  }, [canWhatsApp, modeloSelected, problemaSelected, tipoSelected, problemaDetalle, precioArs, precioUsd])
 
   function quickPickProblema(id: string) {
     setProblemaSelectedId(id)
@@ -433,27 +416,7 @@ export default function ReparacionesPage() {
                     )}
                   </p>
                 </div>
-
-                <button
-                  type="button"
-                  disabled={!categoriaPrecio || !modeloSelected || precioArs == null || adding}
-                  onClick={() => {
-                    void handleAddRepairToCart()
-                  }}
-                  className={[
-                    'shrink-0 rounded-2xl px-4 py-3 text-sm font-extrabold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2',
-                    !categoriaPrecio || !modeloSelected || precioArs == null || adding
-                      ? 'bg-neutral-200 text-neutral-500'
-                      : 'bg-emerald-600 text-white hover:bg-emerald-700',
-                  ].join(' ')}
-                >
-                  {adding ? 'Agregando…' : 'Agregar al carrito'}
-                </button>
               </div>
-
-              {addedFeedback ? (
-                <p className="mt-2 text-sm text-neutral-600">{addedFeedback}</p>
-              ) : null}
             </div>
 
             <a
@@ -623,7 +586,7 @@ export default function ReparacionesPage() {
           </div>
         ) : null}
 
-        {/* WhatsApp solo se habilita desde el selector "No encontré mi problema" */}
+        {/* WhatsApp se habilita siempre (si hay teléfono configurado) */}
       </section>
     </div>
   )
