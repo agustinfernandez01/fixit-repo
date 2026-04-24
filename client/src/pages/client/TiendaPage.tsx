@@ -6,6 +6,7 @@ import type { ProductoCompra } from '../../types/carrito'
 import { getAccessToken } from '../../lib/auth'
 import { mediaUrl } from '../../services/api'
 import productosAppleFilterImg from '../../assets/filtradocatalogoimg/productos-apple.svg'
+import accesoriosFilterImg from '../../assets/filtradocatalogoimg/accesorios.svg'
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -32,7 +33,7 @@ function fmtUsd(v: string | number | null | undefined) {
   }).format(n)
 }
 
-type CatalogCategory = 'apple'
+type CatalogCategory = 'apple' | 'accesorios'
 type SortMode = 'featured' | 'price-asc' | 'price-desc' | 'name'
 type VisibleCategory = CatalogCategory
 type CatalogSubcategory =
@@ -62,6 +63,18 @@ const APPLE_SUBCATEGORY_OPTIONS: Array<{
   { id: 'macbook', label: 'MacBook' },
   { id: 'watch', label: 'Apple Watch' },
   { id: 'airpods', label: 'AirPods' },
+]
+
+const ACCESORIOS_SUBCATEGORY_OPTIONS: Array<{
+  id: CatalogSubcategory
+  label: string
+}> = [
+  { id: 'all', label: 'Todos' },
+  { id: 'funda', label: 'Fundas' },
+  { id: 'templado', label: 'Templados' },
+  { id: 'cabezal', label: 'Cabezales' },
+  { id: 'cable', label: 'Cables' },
+  { id: 'airpods', label: 'Audio' },
 ]
 
 const ITEMS_PER_PAGE = 9
@@ -154,7 +167,17 @@ function isUsedProduct(producto: ProductoCompra): boolean {
   )
 }
 
-function classifyCategory(_producto: ProductoCompra): CatalogCategory {
+function classifyCategory(producto: ProductoCompra): CatalogCategory {
+  const tipoProducto = normalize(producto.tipo_producto)
+  const tipoEquipo = normalize(producto.tipo_equipo)
+  const nombre = normalize(producto.nombre)
+  if (
+    tipoProducto === 'accesorio' ||
+    tipoEquipo.includes('accesorio') ||
+    isAccessoryByName(nombre)
+  ) {
+    return 'accesorios'
+  }
   return 'apple'
 }
 
@@ -205,6 +228,13 @@ function paletteByCategory(category: CatalogCategory): {
   swatches: string[]
   tag: string
 } {
+  if (category === 'accesorios') {
+    return {
+      backdrop: 'bg-gradient-to-b from-blue-100/80 via-white to-neutral-50',
+      swatches: ['bg-blue-200', 'bg-neutral-100', 'bg-neutral-700'],
+      tag: 'Accesorios',
+    }
+  }
   return {
     backdrop: 'bg-gradient-to-b from-neutral-200/90 via-stone-100/80 to-white',
     swatches: ['bg-stone-200', 'bg-neutral-100', 'bg-slate-800'],
@@ -212,16 +242,7 @@ function paletteByCategory(category: CatalogCategory): {
   }
 }
 
-function ProductMockup({ category }: { category: CatalogCategory }) {
-  if (category === 'accesorios') {
-    return (
-      <div className="relative mx-auto flex h-36 w-36 items-center justify-center rounded-3xl border border-neutral-200 bg-white shadow-sm">
-        <div className="h-20 w-20 rounded-2xl border border-neutral-300 bg-neutral-50" />
-        <div className="absolute -bottom-2 h-1.5 w-20 rounded-full bg-neutral-200" />
-      </div>
-    )
-  }
-
+function ProductMockup() {
   return (
     <div className="relative mx-auto flex h-44 w-24 flex-col items-center rounded-[1.9rem] border border-[1.5px] border-gray-200 bg-white pb-2.5 pt-2.5 shadow-sm">
       <div className="mb-1.5 h-3.5 w-10 rounded-full bg-gray-200" />
@@ -258,6 +279,13 @@ function sortItems(items: CatalogItem[], mode: SortMode): CatalogItem[] {
   return sorted
 }
 
+function idProductoParaAgregarAlCarrito(item: CatalogItem): number | null {
+  const v = item.variantes_tienda
+  if (v && v.length === 1) return v[0].id_producto
+  if (v && v.length > 1) return null
+  return item.id
+}
+
 function ProductCard({
   item,
   saving,
@@ -270,6 +298,10 @@ function ProductCard({
   const p = paletteByCategory(item.category)
   const imageSrc = mediaUrl(item.foto_url)
   const hasUsd = item.precio_usd !== null && item.precio_usd !== undefined && item.precio_usd !== ''
+  const variasVariantes = (item.variantes_tienda?.length ?? 0) > 1
+  const idCarrito = idProductoParaAgregarAlCarrito(item)
+  const stockLabel =
+    item.stock != null && item.stock > 0 ? `${item.stock} en stock` : null
   return (
     <article className="flex flex-col items-center text-center">
       <div
@@ -286,7 +318,7 @@ function ProductCard({
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <ProductMockup category={item.category} />
+              <ProductMockup />
             </div>
           )}
         </div>
@@ -306,11 +338,16 @@ function ProductCard({
 
       <p className="mt-2 text-xs font-medium tracking-wide text-neutral-500 uppercase">{item.familyLabel}</p>
 
-      <p className="mx-auto mt-2.5 max-w-[20rem] text-[15px] leading-snug text-neutral-600">
-        {item.descripcion ?? 'Producto disponible en catálogo.'}
-      </p>
+      {item.descripcion ? (
+        <p className="mx-auto mt-2.5 max-w-[20rem] text-[15px] leading-snug text-neutral-600">
+          {item.descripcion}
+        </p>
+      ) : null}
 
       <div className="mx-auto mt-3 flex max-w-[22rem] flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
+        {variasVariantes ? (
+          <span className="text-xs font-medium text-neutral-500">Desde</span>
+        ) : null}
         {hasUsd ? (
           <span className="inline-flex items-center rounded-full bg-[#0071e3]/10 px-3 py-1 text-[13px] font-semibold text-[#0071e3]">
             USD {fmtUsd(item.precio_usd).replace('$', '').trim()}
@@ -321,15 +358,28 @@ function ProductCard({
         </span>
       </div>
 
+      {stockLabel ? (
+        <p className="mt-2 text-xs font-medium text-neutral-500">{stockLabel}</p>
+      ) : null}
+
       <div className="mt-5 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
-        <button
-          type="button"
-          onClick={() => onAdd(item.id)}
-          disabled={saving}
-          className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] active:bg-[#006edb] disabled:cursor-wait disabled:opacity-60"
-        >
-          {saving ? 'Agregando…' : 'Agregar al carrito'}
-        </button>
+        {idCarrito != null ? (
+          <button
+            type="button"
+            onClick={() => onAdd(idCarrito)}
+            disabled={saving}
+            className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] active:bg-[#006edb] disabled:cursor-wait disabled:opacity-60"
+          >
+            {saving ? 'Agregando…' : 'Agregar al carrito'}
+          </button>
+        ) : (
+          <Link
+            to={`/producto/${item.id}`}
+            className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full border border-[#0071e3] px-7 text-[15px] font-normal text-[#0071e3] transition-colors hover:bg-[#0071e3]/5"
+          >
+            Elegir opciones
+          </Link>
+        )}
         <Link
           to={`/producto/${item.id}`}
           className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
@@ -376,6 +426,7 @@ export default function TiendaPage() {
   const [items, setItems] = useState<ProductoCompra[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [catalogoPlanoFallback, setCatalogoPlanoFallback] = useState(false)
   const [savingId, setSavingId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [visibleCategory, setVisibleCategory] = useState<VisibleCategory>('apple')
@@ -389,18 +440,21 @@ export default function TiendaPage() {
     image: string
   }> = [
     { id: 'apple', label: 'Productos Apple', image: productosAppleFilterImg },
+    { id: 'accesorios', label: 'Accesorios', image: accesoriosFilterImg },
   ]
 
   const load = useCallback(async () => {
     setError(null)
+    setCatalogoPlanoFallback(false)
     setLoading(true)
     try {
-      const data = await productosApi.list()
+      const { data, agrupado } = await productosApi.listTiendaCatalogoWithFallback()
+      setCatalogoPlanoFallback(!agrupado)
       setItems(
         data.filter(
           (p) =>
             p.activo &&
-            (p.tipo_producto === 'equipo' || p.tipo_producto == null) &&
+            (p.tipo_producto === 'equipo' || p.tipo_producto === 'accesorio' || p.tipo_producto == null) &&
             !isRepairProduct(p) &&
             !isUsedProduct(p),
         ),
@@ -461,9 +515,12 @@ export default function TiendaPage() {
     }
   }, [currentPage, totalPages])
 
-  const subcategoryOptions = APPLE_SUBCATEGORY_OPTIONS
+  const subcategoryOptions =
+    visibleCategory === 'apple'
+      ? APPLE_SUBCATEGORY_OPTIONS
+      : ACCESORIOS_SUBCATEGORY_OPTIONS
 
-  const sectionTitle = 'Equipos nuevos'
+  const sectionTitle = visibleCategory === 'apple' ? 'Equipos' : 'Accesorios'
 
   return (
     <div className="bg-white">
@@ -477,7 +534,8 @@ export default function TiendaPage() {
               Tienda de productos
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
-              Explorá equipos nuevos disponibles para compra inmediata: iPhone, iPad, MacBook, Apple Watch y AirPods. Buscá, filtrá y agregá al carrito en un flujo claro.
+              Explorá equipos disponibles para compra inmediata: iPhone, iPad, MacBook, Apple Watch y AirPods. Buscá,
+              filtrá y agregá al carrito en un flujo claro.
             </p>
           </div>
         </div>
@@ -558,6 +616,13 @@ export default function TiendaPage() {
           </div>
         ) : null}
 
+        {!error && catalogoPlanoFallback ? (
+          <div className="mb-5 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Mostrando todos los ítems del catálogo (vista sin agrupar). Reiniciá el backend tras actualizar la base para
+            volver a la vista por modelo.
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="space-y-7">
             <section>
@@ -596,9 +661,9 @@ export default function TiendaPage() {
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {paginatedItems.map((item) => (
                   <ProductCard
-                    key={item.id}
+                    key={item.id_modelo ?? item.id}
                     item={item}
-                    saving={savingId === item.id}
+                    saving={savingId != null && idProductoParaAgregarAlCarrito(item) === savingId}
                     onAdd={(id) => {
                       void addToCart(id)
                     }}

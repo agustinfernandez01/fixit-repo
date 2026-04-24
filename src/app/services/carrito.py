@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import List, Optional, Tuple
 from urllib.parse import quote
 
-from sqlalchemy import cast, func, String
+from sqlalchemy import String, cast, func
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
@@ -13,6 +13,8 @@ from app.models.carrito import Carrito, CarritoDetalle
 from app.models.equipos import Equipo
 from app.models.pedido import DetallePedido, Pago, Pedido
 from app.models.productos import Productos
+from app.models.roles import Rol
+from app.models.usuarios import Usuario
 from app.schemas.carrito import CarritoResumen
 
 
@@ -27,13 +29,48 @@ AVAILABILITY_CHECK_STATES = {
     "reservado",
 }
 
-BLOCKED_STATES = {"vendido", "cancelado", "baja"}
+BLOCKED_STATES = {"vendido", "cancelado", "baja", "reservado_venta"}
+
+# Tras confirmar el pedido desde admin: unidad bloqueada pero venta no cerrada hasta finalizar entrega.
+RESERVADO_VENTA = "reservado_venta"
+
+_GUEST_USER_EMAIL = "invitado.checkout@fixit.local"
+
+
+def _get_or_create_guest_user_id(db: Session) -> int:
+    """
+    Checkout sin login requiere un `id_usuario` por restricción NOT NULL en `pedidos.id_usuario`.
+    Creamos (o reutilizamos) un usuario interno "invitado" para asociar el pedido.
+    """
+    existing = db.query(Usuario).filter(Usuario.email == _GUEST_USER_EMAIL).first()
+    if existing:
+        return int(existing.id)
+
+    roles = db.query(Rol).all()
+    rol_cliente = next(
+        (r for r in roles if (r.nombre or "").strip().lower().find("cliente") >= 0),
+        None,
+    )
+    rol_id = int((rol_cliente or (roles[0] if roles else None)).id) if roles else None
+
+    u = Usuario(
+        nombre="Invitado",
+        apellido="Checkout",
+        email=_GUEST_USER_EMAIL,
+        telefono="",
+        password_hash="",
+        id_rol=rol_id,
+    )
+    db.add(u)
+    db.flush()  # asegura `u.id` dentro de la transacción
+    return int(u.id)
 
 
 def _carrito_activo_query(db: Session, token: str):
+    estado_normalizado = func.lower(cast(Carrito.estado, String))
     return db.query(Carrito).filter(
         Carrito.token_identificador == token,
-        func.lower(cast(Carrito.estado, String)).in_(["true", "1", "t", "yes", "y"]),
+        estado_normalizado.in_(["true", "1", "t", "si", "sí", "activo"]),
     )
 
 
@@ -335,7 +372,9 @@ def merge_guest_cart_into_user_cart(
             db.query(Carrito)
             .filter(
                 Carrito.id_usuario == id_usuario,
-                func.lower(cast(Carrito.estado, String)).in_(["true", "1", "t", "yes", "y"]),
+                func.lower(cast(Carrito.estado, String)).in_(
+                    ["true", "1", "t", "si", "sí", "activo"]
+                ),
                 Carrito.id_pedido.is_(None),
             )
             .first()
@@ -413,10 +452,173 @@ def count_items_in_carrito(db: Session, id_carrito: int) -> int:
     return int(result or 0)
 
 
+def list_pedidos_pendientes_admin(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
+    """Pedidos pendientes con ítems, cliente e IMEI de la unidad vinculada al producto (si existe)."""
+    pedidos = (
+        db.query(Pedido)
+        .filter(Pedido.estado == "pendiente_confirmacion")
+        .order_by(Pedido.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    resultado: list[dict] = []
+    for p in pedidos:
+        usuario = db.query(Usuario).filter(Usuario.id == p.id_usuario).first()
+        detalles = (
+            db.query(DetallePedido)
+            .filter(DetallePedido.id_pedido == p.id)
+            .options(joinedload(DetallePedido.producto))
+            .all()
+        )
+        items: list[dict] = []
+        for d in detalles:
+            prod = d.producto
+            nombre = prod.nombre if prod is not None else f"Producto {d.id_producto}"
+            eq = db.query(Equipo).filter(Equipo.id_producto == d.id_producto).first()
+            sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
+            items.append(
+                {
+                    "id_producto": d.id_producto,
+                    "producto_nombre": nombre,
+                    "cantidad": d.cantidad,
+                    "precio_unitario": str(d.precio_unitario),
+                    "subtotal": str(sub),
+                    "id_equipo": int(eq.id) if eq else None,
+                    "imei": eq.imei if eq and eq.imei else None,
+                    "estado_equipo": eq.estado_comercial if eq else None,
+                }
+            )
+        total_unidades = sum(int(i["cantidad"]) for i in items)
+        resultado.append(
+            {
+                "id_pedido": p.id,
+                "id_usuario": p.id_usuario,
+                "fecha_pedido": p.fecha_pedido,
+                "estado": p.estado,
+                "total": str(p.total) if p.total else "0",
+                "observaciones": p.observaciones,
+                "cliente": (
+                    {
+                        "id": usuario.id,
+                        "nombre": (
+                            " ".join(
+                                p
+                                for p in [
+                                    (usuario.nombre or "").strip(),
+                                    (usuario.apellido or "").strip(),
+                                ]
+                                if p
+                            )
+                            or None
+                        ),
+                        "email": usuario.email,
+                        "telefono": usuario.telefono,
+                    }
+                    if usuario
+                    else None
+                ),
+                "items": items,
+                "resumen": {"total_items": len(items), "total_unidades": total_unidades},
+            }
+        )
+    return resultado
+
+
+def list_pedidos_confirmados_pendientes_entrega_admin(
+    db: Session, skip: int = 0, limit: int = 50
+) -> list[dict]:
+    """Pedidos ya confirmados (pago aprobado) con unidades aún en reserva hasta cerrar entrega."""
+    id_list = [
+        row[0]
+        for row in (
+            db.query(DetallePedido.id_pedido)
+            .join(Equipo, Equipo.id_producto == DetallePedido.id_producto)
+            .filter(
+                func.lower(func.trim(func.coalesce(Equipo.estado_comercial, ""))) == RESERVADO_VENTA
+            )
+            .distinct()
+            .all()
+        )
+    ]
+    if not id_list:
+        return []
+
+    filtrados = (
+        db.query(Pedido)
+        .filter(Pedido.estado == "confirmado", Pedido.id.in_(id_list))
+        .order_by(Pedido.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    resultado: list[dict] = []
+    for p in filtrados:
+        usuario = db.query(Usuario).filter(Usuario.id == p.id_usuario).first()
+        detalles = (
+            db.query(DetallePedido)
+            .filter(DetallePedido.id_pedido == p.id)
+            .options(joinedload(DetallePedido.producto))
+            .all()
+        )
+        items: list[dict] = []
+        for d in detalles:
+            prod = d.producto
+            nombre = prod.nombre if prod is not None else f"Producto {d.id_producto}"
+            eq = db.query(Equipo).filter(Equipo.id_producto == d.id_producto).first()
+            sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
+            items.append(
+                {
+                    "id_producto": d.id_producto,
+                    "producto_nombre": nombre,
+                    "cantidad": d.cantidad,
+                    "precio_unitario": str(d.precio_unitario),
+                    "subtotal": str(sub),
+                    "id_equipo": int(eq.id) if eq else None,
+                    "imei": eq.imei if eq and eq.imei else None,
+                    "estado_equipo": eq.estado_comercial if eq else None,
+                }
+            )
+        total_unidades = sum(int(i["cantidad"]) for i in items)
+        resultado.append(
+            {
+                "id_pedido": p.id,
+                "id_usuario": p.id_usuario,
+                "fecha_pedido": p.fecha_pedido,
+                "estado": p.estado,
+                "total": str(p.total) if p.total else "0",
+                "observaciones": p.observaciones,
+                "cliente": (
+                    {
+                        "id": usuario.id,
+                        "nombre": (
+                            " ".join(
+                                pr
+                                for pr in [
+                                    (usuario.nombre or "").strip(),
+                                    (usuario.apellido or "").strip(),
+                                ]
+                                if pr
+                            )
+                            or None
+                        ),
+                        "email": usuario.email,
+                        "telefono": usuario.telefono,
+                    }
+                    if usuario
+                    else None
+                ),
+                "items": items,
+                "resumen": {"total_items": len(items), "total_unidades": total_unidades},
+            }
+        )
+    return resultado
+
+
 def checkout_carrito(
     db: Session,
     token: str,
-    id_usuario: int,
+    id_usuario: Optional[int],
     metodo_pago: str,
     observaciones: Optional[str] = None,
 ) -> tuple[Pedido, Pago, str]:
@@ -424,8 +626,7 @@ def checkout_carrito(
     Confirma la compra del carrito activo en una sola transacción:
     - valida disponibilidad de productos,
     - crea pedido y detalle,
-    - registra pago aprobado,
-    - marca equipos vendidos para evitar sobreventa.
+    - registra pago pendiente (la reserva de stock ocurre al confirmar el pedido desde admin).
     """
     try:
         carrito = _require_carrito_por_token(db, token)
@@ -435,6 +636,8 @@ def checkout_carrito(
             raise ValueError("El carrito está vacío")
         if carrito.id_pedido is not None:
             raise ValueError("El carrito ya fue procesado")
+
+        effective_user_id = id_usuario if id_usuario is not None else _get_or_create_guest_user_id(db)
 
         total = Decimal("0")
 
@@ -454,7 +657,7 @@ def checkout_carrito(
 
         now = datetime.now(timezone.utc)
         pedido = Pedido(
-            id_usuario=id_usuario,
+            id_usuario=effective_user_id,
             fecha_pedido=now,
             estado="pendiente_confirmacion",
             total=total,
@@ -485,7 +688,7 @@ def checkout_carrito(
         )
         db.add(pago)
 
-        carrito.id_usuario = id_usuario
+        carrito.id_usuario = effective_user_id
         carrito.id_pedido = pedido.id
         carrito.estado = False
 
@@ -535,7 +738,7 @@ def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Op
     Confirma un pedido pendiente:
     - valida estado de equipos,
     - si hay items no inmediatos devuelve warnings para confirmar con el local,
-    - al confirmar, bloquea stock, marca pedido y pago.
+    - al confirmar: reserva unidades (reservado_venta), aprueba pago; la venta cerrada es con finalizar_entrega_pedido.
     """
     try:
         pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
@@ -551,42 +754,58 @@ def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Op
         warnings: list[str] = []
         cancel_reasons: list[str] = []
 
+        equipos_a_reservar: list[Equipo] = []
+        productos_afectados: set[int] = set()
+
         for detalle in detalles:
-            equipo = (
+            qty = int(detalle.cantidad or 0)
+            if qty < 1:
+                continue
+            equipos_producto = (
                 db.query(Equipo)
                 .filter(Equipo.id_producto == detalle.id_producto)
-                .first()
+                .order_by(Equipo.id.asc())
+                .all()
             )
-
-            if not equipo:
+            if not equipos_producto:
                 cancel_reasons.append(
                     f"No hay equipo físico vinculado al producto {detalle.id_producto}."
                 )
                 continue
 
-            estado_normalizado = (equipo.estado_comercial or "").strip().lower()
+            # Candidatos vendibles para esta línea.
+            elegibles = []
+            for equipo in equipos_producto:
+                estado_normalizado = (equipo.estado_comercial or "").strip().lower()
+                if estado_normalizado in BLOCKED_STATES:
+                    continue
+                if not bool(equipo.activo):
+                    continue
+                elegibles.append(equipo)
 
-            if estado_normalizado in BLOCKED_STATES:
+            if len(elegibles) < qty:
                 cancel_reasons.append(
-                    f"El equipo {equipo.id} no está disponible para confirmar (estado: {equipo.estado_comercial})."
+                    f"Stock insuficiente para producto {detalle.id_producto}: solicitado {qty}, disponible {len(elegibles)}."
                 )
                 continue
 
-            requiere_verificacion = (
-                estado_normalizado in AVAILABILITY_CHECK_STATES
-                or not bool(equipo.activo)
-            )
-
-            if requiere_verificacion and not force:
-                nombre_producto = (
-                    equipo.producto.nombre
-                    if equipo.producto is not None and equipo.producto.nombre
-                    else f"producto {detalle.id_producto}"
-                )
-                warnings.append(
-                    "El ítem "
-                    f"{nombre_producto} requiere confirmar disponibilidad con el local por WhatsApp antes de cerrar la venta."
-                )
+            seleccionados = elegibles[:qty]
+            for equipo in seleccionados:
+                estado_normalizado = (equipo.estado_comercial or "").strip().lower()
+                requiere_verificacion = estado_normalizado in AVAILABILITY_CHECK_STATES
+                if requiere_verificacion and not force:
+                    nombre_producto = (
+                        equipo.producto.nombre
+                        if equipo.producto is not None and equipo.producto.nombre
+                        else f"producto {detalle.id_producto}"
+                    )
+                    warnings.append(
+                        "El ítem "
+                        f"{nombre_producto} requiere confirmar disponibilidad con el local por WhatsApp antes de cerrar la venta."
+                    )
+                    break
+            equipos_a_reservar.extend(seleccionados)
+            productos_afectados.add(int(detalle.id_producto))
 
         if cancel_reasons:
             pedido.estado = "cancelado_sin_stock"
@@ -608,17 +827,14 @@ def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Op
             db.rollback()
             return None, warnings
 
-        for detalle in detalles:
-            equipo = (
-                db.query(Equipo)
-                .filter(Equipo.id_producto == detalle.id_producto)
-                .first()
-            )
-            if equipo:
-                equipo.activo = False
-                equipo.estado_comercial = "vendido"
-                if equipo.producto is not None:
-                    equipo.producto.activo = False
+        for equipo in equipos_a_reservar:
+            prev = (equipo.estado_comercial or "").strip() or None
+            equipo.estado_comercial_previo_reserva = prev
+            equipo.activo = False
+            equipo.estado_comercial = RESERVADO_VENTA
+
+        for id_producto in productos_afectados:
+            _sincronizar_producto_activo_por_unidades_disponibles(db, id_producto)
 
         pedido.estado = "confirmado"
         pago = db.query(Pago).filter(Pago.id_pedido == id_pedido).first()
@@ -638,6 +854,113 @@ def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Op
     except Exception:
         db.rollback()
         raise ValueError("Ocurrió un error al confirmar el pedido")
+
+
+def finalizar_entrega_pedido(db: Session, id_pedido: int) -> Pedido:
+    """
+    Cierra la venta en inventario: pasa equipos de reserva a vendido y desactiva el producto.
+    Ejecutar cuando la unidad ya salió / se entregó (IMEI verificado en operación).
+    """
+    try:
+        pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
+        if not pedido:
+            raise ValueError("Pedido no encontrado")
+        if pedido.estado != "confirmado":
+            raise ValueError(
+                f"Solo se puede finalizar entrega de pedidos confirmados (actual: {pedido.estado})."
+            )
+
+        detalles = db.query(DetallePedido).filter(DetallePedido.id_pedido == id_pedido).all()
+        productos_afectados: set[int] = set()
+        for detalle in detalles:
+            equipo = db.query(Equipo).filter(Equipo.id_producto == detalle.id_producto).first()
+            if not equipo:
+                continue
+            en = (equipo.estado_comercial or "").strip().lower()
+            if en == RESERVADO_VENTA:
+                equipo.estado_comercial = "vendido"
+                equipo.estado_comercial_previo_reserva = None
+                productos_afectados.add(int(detalle.id_producto))
+
+        for id_producto in productos_afectados:
+            _sincronizar_producto_activo_por_unidades_disponibles(db, id_producto)
+
+        db.commit()
+        db.refresh(pedido)
+        return pedido
+
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("No se pudo finalizar la entrega")
+    except ValueError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise ValueError("Ocurrió un error al finalizar la entrega")
+
+
+def cancel_pedido_confirmado(db: Session, id_pedido: int, motivo: Optional[str] = None) -> Pedido:
+    """Cancela un pedido ya confirmado y libera unidades reservadas (vuelven al stock vendible)."""
+    try:
+        pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
+        if not pedido:
+            raise ValueError("Pedido no encontrado")
+        if pedido.estado != "confirmado":
+            raise ValueError(f"Pedido en estado {pedido.estado}, no aplica cancelación post-confirmación.")
+
+        detalles = db.query(DetallePedido).filter(DetallePedido.id_pedido == id_pedido).all()
+        hay_reserva = False
+        productos_afectados: set[int] = set()
+        for detalle in detalles:
+            equipo = db.query(Equipo).filter(Equipo.id_producto == detalle.id_producto).first()
+            if not equipo:
+                continue
+            en = (equipo.estado_comercial or "").strip().lower()
+            if en == RESERVADO_VENTA:
+                hay_reserva = True
+                prev = (equipo.estado_comercial_previo_reserva or "").strip() or None
+                equipo.estado_comercial = prev if prev else "nuevo"
+                equipo.estado_comercial_previo_reserva = None
+                equipo.activo = True
+                productos_afectados.add(int(detalle.id_producto))
+
+        if not hay_reserva:
+            raise ValueError(
+                "No hay unidades en reserva para este pedido; puede que la entrega ya esté cerrada."
+            )
+
+        pedido.estado = "cancelado"
+
+        pago = db.query(Pago).filter(Pago.id_pedido == id_pedido).first()
+        if pago:
+            pago.estado_pago = "rechazado"
+
+        motivo_cancelacion = (
+            (motivo or "").strip()
+            or "Pedido confirmado cancelado desde administración; stock liberado."
+        )
+        if pedido.observaciones:
+            pedido.observaciones = f"{pedido.observaciones} | {motivo_cancelacion}"
+        else:
+            pedido.observaciones = motivo_cancelacion
+
+        for id_producto in productos_afectados:
+            _sincronizar_producto_activo_por_unidades_disponibles(db, id_producto)
+
+        db.commit()
+        db.refresh(pedido)
+        return pedido
+
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("No se pudo cancelar el pedido confirmado")
+    except ValueError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise ValueError("Ocurrió un error al cancelar el pedido confirmado")
 
 
 def cancel_pedido(
@@ -681,3 +1004,146 @@ def cancel_pedido(
     except Exception:
         db.rollback()
         raise ValueError("Ocurrió un error al cancelar el pedido")
+
+
+def _sincronizar_producto_activo_por_unidades_disponibles(db: Session, id_producto: int) -> None:
+    """Mantiene `producto.activo` según si quedan unidades activas para vender."""
+    db.flush()
+    producto = db.query(Productos).filter(Productos.id == id_producto).first()
+    if not producto:
+        return
+    hay_unidad_disponible = (
+        db.query(Equipo.id)
+        .filter(
+            Equipo.id_producto == id_producto,
+            Equipo.activo.is_(True),
+        )
+        .first()
+        is not None
+    )
+    producto.activo = bool(hay_unidad_disponible)
+
+
+def listar_candidatos_reasignacion_equipo(
+    db: Session, id_pedido: int, id_producto: int
+) -> list[dict]:
+    pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
+    if not pedido:
+        raise ValueError("Pedido no encontrado")
+    if pedido.estado != "confirmado":
+        raise ValueError("Solo se puede reasignar IMEI en pedidos confirmados.")
+
+    detalle = (
+        db.query(DetallePedido)
+        .filter(DetallePedido.id_pedido == id_pedido, DetallePedido.id_producto == id_producto)
+        .first()
+    )
+    if not detalle:
+        raise ValueError("El producto no pertenece al pedido.")
+
+    equipos = (
+        db.query(Equipo)
+        .options(joinedload(Equipo.modelo))
+        .filter(Equipo.id_producto == id_producto)
+        .order_by(Equipo.id.asc())
+        .all()
+    )
+    out: list[dict] = []
+    for eq in equipos:
+        estado = (eq.estado_comercial or "").strip().lower()
+        es_actual = estado == RESERVADO_VENTA
+        disponible = bool(eq.activo) and estado not in BLOCKED_STATES
+        out.append(
+            {
+                "id_equipo": int(eq.id),
+                "imei": eq.imei,
+                "estado_comercial": eq.estado_comercial,
+                "activo": bool(eq.activo),
+                "id_modelo": int(eq.id_modelo),
+                "modelo": eq.modelo.nombre_modelo if eq.modelo else None,
+                "capacidad_gb": eq.modelo.capacidad_gb if eq.modelo else None,
+                "color": eq.color,
+                "es_actual_reservado": es_actual,
+                "disponible_para_reasignar": disponible,
+            }
+        )
+    return out
+
+
+def reasignar_equipo_reservado_en_pedido(
+    db: Session,
+    *,
+    id_pedido: int,
+    id_producto: int,
+    id_equipo_nuevo: int,
+    motivo: Optional[str] = None,
+) -> Pedido:
+    try:
+        pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
+        if not pedido:
+            raise ValueError("Pedido no encontrado")
+        if pedido.estado != "confirmado":
+            raise ValueError("Solo se puede reasignar IMEI en pedidos confirmados.")
+
+        detalle = (
+            db.query(DetallePedido)
+            .filter(DetallePedido.id_pedido == id_pedido, DetallePedido.id_producto == id_producto)
+            .first()
+        )
+        if not detalle:
+            raise ValueError("El producto no pertenece al pedido.")
+        if int(detalle.cantidad or 0) != 1:
+            raise ValueError("La reasignación manual de IMEI aplica solo a líneas con cantidad 1.")
+
+        equipo_actual = (
+            db.query(Equipo)
+            .filter(Equipo.id_producto == id_producto, Equipo.estado_comercial == RESERVADO_VENTA)
+            .order_by(Equipo.id.asc())
+            .first()
+        )
+        if not equipo_actual:
+            raise ValueError("No hay un equipo reservado actualmente para este producto.")
+
+        equipo_nuevo = db.query(Equipo).filter(Equipo.id == id_equipo_nuevo).first()
+        if not equipo_nuevo:
+            raise ValueError("El equipo nuevo no existe.")
+        if int(equipo_nuevo.id_producto or -1) != int(id_producto):
+            raise ValueError("El equipo nuevo debe pertenecer al mismo producto/modelo vendido.")
+        if int(equipo_nuevo.id) == int(equipo_actual.id):
+            raise ValueError("El equipo nuevo ya es el asignado actualmente.")
+
+        estado_nuevo = (equipo_nuevo.estado_comercial or "").strip().lower()
+        if (not bool(equipo_nuevo.activo)) or estado_nuevo in BLOCKED_STATES:
+            raise ValueError("El equipo nuevo no está disponible para reasignar.")
+
+        prev_actual = (equipo_actual.estado_comercial_previo_reserva or "").strip() or "nuevo"
+        equipo_actual.estado_comercial = prev_actual
+        equipo_actual.estado_comercial_previo_reserva = None
+        equipo_actual.activo = True
+
+        prev_nuevo = (equipo_nuevo.estado_comercial or "").strip() or None
+        equipo_nuevo.estado_comercial_previo_reserva = prev_nuevo
+        equipo_nuevo.estado_comercial = RESERVADO_VENTA
+        equipo_nuevo.activo = False
+
+        motivo_txt = (motivo or "").strip() or "Sin motivo informado"
+        obs = (
+            f"Reasignación de IMEI en pedido confirmado (producto {id_producto}): "
+            f"equipo {equipo_actual.id} IMEI {equipo_actual.imei or 's/imei'} -> "
+            f"equipo {equipo_nuevo.id} IMEI {equipo_nuevo.imei or 's/imei'}. Motivo: {motivo_txt}"
+        )
+        pedido.observaciones = f"{pedido.observaciones} | {obs}" if pedido.observaciones else obs
+
+        _sincronizar_producto_activo_por_unidades_disponibles(db, int(id_producto))
+        db.commit()
+        db.refresh(pedido)
+        return pedido
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("No se pudo reasignar el equipo del pedido")
+    except ValueError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise ValueError("Ocurrió un error al reasignar el IMEI del pedido")

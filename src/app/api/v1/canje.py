@@ -848,8 +848,6 @@ def listar_solicitudes_canje_admin(
 ):
     _ensure_solicitudes_canje_columns()
     solicitudes = listar_solicitudes_admin(db)
-    # Requisito de negocio: las rechazadas no se muestran en la grilla admin.
-    solicitudes = [s for s in solicitudes if (s.get("estado") or "").lower() != "rechazado"]
     if estado:
         solicitudes = [s for s in solicitudes if (s.get("estado") or "").lower() == estado.lower()]
     return solicitudes[skip : skip + limit]

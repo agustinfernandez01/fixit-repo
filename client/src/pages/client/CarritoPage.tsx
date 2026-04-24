@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getAccessToken, setAuthTokens } from '../../lib/auth'
 import {
   CART_CHANGED_EVENT,
   type CartChangedDetail,
   regenerateCartToken,
-  setLastKnownCartCount,
   setCartToken,
 } from '../../lib/cart'
-import { apiUrl, loginWithFallback, mediaUrl } from '../../services/api'
+import { apiUrl, mediaUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
 import type { CarritoCheckoutResponse, CarritoResumen } from '../../types/carrito'
 
@@ -43,35 +42,6 @@ export default function CarritoPage() {
   const [metodoPago, setMetodoPago] = useState('transferencia')
   const [checkoutInfo, setCheckoutInfo] = useState<CarritoCheckoutResponse | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
-  const pendingQtyRef = useRef<Map<number, number>>(new Map())
-  const syncingQtyRef = useRef<Set<number>>(new Set())
-
-  function toNumber(value: string | number | null | undefined) {
-    if (value === null || value === undefined || value === '') return 0
-    const parsed = typeof value === 'number' ? value : Number(value)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-
-  function buildSummaryWithItems(base: CarritoResumen, items: CarritoResumen['items']): CarritoResumen {
-    const normalized = items.map((it) => {
-      const unit = toNumber(it.precio_unitario)
-      const subtotal = unit * it.cant
-      return {
-        ...it,
-        subtotal,
-      }
-    })
-
-    const totalUnidades = normalized.reduce((acc, it) => acc + it.cant, 0)
-    const totalImporte = normalized.reduce((acc, it) => acc + toNumber(it.subtotal), 0)
-
-    return {
-      ...base,
-      items: normalized,
-      total_unidades: totalUnidades,
-      total_importe: totalImporte,
-    }
-  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,7 +53,6 @@ export default function CarritoPage() {
       }
       const data = await carritoApi.summary(!!getAccessToken())
       setSummary(data)
-      setLastKnownCartCount(data.total_unidades)
     } catch (e) {
       const message = e instanceof Error ? e.message : 'No se pudo cargar el carrito'
       if (
@@ -98,7 +67,6 @@ export default function CarritoPage() {
           }
           const recovered = await carritoApi.summary(!!getAccessToken())
           setSummary(recovered)
-          setLastKnownCartCount(recovered.total_unidades)
           setError(null)
           return
         } catch (e2) {
@@ -117,8 +85,7 @@ export default function CarritoPage() {
     const onCartChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<CartChangedDetail>).detail
       if (detail?.summary) {
-        const fromEvent = detail.summary as CarritoResumen
-        setLastKnownCartCount(fromEvent.total_unidades)
+        setSummary(detail.summary as CarritoResumen)
         return
       }
       void load()
@@ -127,45 +94,17 @@ export default function CarritoPage() {
     return () => window.removeEventListener(CART_CHANGED_EVENT, onCartChanged)
   }, [load])
 
-  async function syncPendingQty(detalleId: number) {
-    if (syncingQtyRef.current.has(detalleId)) return
-    syncingQtyRef.current.add(detalleId)
+  async function updateQty(id: number, cant: number) {
+    setCheckoutInfo(null)
+    setBusyId(id)
     try {
-      while (pendingQtyRef.current.has(detalleId)) {
-        const target = pendingQtyRef.current.get(detalleId)
-        pendingQtyRef.current.delete(detalleId)
-        if (target === undefined) break
-        const data = await carritoApi.updateItem(detalleId, target, !!getAccessToken())
-        setLastKnownCartCount(data.total_unidades)
-      }
+      const data = await carritoApi.updateItem(id, cant, !!getAccessToken())
+      setSummary(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo actualizar el carrito')
-      void load()
     } finally {
-      syncingQtyRef.current.delete(detalleId)
+      setBusyId(null)
     }
-  }
-
-  async function updateQty(id: number, cant: number) {
-    if (cant < 1) return
-    setCheckoutInfo(null)
-    setError(null)
-
-    let nextCount = 0
-    setSummary((prev) => {
-      if (!prev) return prev
-      const hasLine = prev.items.some((it) => it.id === id)
-      if (!hasLine) return prev
-
-      const updatedItems = prev.items.map((it) => (it.id === id ? { ...it, cant } : it))
-      const optimistic = buildSummaryWithItems(prev, updatedItems)
-      nextCount = optimistic.total_unidades
-      return optimistic
-    })
-
-    setLastKnownCartCount(nextCount)
-    pendingQtyRef.current.set(id, cant)
-    await syncPendingQty(id)
   }
 
   async function remove(id: number) {
@@ -174,7 +113,6 @@ export default function CarritoPage() {
     try {
       const data = await carritoApi.removeItem(id, !!getAccessToken())
       setSummary(data)
-      setLastKnownCartCount(data.total_unidades)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo eliminar el item')
     } finally {
@@ -188,7 +126,6 @@ export default function CarritoPage() {
     try {
       const data = await carritoApi.clear(!!getAccessToken())
       setSummary(data)
-      setLastKnownCartCount(data.total_unidades)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo vaciar el carrito')
     } finally {
@@ -197,15 +134,11 @@ export default function CarritoPage() {
   }
 
   async function checkout() {
-    if (!getAccessToken()) {
-      setError(null)
-      setShowAuthModal(true)
-      return
-    }
     setCheckoutBusy(true)
     setError(null)
     try {
-      const result = await carritoApi.checkout({ metodo_pago: metodoPago }, true)
+      const withAuth = Boolean(getAccessToken())
+      const result = await carritoApi.checkout({ metodo_pago: metodoPago }, withAuth)
       setCheckoutInfo(result)
       if (summary) {
         setSummary({
@@ -235,7 +168,6 @@ export default function CarritoPage() {
       }
       const updated = await carritoApi.summary(true)
       setSummary(updated)
-      setLastKnownCartCount(updated.total_unidades)
     } catch {
       void load()
     }
@@ -356,7 +288,7 @@ export default function CarritoPage() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          disabled={item.cant <= 1}
+                          disabled={busyId === item.id || item.cant <= 1}
                           onClick={() => void updateQty(item.id, item.cant - 1)}
                           className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-700 transition-colors hover:border-gray-400 disabled:opacity-40"
                         >
@@ -367,6 +299,7 @@ export default function CarritoPage() {
                         </span>
                         <button
                           type="button"
+                          disabled={busyId === item.id}
                           onClick={() => void updateQty(item.id, item.cant + 1)}
                           className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-700 transition-colors hover:border-gray-400 disabled:opacity-40"
                         >
@@ -468,7 +401,18 @@ function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
   }
 
   async function login(email: string, password: string) {
-    const j = await loginWithFallback(email, password)
+    const res = await fetch(apiUrl('/login/post'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) {
+      throw new Error(await parseError(res))
+    }
+    const j = (await res.json()) as {
+      access_token: string
+      refresh_token: string
+    }
     setAuthTokens(j.access_token, j.refresh_token)
     try {
       const ensured = await carritoApi.ensure(true)

@@ -2,10 +2,25 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.productos import ProductoDetalleResponse, ProductoResponse
-from app.services.productos import get_producto_detalle, get_productos
+from app.schemas.productos import (
+    ProductoDetalleResponse,
+    ProductoResponse,
+    ProductoTiendaAgrupadoResponse,
+)
+from app.services.productos import get_catalogo_tienda_agrupado, get_producto_detalle, get_productos
 
 router = APIRouter()
+
+
+@router.get("/catalogo/tienda", response_model=list[ProductoTiendaAgrupadoResponse])
+def catalogo_tienda_agrupado_v1(db: Session = Depends(get_db)):
+    """Catálogo de tienda: un renglón por modelo (equipos nuevos), con variantes por unidad."""
+    try:
+        return get_catalogo_tienda_agrupado(db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("", response_model=list[ProductoResponse])

@@ -6,11 +6,19 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401 - registra todos los modelos
 from app.db import Base
 from app.models.carrito import Carrito, CarritoDetalle
+from app.models.pedido import Pedido
 from app.models.equipos import Equipo, ModeloEquipo
 from app.models.productos import CategoriaProducto, Productos
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
-from app.services.carrito import cancel_pedido, checkout_carrito, confirm_pedido
+from app.services.carrito import (
+    RESERVADO_VENTA,
+    cancel_pedido,
+    cancel_pedido_confirmado,
+    checkout_carrito,
+    confirm_pedido,
+    finalizar_entrega_pedido,
+)
 
 
 def test_checkout_carrito_generates_whatsapp_and_defers_stock_lock_until_confirm():
@@ -111,7 +119,16 @@ def test_checkout_carrito_generates_whatsapp_and_defers_stock_lock_until_confirm
         db.refresh(producto)
         assert confirmed_pedido.estado == "confirmado"
         assert equipo.activo is False
+        assert equipo.estado_comercial == RESERVADO_VENTA
+        assert equipo.estado_comercial_previo_reserva == "nuevo"
+        assert producto.activo is False
+
+        cerrado = finalizar_entrega_pedido(db, pedido.id)
+        assert cerrado.estado == "confirmado"
+        db.refresh(equipo)
+        db.refresh(producto)
         assert equipo.estado_comercial == "vendido"
+        assert equipo.estado_comercial_previo_reserva is None
         assert producto.activo is False
     finally:
         db.close()
@@ -201,7 +218,7 @@ def test_confirm_pedido_requires_whatsapp_availability_check_before_force():
 
         db.refresh(equipo)
         assert equipo.activo is False
-        assert equipo.estado_comercial == "vendido"
+        assert equipo.estado_comercial == RESERVADO_VENTA
     finally:
         db.close()
 
@@ -282,6 +299,95 @@ def test_confirm_pedido_auto_cancels_when_stock_is_already_sold():
         assert processed_pedido is not None
         assert warnings == []
         assert processed_pedido.estado == "cancelado_sin_stock"
+    finally:
+        db.close()
+
+
+def test_cancel_pedido_confirmado_libera_reserva():
+    engine = create_engine("sqlite:///:memory:")
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    Base.metadata.create_all(bind=engine)
+
+    db = SessionLocal()
+    try:
+        rol = Rol(nombre="cliente")
+        db.add(rol)
+        db.flush()
+
+        usuario = Usuario(
+            nombre="Nico",
+            apellido="Tester",
+            email="nico@example.com",
+            telefono="5491111111115",
+            password_hash="x",
+            id_rol=rol.id,
+        )
+        db.add(usuario)
+        db.flush()
+
+        categoria = CategoriaProducto(nombre="Smartphones", descripcion="", activo=True)
+        db.add(categoria)
+        db.flush()
+
+        producto = Productos(
+            nombre="OnePlus 12",
+            descripcion="",
+            precio=Decimal("1300.00"),
+            id_categoria=categoria.id,
+            activo=True,
+        )
+        db.add(producto)
+        db.flush()
+
+        modelo = ModeloEquipo(nombre_modelo="OnePlus 12", capacidad_gb=256, color="Verde", activo=True)
+        db.add(modelo)
+        db.flush()
+
+        equipo = Equipo(
+            id_modelo=modelo.id,
+            id_producto=producto.id,
+            imei="523456789012345",
+            tipo_equipo="smartphone",
+            estado_comercial="nuevo",
+            activo=True,
+        )
+        db.add(equipo)
+        db.flush()
+
+        carrito = Carrito(token_identificador="token-test-5", estado=True)
+        db.add(carrito)
+        db.flush()
+
+        linea = CarritoDetalle(
+            id_carrito=carrito.id,
+            id_producto=producto.id,
+            cant=1,
+            precio_unitario=Decimal("1300.00"),
+            subtotal=Decimal("1300.00"),
+        )
+        db.add(linea)
+        db.commit()
+
+        pedido, _, _ = checkout_carrito(
+            db,
+            token="token-test-5",
+            id_usuario=usuario.id,
+            metodo_pago="transferencia",
+        )
+        confirm_pedido(db, pedido.id, force=True)
+        db.refresh(equipo)
+        assert equipo.estado_comercial == RESERVADO_VENTA
+
+        cancel_pedido_confirmado(db, pedido.id, motivo="Cliente arrepentido")
+        db.refresh(equipo)
+        db.refresh(producto)
+        p_db = db.query(Pedido).filter(Pedido.id == pedido.id).first()
+        assert p_db is not None
+        assert p_db.estado == "cancelado"
+        assert equipo.activo is True
+        assert equipo.estado_comercial == "nuevo"
+        assert equipo.estado_comercial_previo_reserva is None
+        assert producto.activo is True
     finally:
         db.close()
 

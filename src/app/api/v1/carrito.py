@@ -1,11 +1,10 @@
 """API del carrito de compras."""
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps.auth import get_optional_user_id_from_access_token, require_admin_user_id
-from app.models.pedido import DetallePedido, Pedido
 from app.schemas.carrito import (
     CarritoBase,
     CarritoCheckoutRequest,
@@ -18,13 +17,19 @@ from app.schemas.carrito import (
 from app.services.carrito import (
     add_item_to_carrito,
     cancel_pedido,
+    cancel_pedido_confirmado,
     carrito_resumen,
     checkout_carrito,
     clear_carrito,
     confirm_pedido,
+    finalizar_entrega_pedido,
     get_carrito_items,
     get_or_create_carrito,
+    list_pedidos_confirmados_pendientes_entrega_admin,
+    list_pedidos_pendientes_admin,
+    listar_candidatos_reasignacion_equipo,
     merge_guest_cart_into_user_cart,
+    reasignar_equipo_reservado_en_pedido,
     remove_line,
     update_line_quantity,
 )
@@ -152,11 +157,6 @@ def confirmar_checkout(
     token: str = Depends(_require_carrito_token),
     id_usuario: int | None = Depends(get_optional_user_id_from_access_token),
 ):
-    if id_usuario is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Debes iniciar sesión para confirmar la compra.",
-        )
     try:
         pedido, pago, whatsapp_url = checkout_carrito(
             db,
@@ -209,7 +209,7 @@ def confirmar_pedido_endpoint(
         return {
             "id_pedido": pedido.id,
             "estado": pedido.estado,
-            "mensaje": "Pedido confirmado y stock bloqueado.",
+            "mensaje": "Pedido confirmado. Unidades en reserva; finalizá la entrega para cerrar la venta en inventario.",
             "warnings": [],
         }
     except ValueError as exc:
@@ -245,56 +245,101 @@ def listar_pedidos_pendientes(
 ):
     """Admin endpoint: lista pedidos pendientes de confirmación."""
     try:
-        pedidos = (
-            db.query(Pedido)
-            .filter(Pedido.estado == "pendiente_confirmacion")
-            .options(
-                joinedload(Pedido.usuario),
-                joinedload(Pedido.detalle_pedido).joinedload(DetallePedido.producto),
-            )
-            .order_by(Pedido.fecha_pedido.desc(), Pedido.id.desc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
-        return [
-            {
-                "id_pedido": p.id,
-                "id_usuario": p.id_usuario,
-                "fecha_pedido": p.fecha_pedido,
-                "estado": p.estado,
-                "total": str(p.total) if p.total else "0",
-                "observaciones": p.observaciones,
-                "cliente": {
-                    "id": p.usuario.id if p.usuario else p.id_usuario,
-                    "nombre": " ".join(
-                        part
-                        for part in [
-                            (p.usuario.nombre if p.usuario else None),
-                            (p.usuario.apellido if p.usuario else None),
-                        ]
-                        if part and part.strip()
-                    )
-                    or None,
-                    "email": p.usuario.email if p.usuario else None,
-                    "telefono": p.usuario.telefono if p.usuario else None,
-                },
-                "items": [
-                    {
-                        "id_producto": item.id_producto,
-                        "producto_nombre": item.producto.nombre if item.producto else f"Producto #{item.id_producto}",
-                        "cantidad": item.cantidad,
-                        "precio_unitario": str(item.precio_unitario) if item.precio_unitario else "0",
-                        "subtotal": str(item.subtotal) if item.subtotal else "0",
-                    }
-                    for item in p.detalle_pedido
-                ],
-                "resumen": {
-                    "total_items": len(p.detalle_pedido),
-                    "total_unidades": sum(item.cantidad or 0 for item in p.detalle_pedido),
-                },
-            }
-            for p in pedidos
-        ]
+        return list_pedidos_pendientes_admin(db, skip=skip, limit=limit)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/pedidos-confirmados-pendientes-entrega", response_model=list[dict])
+def listar_pedidos_confirmados_pendientes_entrega(
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin: pedidos confirmados con stock aún en reserva (falta cerrar entrega)."""
+    try:
+        return list_pedidos_confirmados_pendientes_entrega_admin(db, skip=skip, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/finalizar-entrega/{id_pedido}", response_model=dict)
+def finalizar_entrega_endpoint(
+    id_pedido: int,
+    db: Session = Depends(get_db),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin: marca equipos como vendidos y desactiva productos (cierre operativo)."""
+    try:
+        pedido = finalizar_entrega_pedido(db, id_pedido=id_pedido)
+        return {
+            "id_pedido": pedido.id,
+            "estado": pedido.estado,
+            "mensaje": "Entrega finalizada. Stock actualizado a vendido.",
+            "warnings": [],
+        }
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)
+
+
+@router.post("/cancelar-pedido-confirmado/{id_pedido}", response_model=dict)
+def cancelar_pedido_confirmado_endpoint(
+    id_pedido: int,
+    db: Session = Depends(get_db),
+    motivo: str | None = Query(None, description="Motivo de anulación"),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin: anula un pedido confirmado y libera unidades en reserva."""
+    try:
+        pedido = cancel_pedido_confirmado(db, id_pedido=id_pedido, motivo=motivo)
+        return {
+            "id_pedido": pedido.id,
+            "estado": pedido.estado,
+            "mensaje": "Pedido anulado y stock liberado.",
+            "warnings": [],
+        }
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)
+
+
+@router.get("/pedido/{id_pedido}/candidatos-reasignacion", response_model=list[dict])
+def listar_candidatos_reasignacion_endpoint(
+    id_pedido: int,
+    id_producto: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin: lista unidades candidatas para reemplazar IMEI en un pedido confirmado."""
+    try:
+        return listar_candidatos_reasignacion_equipo(db, id_pedido=id_pedido, id_producto=id_producto)
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)
+
+
+@router.post("/pedido/{id_pedido}/reasignar-equipo", response_model=dict)
+def reasignar_equipo_pedido_endpoint(
+    id_pedido: int,
+    id_producto: int = Query(..., ge=1),
+    id_equipo_nuevo: int = Query(..., ge=1),
+    motivo: str | None = Query(None),
+    db: Session = Depends(get_db),
+    _id_admin: int = Depends(require_admin_user_id),
+):
+    """Admin: reemplaza el equipo reservado por otra unidad equivalente (mismo producto)."""
+    try:
+        pedido = reasignar_equipo_reservado_en_pedido(
+            db,
+            id_pedido=id_pedido,
+            id_producto=id_producto,
+            id_equipo_nuevo=id_equipo_nuevo,
+            motivo=motivo,
+        )
+        return {
+            "id_pedido": pedido.id,
+            "estado": pedido.estado,
+            "mensaje": "Equipo reasignado correctamente. Se actualizó el IMEI del pedido.",
+            "warnings": [],
+        }
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)

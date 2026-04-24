@@ -45,6 +45,15 @@ from app.schemas.inventario import (
 router = APIRouter()
 
 
+def _descripcion_catalogo_normalizada(texto: str | None) -> str | None:
+    t = (texto or "").strip()
+    if not t:
+        return None
+    if t.lower() == "producto autogenerado desde inventario":
+        return None
+    return t
+
+
 def _foto_url_si_existe(foto_url: str | None) -> str | None:
     if not foto_url:
         return None
@@ -153,7 +162,17 @@ def listar_equipos(
 
 @router.post("/equipos", response_model=EquipoResponse, status_code=status.HTTP_201_CREATED)
 def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
+    return _crear_equipo_con_estado(payload, db, estado_forzado="nuevo")
+
+
+@router.post("/equipos-usados", response_model=EquipoResponse, status_code=status.HTTP_201_CREATED)
+def crear_equipo_usado(payload: EquipoCreate, db: Session = Depends(get_db)):
+    return _crear_equipo_con_estado(payload, db, estado_forzado="usado")
+
+
+def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forzado: str):
     data = payload.model_dump()
+    data["estado_comercial"] = estado_forzado
     if data.get("fecha_ingreso") is None:
         data["fecha_ingreso"] = datetime.now(timezone.utc)
 
@@ -171,6 +190,9 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
                 status_code=400,
                 detail="El ID producto no existe en catálogo (productos).",
             )
+        # Si entra una unidad física disponible, el producto debe volver a mostrarse.
+        if not bool(prod.activo):
+            prod.activo = True
         if precio_ars is not None:
             prod.precio = Decimal(str(precio_ars))
         if precio_usd is not None:
@@ -208,7 +230,7 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
         if not producto:
             producto = Productos(
                 nombre=nombre_producto,
-                descripcion="Producto autogenerado desde inventario",
+                descripcion=None,
                 precio=Decimal(str(precio_ars)) if precio_ars is not None else Decimal("0.00"),
                 precio_usd=Decimal(str(precio_usd)) if precio_usd is not None else None,
                 id_categoria=categoria.id,
@@ -216,6 +238,9 @@ def crear_equipo(payload: EquipoCreate, db: Session = Depends(get_db)):
             )
             db.add(producto)
             db.flush()
+        elif not bool(producto.activo):
+            # Reusar producto existente para nuevos implica volver a habilitar catálogo.
+            producto.activo = True
 
         data["id_producto"] = producto.id
 
@@ -308,6 +333,85 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
         if precio_usd is not None:
             prod.precio_usd = Decimal(str(precio_usd))
 
+    # Si el equipo sigue en "nuevo" y cambian atributos comerciales (p. ej. color),
+    # lo re-vinculamos al producto canónico de esa variante para evitar que quede
+    # separado en el agrupado de inventario/tienda.
+    estado_objetivo = (patch.get("estado_comercial", obj.estado_comercial) or "").strip().lower()
+    if estado_objetivo != "usado" and "id_producto" not in patch:
+        cambio_variante = any(k in patch for k in ("color", "id_modelo", "estado_comercial"))
+        if cambio_variante and obj.modelo is not None:
+            capacidad = (
+                f"{obj.modelo.capacidad_gb}GB"
+                if obj.modelo.capacidad_gb is not None
+                else "s/capacidad"
+            )
+            color_objetivo = (
+                (patch.get("color", obj.color) or getattr(obj.modelo, "color", None) or "sin color")
+                .strip()
+            )
+            nombre_producto = f"{obj.modelo.nombre_modelo} - {capacidad} - {color_objetivo} - Nuevo"
+
+            # Priorizamos categoría actual del producto vinculado para mantener consistencia.
+            categoria_id = None
+            if obj.id_producto is not None:
+                prod_actual = db.query(Productos).filter(Productos.id == obj.id_producto).first()
+                if prod_actual is not None:
+                    categoria_id = prod_actual.id_categoria
+            if categoria_id is None:
+                categoria = (
+                    db.query(CategoriaProducto)
+                    .filter(CategoriaProducto.nombre.ilike("%smartphone%"), CategoriaProducto.activo.is_(True))
+                    .first()
+                )
+                if not categoria:
+                    categoria = db.query(CategoriaProducto).filter(CategoriaProducto.activo.is_(True)).first()
+                if categoria is None:
+                    categoria = CategoriaProducto(
+                        nombre="Smartphones",
+                        descripcion="Autogenerada por inventario",
+                        activo=True,
+                    )
+                    db.add(categoria)
+                    db.flush()
+                categoria_id = categoria.id
+
+            producto_canonico = (
+                db.query(Productos)
+                .filter(
+                    Productos.id_categoria == categoria_id,
+                    Productos.nombre == nombre_producto,
+                )
+                .first()
+            )
+
+            if producto_canonico is None:
+                # Si no existe la variante comercial, la creamos heredando precios del producto actual.
+                base_prod = None
+                if obj.id_producto is not None:
+                    base_prod = db.query(Productos).filter(Productos.id == obj.id_producto).first()
+                producto_canonico = Productos(
+                    nombre=nombre_producto,
+                    descripcion=_descripcion_catalogo_normalizada(base_prod.descripcion) if base_prod is not None else None,
+                    precio=(
+                        Decimal(str(precio_ars))
+                        if precio_ars is not None
+                        else (base_prod.precio if base_prod is not None else Decimal("0.00"))
+                    ),
+                    precio_usd=(
+                        Decimal(str(precio_usd))
+                        if precio_usd is not None
+                        else (base_prod.precio_usd if base_prod is not None else None)
+                    ),
+                    id_categoria=categoria_id,
+                    activo=True,
+                )
+                db.add(producto_canonico)
+                db.flush()
+            elif not bool(producto_canonico.activo):
+                producto_canonico.activo = True
+
+            obj.id_producto = producto_canonico.id
+
     try:
         db.commit()
     except IntegrityError:
@@ -325,6 +429,18 @@ def borrar_equipo(id_equipo: int, db: Session = Depends(get_db)):
     obj = db.query(Equipo).filter(Equipo.id == id_equipo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    # Limpiamos primero relaciones hijas para evitar violaciones de FK
+    # cuando la base no tiene ON DELETE CASCADE.
+    (
+        db.query(EquipoDeposito)
+        .filter(EquipoDeposito.id_equipo == id_equipo)
+        .delete(synchronize_session=False)
+    )
+    (
+        db.query(EquipoUsadoDetalle)
+        .filter(EquipoUsadoDetalle.id_equipo == id_equipo)
+        .delete(synchronize_session=False)
+    )
     db.delete(obj)
     db.commit()
     return None
@@ -334,6 +450,7 @@ def borrar_equipo(id_equipo: int, db: Session = Depends(get_db)):
 async def subir_foto_equipo(
     id_equipo: int,
     foto: UploadFile = File(...),
+    set_principal_tienda: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     obj = db.query(Equipo).filter(Equipo.id == id_equipo).first()
@@ -364,6 +481,28 @@ async def subir_foto_equipo(
     abs_path.write_bytes(content)
 
     obj.foto_url = f"/uploads/{rel_dir.as_posix()}/{filename}"
+    if obj.producto is not None:
+        foto_principal_actual = getattr(obj.producto, "foto_principal_url", None)
+        if set_principal_tienda or not foto_principal_actual:
+            obj.producto.foto_principal_url = obj.foto_url
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@router.post("/equipos/{id_equipo}/foto-principal", response_model=EquipoResponse)
+def usar_foto_equipo_como_principal_tienda(
+    id_equipo: int,
+    db: Session = Depends(get_db),
+):
+    obj = db.query(Equipo).filter(Equipo.id == id_equipo).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    if not obj.foto_url:
+        raise HTTPException(status_code=400, detail="El equipo no tiene foto cargada.")
+    if obj.producto is None:
+        raise HTTPException(status_code=400, detail="El equipo no tiene producto asociado.")
+    obj.producto.foto_principal_url = obj.foto_url
     db.commit()
     db.refresh(obj)
     return obj

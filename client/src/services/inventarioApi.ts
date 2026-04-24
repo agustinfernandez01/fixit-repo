@@ -42,15 +42,21 @@ export const inventarioApi = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    createUsado: (body: Record<string, unknown>) =>
+      fetchJson<Equipo>(`${P}/equipos-usados`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     patch: (id: number, body: Record<string, unknown>) =>
       fetchJson<Equipo>(`${P}/equipos/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
-    uploadFoto: async (id: number, file: File) => {
+    uploadFoto: async (id: number, file: File, opts?: { setPrincipalTienda?: boolean }) => {
       const fd = new FormData()
       fd.append('foto', file)
-      const res = await fetch(apiUrl(`${P}/equipos/${id}/foto`), {
+      const setPrincipal = opts?.setPrincipalTienda ? '?set_principal_tienda=true' : ''
+      const res = await fetch(apiUrl(`${P}/equipos/${id}/foto${setPrincipal}`), {
         method: 'POST',
         body: fd,
       })
@@ -68,6 +74,10 @@ export const inventarioApi = {
       }
       return text ? (JSON.parse(text) as Equipo) : (undefined as unknown as Equipo)
     },
+    setFotoPrincipalTienda: (id: number) =>
+      fetchJson<Equipo>(`${P}/equipos/${id}/foto-principal`, {
+        method: 'POST',
+      }),
     delete: (id: number) =>
       fetchJson<void>(`${P}/equipos/${id}`, { method: 'DELETE' }),
   },

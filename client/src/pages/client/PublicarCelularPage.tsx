@@ -12,7 +12,6 @@ function formatArsInput(value: string | number): string {
 }
 
 const empty = {
-  titulo: '',
   modelo: '',
   capacidad_gb: '' as string | number,
   color: '',
@@ -67,7 +66,6 @@ export default function PublicarCelularPage() {
         precioRaw === '' ? null : Number.parseFloat(precioRaw)
 
       const body: Record<string, unknown> = {
-        titulo: form.titulo.trim() || null,
         modelo: form.modelo.trim() || null,
         capacidad_gb: cap != null && Number.isFinite(cap) ? cap : null,
         color: form.color.trim() || null,
@@ -191,15 +189,6 @@ export default function PublicarCelularPage() {
                 </p>
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-gray-500">Título</label>
-                    <input
-                      value={form.titulo}
-                      onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
-                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                      placeholder="Ej. iPhone 14 impecable"
-                    />
-                  </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">Modelo</label>
                     <input
@@ -376,9 +365,15 @@ export default function PublicarCelularPage() {
 
               <div className="mt-5 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-4">
-                  <span className="text-gray-500">Título</span>
+                  <span className="text-gray-500">Título automático</span>
                   <span className="max-w-[55%] truncate text-right text-gray-900">
-                    {form.titulo.trim() || '—'}
+                    {[
+                      form.modelo.trim(),
+                      form.capacidad_gb !== '' ? `${form.capacidad_gb} GB` : '',
+                      form.color.trim(),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
@@ -404,7 +399,7 @@ export default function PublicarCelularPage() {
               <div className="mt-6 rounded-2xl bg-gray-50 px-4 py-3">
                 <p className="text-xs font-medium text-gray-700">Tip</p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Un título claro + 3 fotos buenas suele acelerar la aprobación.
+                  Completá modelo, capacidad y color + 3 fotos buenas para acelerar la aprobación.
                 </p>
               </div>
             </div>

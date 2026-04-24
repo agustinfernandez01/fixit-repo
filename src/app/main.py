@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.config import UPLOAD_DIR
-from app.db import Base, engine
+from app.db import Base, engine, ensure_schema_patches
 from app.routers import roles, usuarios, login, refresh, logout, equipos, productos
 import app.models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.api.v1 import api_router
@@ -24,6 +24,10 @@ def crear_tablas_si_hay_db():
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas creadas o ya existentes en la base de datos.")
+        try:
+            ensure_schema_patches()
+        except Exception as patch_exc:
+            logger.warning("Parche de esquema equipos (estado_comercial_previo_reserva): %s", patch_exc)
     except Exception as e:
         err = str(e)
         hint = ""

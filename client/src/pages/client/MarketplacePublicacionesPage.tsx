@@ -1,19 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { mediaUrl } from '../../services/api'
 import { marketplaceApi } from '../../services/marketplaceApi'
 import type { Publicacion } from '../../types/marketplace'
-
-function fmtPrecio(v: string | number | null | undefined) {
-  if (v === null || v === undefined || v === '') return '—'
-  const n = typeof v === 'string' ? Number(v) : v
-  if (Number.isNaN(n)) return String(v)
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(n)
-}
+import { ProductShowcaseCard } from '../../components/ProductShowcaseCard'
 
 function specsLine(p: Publicacion): string[] {
   const parts: string[] = []
@@ -21,6 +10,16 @@ function specsLine(p: Publicacion): string[] {
   if (p.capacidad_gb != null) parts.push(`${p.capacidad_gb} GB`)
   if (p.color) parts.push(p.color)
   return parts.length ? parts : ['Equipo publicado']
+}
+
+function familyLabelFromPublicacion(p: Publicacion): string {
+  const source = `${p.modelo ?? ''} ${p.titulo ?? ''}`.toLowerCase()
+  if (source.includes('iphone')) return 'iPhone'
+  if (source.includes('ipad')) return 'iPad'
+  if (source.includes('macbook') || source.includes('mac')) return 'MacBook'
+  if (source.includes('watch')) return 'Watch'
+  if (source.includes('airpods')) return 'AirPods'
+  return 'Marketplace'
 }
 
 export default function MarketplacePublicacionesPage() {
@@ -84,41 +83,21 @@ export default function MarketplacePublicacionesPage() {
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((p) => {
-              const src = mediaUrl(p.fotos_urls?.[0] ?? '')
               return (
-                <article
+                <div
                   key={p.id_publicacion}
-                  className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md"
+                  className="flex"
                 >
-                  <div className="relative aspect-[4/3] bg-gray-100">
-                    {src ? (
-                      <img src={src} alt={p.titulo ?? p.modelo ?? ''} className="h-full w-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-gray-300">Sin foto</div>
-                    )}
-                  </div>
-                  <div className="border-t border-gray-100 p-5">
-                    <h2 className="text-lg font-bold text-gray-900">{p.titulo ?? p.modelo ?? `Publicación #${p.id_publicacion}`}</h2>
-                    <p className="mt-1 text-2xl font-black text-gray-900">{fmtPrecio(p.precio_publicado)}</p>
-                    <ul className="mt-3 flex flex-wrap gap-1.5">
-                      {specsLine(p).map((s) => (
-                        <li key={s} className="rounded-lg bg-gray-50 px-2.5 py-1 text-[11px] text-gray-500">
-                          {s}
-                        </li>
-                      ))}
-                    </ul>
-                    {p.descripcion ? <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-gray-400">{p.descripcion}</p> : null}
-                    <div className="mt-4">
-                      <Link
-                        to={`/marketplace/${p.id_publicacion}`}
-                        className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
-                      >
-                        Ver detalle
-                        <span aria-hidden className="text-lg leading-none">›</span>
-                      </Link>
-                    </div>
-                  </div>
-                </article>
+                  <ProductShowcaseCard
+                    title={p.titulo ?? p.modelo ?? `Publicación #${p.id_publicacion}`}
+                    description={p.descripcion ?? specsLine(p).join(' · ')}
+                    familyLabel={familyLabelFromPublicacion(p)}
+                    imageUrl={p.fotos_urls?.[0] ?? null}
+                    badgeTag="Marketplace"
+                    arsPrice={p.precio_publicado}
+                    detailTo={`/marketplace/${p.id_publicacion}`}
+                  />
+                </div>
               )
             })}
           </div>

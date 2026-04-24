@@ -125,6 +125,8 @@ export default function MarketplaceDetallePage() {
           <p className="mt-3 text-3xl font-black text-gray-900">{fmtPrecio(item.precio_publicado)}</p>
 
           <div className="mt-5 space-y-2 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-700">
+            <p><strong>Publicado por:</strong> {item.vendedor_nombre ?? `Usuario #${item.id_usuario}`}</p>
+            <p><strong>Contacto:</strong> {item.vendedor_telefono ?? 'A coordinar por Fix It'}</p>
             <p><strong>Modelo:</strong> {item.modelo ?? '—'}</p>
             <p><strong>Capacidad:</strong> {item.capacidad_gb != null ? `${item.capacidad_gb} GB` : '—'}</p>
             <p><strong>Color:</strong> {item.color ?? '—'}</p>

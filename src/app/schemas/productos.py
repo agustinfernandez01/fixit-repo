@@ -1,5 +1,6 @@
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
 
 
 class ProductoBase(BaseModel):
@@ -73,6 +74,36 @@ class ProductoAccesorioDetalle(BaseModel):
     estado: bool
 
 
+class VarianteTiendaItem(BaseModel):
+    id_producto: int
+    color: Optional[str] = None
+    precio: float
+    precio_usd: Optional[float] = None
+    foto_url: Optional[str] = None
+    nombre_corto: Optional[str] = None
+    stock: int = 1
+
+
+class ProductoTiendaAgrupadoResponse(BaseModel):
+    tipo_catalogo: str
+    id_modelo: int
+    id: int
+    nombre: str
+    descripcion: Optional[str] = None
+    foto_url: Optional[str] = None
+    precio: float
+    precio_usd: Optional[float] = None
+    id_categoria: int
+    activo: bool
+    tipo_producto: Optional[str] = None
+    id_origen: Optional[int] = None
+    tipo_equipo: Optional[str] = None
+    estado_comercial: Optional[str] = None
+    stock: int
+    variantes_tienda: list[VarianteTiendaItem]
+
+
 class ProductoDetalleResponse(ProductoResponse):
     detalle_equipo: Optional[ProductoEquipoDetalle] = None
     detalle_accesorio: Optional[ProductoAccesorioDetalle] = None
+    variantes_tienda: Optional[list[VarianteTiendaItem]] = None

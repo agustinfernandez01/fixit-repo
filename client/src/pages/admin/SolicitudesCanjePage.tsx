@@ -35,18 +35,46 @@ function buildEquipoLabel(row: SolicitudCanjeAdminResponse) {
   return parts.filter(Boolean).join(' · ') || '—'
 }
 
+function normalizeArPhoneForWhatsApp(raw: string | null | undefined) {
+  if (!raw) return null
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return null
+  if (digits.startsWith('54')) return digits
+  if (digits.startsWith('0')) return `54${digits.slice(1)}`
+  return `54${digits}`
+}
+
+function buildWhatsAppApprovalUrl(row: SolicitudCanjeAdminResponse) {
+  const phone = normalizeArPhoneForWhatsApp(row.cliente_telefono)
+  if (!phone) return null
+  const nombre = row.cliente_nombre?.trim() || 'cliente'
+  const producto = row.producto_interes_nombre?.trim() || 'producto elegido'
+  const mensaje = [
+    `Hola ${nombre}, te escribimos de Fix It.`,
+    `Tu solicitud de canje #${row.id_solicitud_canje} fue aprobada.`,
+    `Producto: ${producto}.`,
+    'Cuando quieras coordinamos la entrega.',
+  ].join(' ')
+  return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`
+}
+
 export default function SolicitudesCanjePage() {
   const [rows, setRows] = useState<SolicitudCanjeAdminResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [previewImages, setPreviewImages] = useState<string[]>([])
+  const [estadoFilter, setEstadoFilter] = useState<'pendiente' | 'completado' | 'rechazado' | 'todos'>('pendiente')
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await canjeApi.solicitudesAdmin.list(0, 100)
+      const data = await canjeApi.solicitudesAdmin.list(
+        0,
+        100,
+        estadoFilter === 'todos' ? null : estadoFilter,
+      )
       setRows(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudieron cargar las solicitudes de canje')
@@ -57,9 +85,14 @@ export default function SolicitudesCanjePage() {
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [estadoFilter])
 
   async function handleDecision(id: number, action: 'completar' | 'rechazar') {
+    const confirmMsg =
+      action === 'completar'
+        ? '¿Aprobar esta solicitud y descontar stock del producto elegido?'
+        : '¿Rechazar esta solicitud de canje?'
+    if (!window.confirm(confirmMsg)) return
     setBusyId(id)
     setError(null)
     try {
@@ -69,6 +102,16 @@ export default function SolicitudesCanjePage() {
         action === 'completar'
           ? await canjeApi.solicitudesAdmin.completar(id, payload)
           : await canjeApi.solicitudesAdmin.rechazar(id, payload)
+      if (action === 'completar') {
+        const waUrl = buildWhatsAppApprovalUrl(updated)
+        if (waUrl) {
+          window.open(waUrl, '_blank', 'noopener,noreferrer')
+        } else {
+          setError(
+            'Canje aprobado, pero este cliente no tiene teléfono válido para abrir WhatsApp. Completa el teléfono en su perfil.',
+          )
+        }
+      }
       if (action === 'rechazar') {
         setRows((prev) => prev.filter((row) => row.id_solicitud_canje !== id))
       } else {
@@ -116,6 +159,28 @@ export default function SolicitudesCanjePage() {
           </a>
         </div>
 
+        <div className="mb-5 inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+          {([
+            { key: 'pendiente', label: 'Pendientes' },
+            { key: 'completado', label: 'Completadas' },
+            { key: 'rechazado', label: 'Rechazadas' },
+            { key: 'todos', label: 'Todas' },
+          ] as const).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setEstadoFilter(opt.key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                estadoFilter === opt.key
+                  ? 'bg-gray-900 text-white'
+                  : 'text-gray-600 hover:bg-white hover:text-gray-900'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {error ? (
           <div className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
             {error}
@@ -157,6 +222,7 @@ export default function SolicitudesCanjePage() {
                       <td className="px-4 py-3 text-gray-700">
                         <div className="font-medium text-gray-900">{row.cliente_nombre ?? `Usuario #${row.id_usuario}`}</div>
                         <div className="text-xs text-gray-500">{row.cliente_email ?? '—'}</div>
+                        <div className="text-xs text-gray-500">{row.cliente_telefono ?? '—'}</div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">{fmtDate(row.fecha_solicitud)}</td>
                       <td className="px-4 py-3 text-gray-600">{fmtTime(row.fecha_solicitud)}</td>
@@ -227,7 +293,7 @@ export default function SolicitudesCanjePage() {
                             onClick={() => void handleDecision(row.id_solicitud_canje, 'completar')}
                             className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
                           >
-                            {busyId === row.id_solicitud_canje ? 'Procesando…' : 'Okey'}
+                            {busyId === row.id_solicitud_canje ? 'Procesando…' : 'Aprobar'}
                           </button>
                           <button
                             type="button"
@@ -235,7 +301,7 @@ export default function SolicitudesCanjePage() {
                             onClick={() => void handleDecision(row.id_solicitud_canje, 'rechazar')}
                             className="rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-40"
                           >
-                            {busyId === row.id_solicitud_canje ? 'Procesando…' : 'No'}
+                            {busyId === row.id_solicitud_canje ? 'Procesando…' : 'Rechazar'}
                           </button>
                           {canDeleteHistory ? (
                             <button

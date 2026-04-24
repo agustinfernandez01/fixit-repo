@@ -16,6 +16,8 @@ export type Publicacion = {
   estado: string | null
   fecha_publicacion: string | null
   fotos_urls: string[] | null
+  vendedor_nombre: string | null
+  vendedor_telefono: string | null
 }
 
 export type RevisionPublicacion = {

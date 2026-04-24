@@ -121,6 +121,7 @@ class SolicitudCanjeAdminResponse(BaseModel):
     id_usuario: int
     cliente_nombre: Optional[str] = None
     cliente_email: Optional[str] = None
+    cliente_telefono: Optional[str] = None
     id_equipo_ofrecido: int
     equipo_modelo: Optional[str] = None
     equipo_capacidad_gb: Optional[int] = None

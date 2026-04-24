@@ -50,6 +50,16 @@ export type CarritoCheckoutResponse = {
   mensaje: string
 }
 
+export type VarianteTienda = {
+  id_producto: number
+  color?: string | null
+  precio: number
+  precio_usd?: number | null
+  foto_url?: string | null
+  nombre_corto?: string | null
+  stock?: number | null
+}
+
 export type ProductoCompra = {
   id: number
   nombre: string
@@ -63,6 +73,11 @@ export type ProductoCompra = {
   id_origen?: number | null
   tipo_equipo?: string | null
   estado_comercial?: string | null
+  /** Catálogo tienda agrupado (backend): variantes por unidad / color */
+  tipo_catalogo?: 'grupo_equipo' | string | null
+  id_modelo?: number | null
+  stock?: number | null
+  variantes_tienda?: VarianteTienda[] | null
 }
 
 export type ProductoEquipoDetalle = {
@@ -88,4 +103,5 @@ export type ProductoAccesorioDetalle = {
 export type ProductoDetalle = ProductoCompra & {
   detalle_equipo?: ProductoEquipoDetalle | null
   detalle_accesorio?: ProductoAccesorioDetalle | null
+  variantes_tienda?: VarianteTienda[] | null
 }

@@ -1,4 +1,4 @@
-import type { UsuarioPerfil } from '../types/usuario'
+import type { UsuarioPerfil, UsuarioRegistroRequest, UsuarioRegistroResponse } from '../types/usuario'
 import { authHeaders } from '../lib/auth'
 import { fetchJson } from './api'
 
@@ -18,4 +18,9 @@ async function withLegacyFallback<T>(v1Path: string, legacyPath: string): Promis
 
 export const usuarioApi = {
   me: () => withLegacyFallback<UsuarioPerfil>(V1, LEGACY),
+  register: (body: UsuarioRegistroRequest) =>
+    fetchJson<UsuarioRegistroResponse>('/api/v1/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 }

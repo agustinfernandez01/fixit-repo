@@ -62,10 +62,9 @@ export function PublicacionesPage() {
 
   function resumenInteres(idPublicacion: number) {
     const data = intereses.filter((i) => i.id_publicacion === idPublicacion)
-    const ultimo = data[0] ?? null
     return {
       count: data.length,
-      ultimo,
+      interesados: data,
     }
   }
 
@@ -188,18 +187,35 @@ export function PublicacionesPage() {
                       </td>
                       <td>
                         {interes.count === 0 ? (
-                          <span className="msg-muted">Sin interés</span>
+                          <span className="msg-muted">—</span>
                         ) : (
                           <div>
-                            <div>{interes.count} interesado(s)</div>
-                            <div className="msg-muted">
-                              {interes.ultimo?.comprador_nombre ?? interes.ultimo?.comprador_email ?? 'Cliente'}
-                            </div>
-                            {interes.ultimo?.whatsapp_url ? (
-                              <a href={interes.ultimo.whatsapp_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
-                                WhatsApp
-                              </a>
-                            ) : null}
+                            <span className="text-xs font-semibold text-gray-500">{interes.count} interesado(s)</span>
+                            <ul className="mt-1 divide-y divide-gray-100">
+                              {interes.interesados.map((intRow) => (
+                                <li key={intRow.id_interes} className="flex items-center gap-2 py-1">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-xs leading-tight font-medium text-gray-900">
+                                      {intRow.comprador_nombre ?? intRow.comprador_email ?? `#${intRow.id_usuario_interesado}`}
+                                    </p>
+                                    <p className="truncate text-xs leading-tight text-gray-400">
+                                      {intRow.comprador_telefono ?? intRow.comprador_email ?? '—'}
+                                    </p>
+                                  </div>
+                                  {intRow.whatsapp_url ? (
+                                    <a
+                                      href={intRow.whatsapp_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="btn btn-ghost btn-sm shrink-0"
+                                      title="Contactar por WhatsApp"
+                                    >
+                                      WA
+                                    </a>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                       </td>

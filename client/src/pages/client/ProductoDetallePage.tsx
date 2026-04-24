@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { carritoApi } from '../../services/carritoApi'
+import { getAccessToken } from '../../lib/auth'
 import { mediaUrl } from '../../services/api'
+import { carritoApi } from '../../services/carritoApi'
 import { productosApi } from '../../services/productosApi'
 import type { ProductoDetalle } from '../../types/carrito'
 
@@ -33,6 +34,18 @@ function buildWhatsAppUrl(productName: string): string {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
 }
 
+/** Alineado con tienda backend: quita la palabra comercial "nuevo" del titulo. */
+function tituloSinEtiquetaNuevo(nombre: string): string {
+  let s = nombre.trim()
+  if (!s) return ''
+  s = s.replace(/\s*-\s*nuevo\s*$/giu, '')
+  s = s.replace(/\s+nuevo\s*$/giu, '')
+  s = s.replace(/^nuevo\s+[-·,]\s*/giu, '')
+  s = s.replace(/\bnuevo\b/giu, '')
+  s = s.replace(/\s{2,}/gu, ' ').replace(/^[\s–·-]+|[\s–·-]+$/gu, '')
+  return s || nombre.trim()
+}
+
 export default function ProductoDetallePage() {
   const { id } = useParams<{ id: string }>()
   const [producto, setProducto] = useState<ProductoDetalle | null>(null)
@@ -43,6 +56,7 @@ export default function ProductoDetallePage() {
   const [showUsdPrice, setShowUsdPrice] = useState(false)
   const [dolarRate, setDolarRate] = useState<number | null>(null)
   const [loadingDolar, setLoadingDolar] = useState(true)
+  const [selectedVarianteId, setSelectedVarianteId] = useState<number | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -60,6 +74,8 @@ export default function ProductoDetallePage() {
         const data = await productosApi.get(parsedId)
         if (!alive) return
         setProducto(data)
+        const defaultVar = data.variantes_tienda?.[0]
+        setSelectedVarianteId(defaultVar?.id_producto ?? data.id)
         setShowUsdPrice(false)
       } catch (e) {
         if (!alive) return
@@ -110,7 +126,11 @@ export default function ProductoDetallePage() {
     setAdding(true)
     setFeedback(null)
     try {
-      await carritoApi.addItem(producto.id, 1)
+      const productoTarget =
+        selectedVarianteId && Number.isInteger(selectedVarianteId) && selectedVarianteId > 0
+          ? selectedVarianteId
+          : producto.id
+      await carritoApi.addItem(productoTarget, 1, !!getAccessToken())
       setFeedback('Producto agregado al carrito.')
     } catch (e) {
       setFeedback(e instanceof Error ? e.message : 'No se pudo agregar al carrito.')
@@ -125,15 +145,21 @@ export default function ProductoDetallePage() {
   }
 
   const precioArsNumber =
-    producto != null
-      ? typeof producto.precio === 'string'
-        ? Number(producto.precio)
-        : producto.precio
-      : NaN
+    (() => {
+      if (!producto) return Number.NaN
+      const varianteActiva = producto.variantes_tienda?.find((v) => v.id_producto === selectedVarianteId)
+      const precio = varianteActiva?.precio ?? producto.precio
+      return typeof precio === 'string' ? Number(precio) : precio
+    })()
   const precioUsdConvertido =
     Number.isFinite(precioArsNumber) && dolarRate && dolarRate > 0
       ? precioArsNumber / dolarRate
       : null
+  const varianteActiva = useMemo(
+    () => producto?.variantes_tienda?.find((v) => v.id_producto === selectedVarianteId) ?? null,
+    [producto, selectedVarianteId],
+  )
+  const fotoActiva = varianteActiva?.foto_url ?? producto?.detalle_equipo?.foto_url ?? null
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-10">
@@ -158,7 +184,29 @@ export default function ProductoDetallePage() {
             <p className="mb-3 text-xs font-semibold tracking-[0.18em] text-gray-400 uppercase">
               {producto.tipo_producto ?? 'producto'}
             </p>
-            <h1 className="mb-3 text-3xl font-black tracking-tight text-gray-900">{producto.nombre}</h1>
+            <h1 className="mb-3 text-3xl font-black tracking-tight text-gray-900">
+              {tituloSinEtiquetaNuevo(producto.nombre)}
+            </h1>
+            {producto.variantes_tienda && producto.variantes_tienda.length > 0 ? (
+              <div className="mb-5">
+                <label htmlFor="variante-tienda" className="mb-1.5 block text-xs font-semibold text-gray-600">
+                  Color
+                </label>
+                <select
+                  id="variante-tienda"
+                  value={selectedVarianteId ?? producto.id}
+                  onChange={(e) => setSelectedVarianteId(Number(e.target.value))}
+                  className="w-full max-w-md rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                >
+                  {producto.variantes_tienda.map((va) => (
+                    <option key={va.id_producto} value={va.id_producto}>
+                      {(va.color || va.nombre_corto || `Opción ${va.id_producto}`) +
+                        ` · ${money(va.precio)} · Stock: ${va.stock ?? 1}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             {producto.detalle_equipo?.estado_comercial?.toLowerCase() === 'usado' ? (
               <div className="mb-3 flex items-center gap-3">
                 <button
@@ -189,8 +237,13 @@ export default function ProductoDetallePage() {
             <p className="mb-6 text-4xl font-black text-gray-900">
               {showUsdPrice && precioUsdConvertido != null
                 ? moneyUsd(precioUsdConvertido)
-                : money(producto.precio)}
+                : money(varianteActiva?.precio ?? producto.precio)}
             </p>
+            {varianteActiva ? (
+              <p className="mb-3 text-xs text-gray-500">
+                Variante: {varianteActiva.color ?? 'Sin color'} · Stock: {varianteActiva.stock ?? 1}
+              </p>
+            ) : null}
             {producto.detalle_equipo?.estado_comercial?.toLowerCase() === 'usado' ? (
               <p className="mb-4 text-xs text-gray-500">
                 {loadingDolar
@@ -224,10 +277,12 @@ export default function ProductoDetallePage() {
                     <dt className="text-gray-400">Color</dt>
                     <dd>{producto.detalle_equipo.color ?? '-'}</dd>
                   </div>
-                  <div>
-                    <dt className="text-gray-400">Condición</dt>
-                    <dd>{producto.detalle_equipo.estado_comercial ?? '-'}</dd>
-                  </div>
+                  {(producto.detalle_equipo.estado_comercial ?? '').toLowerCase().trim() === 'usado' ? (
+                    <div>
+                      <dt className="text-gray-400">Condición</dt>
+                      <dd>{producto.detalle_equipo.estado_comercial}</dd>
+                    </div>
+                  ) : null}
                 </dl>
               </div>
             )}
@@ -254,9 +309,9 @@ export default function ProductoDetallePage() {
           </article>
 
           <aside className="rounded-3xl border border-gray-200 bg-gray-900 p-8 text-white shadow-sm">
-            {producto.detalle_equipo?.foto_url ? (
+            {fotoActiva ? (
               <img
-                src={mediaUrl(producto.detalle_equipo.foto_url)}
+                src={mediaUrl(fotoActiva)}
                 alt={producto.nombre}
                 className="mb-5 h-56 w-full rounded-2xl object-cover"
               />

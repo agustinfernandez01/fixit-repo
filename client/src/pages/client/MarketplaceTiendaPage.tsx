@@ -1,21 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { getAccessToken } from '../../lib/auth'
 import { carritoApi } from '../../services/carritoApi'
-import { mediaUrl } from '../../services/api'
+import { inventarioApi } from '../../services/inventarioApi'
 import { productosApi } from '../../services/productosApi'
 import type { ProductoCompra } from '../../types/carrito'
-
-function fmtPrecio(v: string | number | null | undefined) {
-  if (v === null || v === undefined || v === '') return '—'
-  const n = typeof v === 'string' ? Number(v) : v
-  if (Number.isNaN(n)) return String(v)
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(n)
-}
+import { ProductShowcaseCard } from '../../components/ProductShowcaseCard'
 
 function specsLine(p: ProductoCompra): string[] {
   const parts: string[] = []
@@ -118,13 +107,31 @@ export default function MarketplaceTiendaPage() {
     setError(null)
     setLoading(true)
     try {
-      const data = await productosApi.list()
+      const [data, detallesUsado, equipos] = await Promise.all([
+        productosApi.list(),
+        inventarioApi.equiposUsadosDetalle.list(0, 100),
+        inventarioApi.equipos.list(0, 100),
+      ])
+      const equipoToProducto = new Map<number, number>()
+      for (const equipo of equipos) {
+        const idEquipo = equipo.id ?? equipo.id_equipo
+        if (idEquipo == null || equipo.id_producto == null) continue
+        equipoToProducto.set(idEquipo, equipo.id_producto)
+      }
+      const productosUsadosConDetalle = new Set<number>()
+      for (const detalle of detallesUsado) {
+        const idProducto = equipoToProducto.get(detalle.id_equipo)
+        if (idProducto != null) {
+          productosUsadosConDetalle.add(idProducto)
+        }
+      }
       setItems(
         data.filter(
           (p) =>
             p.activo &&
-            (p.tipo_producto === 'equipo' || p.tipo_producto == null) &&
+            p.tipo_producto === 'equipo' &&
             isUsedProduct(p) &&
+            productosUsadosConDetalle.has(p.id) &&
             !isRepairProduct(p),
         ),
       )
@@ -173,6 +180,13 @@ export default function MarketplaceTiendaPage() {
     if (selectedModel === 'all') return usedByModel
     return usedByModel.filter((group) => group.key === selectedModel)
   }, [selectedModel, usedByModel])
+
+  const visibleProducts = useMemo(() => {
+    if (selectedModel === 'all') {
+      return usedByModel.flatMap((group) => group.productos)
+    }
+    return visibleGroups[0]?.productos ?? []
+  }, [selectedModel, usedByModel, visibleGroups])
 
   return (
     <div className="bg-white">
@@ -259,77 +273,48 @@ export default function MarketplaceTiendaPage() {
               </div>
             </div>
 
-            {visibleGroups.map((group) => (
-              <section key={group.key}>
-                <div className="mb-5 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Modelo</p>
-                    <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900">{group.label}</h2>
-                  </div>
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-                    {group.productos.length} disponibles
-                  </span>
+            <section>
+              <div className="mb-5 flex items-end justify-between gap-4">
+                <div>
+                  <p className="mb-1 text-[11px] tracking-widest text-neutral-400 uppercase">Modelo</p>
+                  <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900">
+                    {selectedModel === 'all'
+                      ? 'Todos los modelos'
+                      : (visibleGroups[0]?.label ?? 'Modelo')}
+                  </h2>
                 </div>
+                <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+                  {visibleProducts.length} disponibles
+                </span>
+              </div>
 
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {group.productos.map((p) => {
-                    const src = mediaUrl(p.foto_url)
-                    return (
-                      <article key={p.id} className="flex flex-col items-center text-center">
-                        <div className="relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] bg-gradient-to-b from-neutral-200/90 via-stone-100/80 to-white">
-                          <div className="relative flex h-[280px] w-full items-center justify-center sm:h-[320px] md:h-[340px]">
-                            {src ? (
-                              <img
-                                src={src}
-                                alt={p.nombre}
-                                className="max-h-full w-auto max-w-[min(100%,280px)] object-contain object-center mix-blend-multiply sm:max-w-[300px] md:max-w-[320px]"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="h-44 w-24 rounded-[1.9rem] border border-gray-200 bg-white" />
-                            )}
-                          </div>
-                        </div>
-                        <p className="mt-3 text-[11px] font-semibold tracking-[0.02em] text-neutral-500 uppercase">
-                          Usado
-                        </p>
-                        <h3 className="mt-1.5 max-w-[18rem] text-[1.3rem] font-semibold leading-tight tracking-[-0.025em] text-neutral-900">
-                          {p.nombre}
-                        </h3>
-                        <p className="mt-2 text-xs font-medium tracking-wide text-neutral-500 uppercase">
-                          {group.label}
-                        </p>
-                        <p className="mt-3 text-sm font-semibold text-neutral-900">{fmtPrecio(p.precio)}</p>
-                        <ul className="mt-2 flex flex-wrap justify-center gap-1.5">
-                          {specsLine(p).slice(0, 2).map((s) => (
-                            <li key={s} className="rounded-lg bg-gray-50 px-2.5 py-1 text-[11px] text-gray-500">
-                              {s}
-                            </li>
-                          ))}
-                        </ul>
-                        <div className="mt-5 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
-                          <button
-                            type="button"
-                            onClick={() => void addToCart(p.id)}
-                            disabled={savingId === p.id}
-                            className="inline-flex min-h-[2.75rem] min-w-[9rem] items-center justify-center rounded-full bg-[#0071e3] px-7 text-[15px] font-normal text-white transition-colors hover:bg-[#0077ed] disabled:opacity-60"
-                          >
-                            {savingId === p.id ? 'Agregando…' : 'Agregar al carrito'}
-                          </button>
-                          <Link
-                            to={`/producto/${p.id}`}
-                            className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
-                          >
-                            Ver detalle
-                            <span aria-hidden className="text-lg leading-none">›</span>
-                          </Link>
-                        </div>
-                      </article>
-                    )
-                  })}
-                </div>
-              </section>
-            ))}
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {visibleProducts.map((p) => {
+                  const groupLabel =
+                    usedByModel.find((g) => g.productos.some((prod) => prod.id === p.id))
+                      ?.label ?? 'Usado'
+                  return (
+                    <ProductShowcaseCard
+                      key={p.id}
+                      title={p.nombre}
+                      description={p.descripcion ?? specsLine(p).join(' · ')}
+                      familyLabel={groupLabel}
+                      imageUrl={p.foto_url}
+                      badgeTag="Usado"
+                      arsPrice={p.precio}
+                      primaryAction={{
+                        label: savingId === p.id ? 'Agregando…' : 'Agregar al carrito',
+                        onClick: () => {
+                          void addToCart(p.id)
+                        },
+                        disabled: savingId === p.id,
+                      }}
+                      detailTo={`/producto/${p.id}`}
+                    />
+                  )
+                })}
+              </div>
+            </section>
           </div>
         )}
       </section>

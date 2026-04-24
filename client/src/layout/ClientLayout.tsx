@@ -22,8 +22,8 @@ import { carritoApi } from '../services/carritoApi'
 const NAV_LINKS = [
 	{ to: '/', label: 'Inicio' },
 	{ to: '/tienda', label: 'Tienda' },
-	{ to: '/usados', label: 'Usados' },
-	{ to: '/marketplace', label: 'Marketplace' },
+	{ to: '/usados', label: 'Usados', reloadDocument: true },
+	{ to: '/marketplace', label: 'Marketplace', reloadDocument: true },
 	{ to: '/canje', label: 'Canje' },
 	{ to: '/reparaciones', label: 'Reparaciones' },
 	{ to: '/publicar', label: 'Vender' },
@@ -227,10 +227,11 @@ export default function ClientLayout() {
 					</Link>
 
 					<ul className="hidden items-center gap-7 md:flex">
-						{NAV_LINKS.map(({ to, label }) => (
+						{NAV_LINKS.map(({ to, label, reloadDocument }) => (
 							<li key={to}>
 								<Link
 									to={to}
+									reloadDocument={reloadDocument}
 									className="text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900"
 								>
 									{label}
@@ -313,10 +314,11 @@ export default function ClientLayout() {
 				{mobileMenuOpen ? (
 					<div id="mobile-nav-menu" className="border-t border-gray-100 bg-white px-6 py-4 md:hidden">
 						<ul className="space-y-3">
-							{NAV_LINKS.map(({ to, label }) => (
+							{NAV_LINKS.map(({ to, label, reloadDocument }) => (
 								<li key={`mobile-${to}`}>
 									<Link
 										to={to}
+										reloadDocument={reloadDocument}
 										className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
 									>
 										{label}

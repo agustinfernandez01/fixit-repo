@@ -141,6 +141,7 @@ export type SolicitudCanjeAdminResponse = {
   id_usuario: number
   cliente_nombre: string | null
   cliente_email: string | null
+  cliente_telefono: string | null
   id_equipo_ofrecido: number
   equipo_modelo: string | null
   equipo_capacidad_gb: number | null

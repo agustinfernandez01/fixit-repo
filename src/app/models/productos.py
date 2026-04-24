@@ -22,6 +22,7 @@ class Productos(Base):
     descripcion = Column(Text, nullable=True)
     precio = Column(Numeric(12, 2), nullable=False)
     precio_usd = Column(Numeric(12, 2), nullable=True)
+    foto_principal_url = Column(String(255), nullable=True)
     id_categoria = Column(Integer, ForeignKey("categoria_producto.id"), nullable=False)
     activo = Column(Boolean, default=True)
 

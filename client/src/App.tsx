@@ -12,6 +12,7 @@ import MarketplaceDetallePage from './pages/client/MarketplaceDetallePage'
 import CanjePage from './pages/client/CanjePage'
 import PublicarCelularPage from './pages/client/PublicarCelularPage'
 import LoginPage from './pages/client/LoginPage'
+import RegisterPage from './pages/client/RegisterPage'
 import ReparacionesPage from './pages/client/ReparacionesPage'
 import TiendaPage from './pages/client/TiendaPage'
 import CarritoPage from './pages/client/CarritoPage'
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="reparaciones" element={<ReparacionesPage />} />
         <Route path="publicar" element={<PublicarCelularPage />} />
         <Route path="login" element={<LoginPage />} />
+        <Route path="registro" element={<RegisterPage />} />
         <Route path="carrito" element={<CarritoPage />} />
         <Route path="perfil" element={<PerfilPage />} />
         <Route path="producto/:id" element={<ProductoDetallePage />} />

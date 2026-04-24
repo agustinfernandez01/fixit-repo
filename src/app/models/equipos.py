@@ -26,6 +26,7 @@ class Equipo(Base):
     color = Column(String(50), nullable=True)
     tipo_equipo = Column(String(50), nullable=True)
     estado_comercial = Column(String(50), nullable=True)
+    estado_comercial_previo_reserva = Column(String(50), nullable=True)
     fecha_ingreso = Column(DateTime, nullable=True)
     activo = Column(Boolean, default=True)
     foto_url = Column(String(255), nullable=True)

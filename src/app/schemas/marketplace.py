@@ -47,6 +47,8 @@ class PublicacionResponse(PublicacionBase):
     id_publicacion: int
     id_usuario: int
     fecha_publicacion: Optional[datetime] = None
+    vendedor_nombre: Optional[str] = None
+    vendedor_telefono: Optional[str] = None
 
     class Config:
         from_attributes = True

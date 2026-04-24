@@ -78,6 +78,7 @@ def listar_solicitudes_admin(db: Session) -> list[dict[str, Any]]:
                 "id_usuario": solicitud.id_usuario,
                 "cliente_nombre": f"{usuario.nombre} {usuario.apellido}".strip() if usuario else None,
                 "cliente_email": usuario.email if usuario else None,
+                "cliente_telefono": usuario.telefono if usuario else None,
                 "id_equipo_ofrecido": solicitud.id_equipo_ofrecido,
                 "equipo_modelo": equipo.modelo if equipo else None,
                 "equipo_capacidad_gb": equipo.capacidad_gb if equipo else None,

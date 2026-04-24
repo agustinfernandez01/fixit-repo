@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ModeloEquipo } from '../../types/inventario'
+import type { EquipoConModelo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
 
 const emptyForm = {
@@ -14,6 +14,7 @@ export function ModelosPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [busyModelId, setBusyModelId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
 
   const load = useCallback(async () => {
@@ -90,12 +91,59 @@ export function ModelosPage() {
     }
   }
 
+  async function setFotoTiendaDesdeModelo(modelo: ModeloEquipo) {
+    setError(null)
+    setBusyModelId(modelo.id)
+    try {
+      const equipos = await inventarioApi.equipos.list(0, 100)
+      const candidatos = (equipos as EquipoConModelo[])
+        .filter((e) => (e.id_modelo ?? e.modelo?.id ?? e.modelo?.id_modelo) === modelo.id)
+        .filter((e) => !!e.foto_url)
+        .sort((a, b) => (a.id_equipo ?? a.id ?? 0) - (b.id_equipo ?? b.id ?? 0))
+
+      if (candidatos.length === 0) {
+        throw new Error('Este modelo no tiene equipos con foto cargada.')
+      }
+
+      const opciones = candidatos
+        .map((e) => {
+          const id = e.id_equipo ?? e.id
+          const imei = e.imei ?? 's/imei'
+          const color = e.color ?? 'sin color'
+          return `#${id} · IMEI ${imei} · ${color}`
+        })
+        .join('\n')
+
+      const selectedRaw = window.prompt(
+        `Elegí el ID del equipo para usar su foto en tienda (${modelo.nombre_modelo}):\n\n${opciones}`,
+        String(candidatos[0].id_equipo ?? candidatos[0].id ?? ''),
+      )
+      if (!selectedRaw) return
+      const selectedId = Number(selectedRaw)
+      if (!Number.isFinite(selectedId) || selectedId < 1) {
+        throw new Error('ID de equipo inválido.')
+      }
+      const existe = candidatos.some((e) => (e.id_equipo ?? e.id) === selectedId)
+      if (!existe) {
+        throw new Error('El equipo indicado no pertenece a este modelo o no tiene foto.')
+      }
+
+      await inventarioApi.equipos.setFotoPrincipalTienda(selectedId)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo establecer la foto de tienda')
+    } finally {
+      setBusyModelId(null)
+    }
+  }
+
   return (
     <>
       <h1>Modelos de equipo</h1>
       <p className="lead">
         Catálogo de modelos (marca/capacidad/color). Los equipos referencian un
-        modelo.
+        modelo. Definí acá la foto principal de tienda del modelo; las
+        variantes por color se cargan desde Equipos (IMEI por unidad).
       </p>
 
       {error ? <div className="msg-error">{error}</div> : null}
@@ -181,6 +229,7 @@ export function ModelosPage() {
                   <th>Nombre</th>
                   <th>GB</th>
                   <th>Activo</th>
+                  <th>Foto tienda</th>
                   <th />
                 </tr>
               </thead>
@@ -196,6 +245,16 @@ export function ModelosPage() {
                       >
                         {m.activo ? 'Sí' : 'No'}
                       </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busyModelId === m.id}
+                        onClick={() => void setFotoTiendaDesdeModelo(m)}
+                      >
+                        {busyModelId === m.id ? 'Aplicando…' : 'Definir'}
+                      </button>
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button
