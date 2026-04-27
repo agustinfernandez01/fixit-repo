@@ -82,6 +82,14 @@ class VarianteTiendaItem(BaseModel):
     foto_url: Optional[str] = None
     nombre_corto: Optional[str] = None
     stock: int = 1
+    disponible: bool = True
+    atributos: dict[str, str] = {}
+
+
+class AtributoDisponibleItem(BaseModel):
+    code: str
+    label: str
+    options: list[str]
 
 
 class ProductoTiendaAgrupadoResponse(BaseModel):
@@ -107,3 +115,4 @@ class ProductoDetalleResponse(ProductoResponse):
     detalle_equipo: Optional[ProductoEquipoDetalle] = None
     detalle_accesorio: Optional[ProductoAccesorioDetalle] = None
     variantes_tienda: Optional[list[VarianteTiendaItem]] = None
+    atributos_disponibles: Optional[list[AtributoDisponibleItem]] = None

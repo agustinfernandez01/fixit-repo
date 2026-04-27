@@ -3,6 +3,7 @@ import { getAccessToken } from '../../lib/auth'
 import { carritoApi } from '../../services/carritoApi'
 import { inventarioApi } from '../../services/inventarioApi'
 import { productosApi } from '../../services/productosApi'
+import { isRepairProduct, isUsedProduct, normalizeCatalogText } from '../../lib/catalogProductRules'
 import type { ProductoCompra } from '../../types/carrito'
 import { ProductShowcaseCard } from '../../components/ProductShowcaseCard'
 
@@ -21,43 +22,9 @@ function toTitleCase(value: string): string {
     .join(' ')
 }
 
-function normalize(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase()
-}
-
-function isRepairProduct(producto: ProductoCompra): boolean {
-  const name = normalize(producto.nombre)
-  const desc = normalize(producto.descripcion ?? '')
-  return (
-    name.startsWith('reparación') ||
-    name.startsWith('reparacion') ||
-    name.includes('reparación -') ||
-    name.includes('reparacion -') ||
-    desc.includes('servicio de reparación') ||
-    desc.includes('servicio de reparacion')
-  )
-}
-
-function isUsedProduct(producto: ProductoCompra): boolean {
-  const estado = normalize(producto.estado_comercial)
-  if (estado) {
-    return estado === 'usado'
-  }
-  const t = normalize(producto.tipo_equipo)
-  const n = normalize(producto.nombre)
-  return (
-    t.includes('usad') ||
-    t.includes('reacond') ||
-    t.includes('semi') ||
-    n.includes('usado') ||
-    n.includes('reacondicionado') ||
-    n.endsWith('- usado')
-  )
-}
-
 function modelLabelFromProduct(producto: ProductoCompra): string {
   const source = `${producto.nombre ?? ''} ${producto.tipo_equipo ?? ''}`
-  const normalized = normalize(source)
+  const normalized = normalizeCatalogText(source)
 
   const iphoneMatch = normalized.match(/iphone\s*(se|[0-9]{1,2})(\s*(pro|max|plus|mini))?/)
   if (iphoneMatch) {

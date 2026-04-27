@@ -9,6 +9,7 @@ import {
   parseBatteryIntervalValue,
 } from '../../lib/canjeBatteryIntervals'
 import { compareIphoneModelNames } from '../../lib/iphoneModelSort'
+import { getProductCondition, isRepairProduct } from '../../lib/catalogProductRules'
 import { canjeApi } from '../../services/canjeApi'
 import { productosApi } from '../../services/productosApi'
 import type { CotizacionCanje, CotizarCanjeResponse, ModeloCanje } from '../../types/canje'
@@ -40,45 +41,8 @@ function money(value: number | string | null | undefined) {
   return `$${n.toLocaleString('es-AR')}`
 }
 
-function getProductCondition(producto: ProductoCompra): 'nuevo' | 'usado' {
-  const estado = (producto.estado_comercial ?? '').toLowerCase().trim()
-  if (estado === 'nuevo' || estado === 'usado') {
-    return estado
-  }
-  const raw = (producto.tipo_equipo ?? '').toLowerCase()
-  const nombre = (producto.nombre ?? '').toLowerCase()
-  if (
-    raw.includes('usad') ||
-    raw.includes('reacond') ||
-    raw.includes('semi') ||
-    nombre.includes('usado') ||
-    nombre.includes('reacondicionado') ||
-    nombre.endsWith('- usado')
-  ) {
-    return 'usado'
-  }
-  return 'nuevo'
-}
-
 function conditionLabel(condition: 'nuevo' | 'usado') {
   return condition === 'usado' ? 'Usado' : 'Nuevo'
-}
-
-function normalize(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase()
-}
-
-function isRepairProduct(producto: ProductoCompra): boolean {
-  const name = normalize(producto.nombre)
-  const desc = normalize(producto.descripcion ?? '')
-  return (
-    name.startsWith('reparación') ||
-    name.startsWith('reparacion') ||
-    name.includes('reparación -') ||
-    name.includes('reparacion -') ||
-    desc.includes('servicio de reparación') ||
-    desc.includes('servicio de reparacion')
-  )
 }
 
 function modelLabel(modelo: ModeloCanje) {

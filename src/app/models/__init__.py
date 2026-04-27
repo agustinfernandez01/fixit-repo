@@ -8,7 +8,15 @@
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
 from app.models.carrito import Carrito, CarritoDetalle
-from app.models.equipos import ModeloEquipo, Equipo, Equipos, EquipoUsadoDetalle
+from app.models.equipos import (
+    ModeloEquipo,
+    Equipo,
+    Equipos,
+    EquipoUsadoDetalle,
+    ModeloAtributo,
+    ModeloAtributoOpcion,
+    EquipoConfiguracion,
+)
 from app.models.sesiones_login import SesionesLogin as SesionLogin
 from app.models.deposito import Deposito, EquipoDeposito
 from app.models.productos import CategoriaProducto, Productos
@@ -27,6 +35,9 @@ __all__ = [
     "Equipo",
     "Equipos",
     "EquipoUsadoDetalle",
+    "ModeloAtributo",
+    "ModeloAtributoOpcion",
+    "EquipoConfiguracion",
     "Deposito",
     "EquipoDeposito",
     "CategoriaProducto",

@@ -479,6 +479,7 @@ def list_pedidos_pendientes_admin(db: Session, skip: int = 0, limit: int = 50) -
             sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
             items.append(
                 {
+                    "id_detalle_pedido": int(d.id),
                     "id_producto": d.id_producto,
                     "producto_nombre": nombre,
                     "cantidad": d.cantidad,
@@ -569,6 +570,7 @@ def list_pedidos_confirmados_pendientes_entrega_admin(
             sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
             items.append(
                 {
+                    "id_detalle_pedido": int(d.id),
                     "id_producto": d.id_producto,
                     "producto_nombre": nombre,
                     "cantidad": d.cantidad,
@@ -733,7 +735,12 @@ def checkout_carrito(
         raise ValueError("Ocurrió un error al confirmar la compra")
 
 
-def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Optional[Pedido], list[str]]:
+def confirm_pedido(
+    db: Session,
+    id_pedido: int,
+    force: bool = False,
+    asignaciones_por_detalle: Optional[dict[int, list[int]]] = None,
+) -> tuple[Optional[Pedido], list[str]]:
     """
     Confirma un pedido pendiente:
     - valida estado de equipos,
@@ -756,6 +763,9 @@ def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Op
 
         equipos_a_reservar: list[Equipo] = []
         productos_afectados: set[int] = set()
+
+        used_equipo_ids: set[int] = set()
+        asignaciones_por_detalle = asignaciones_por_detalle or {}
 
         for detalle in detalles:
             qty = int(detalle.cantidad or 0)
@@ -789,7 +799,35 @@ def confirm_pedido(db: Session, id_pedido: int, force: bool = False) -> tuple[Op
                 )
                 continue
 
-            seleccionados = elegibles[:qty]
+            seleccion_ids_raw = asignaciones_por_detalle.get(int(detalle.id))
+            if seleccion_ids_raw is None:
+                raise ValueError(
+                    f"Debés asignar IMEI para el ítem #{detalle.id} (producto {detalle.id_producto}, cantidad {qty}) antes de confirmar."
+                )
+
+            seleccion_ids = [int(x) for x in seleccion_ids_raw if int(x) > 0]
+            if len(seleccion_ids) != qty:
+                raise ValueError(
+                    f"El ítem #{detalle.id} requiere {qty} IMEI(s) y recibimos {len(seleccion_ids)}."
+                )
+            if len(set(seleccion_ids)) != len(seleccion_ids):
+                raise ValueError(f"El ítem #{detalle.id} contiene IMEI/equipo duplicado en la asignación.")
+
+            elegibles_por_id = {int(eq.id): eq for eq in elegibles}
+            seleccionados: list[Equipo] = []
+            for id_equipo in seleccion_ids:
+                eq = elegibles_por_id.get(id_equipo)
+                if eq is None:
+                    raise ValueError(
+                        f"El equipo #{id_equipo} no está disponible para el producto {detalle.id_producto} en el ítem #{detalle.id}."
+                    )
+                if id_equipo in used_equipo_ids:
+                    raise ValueError(
+                        f"El equipo #{id_equipo} se repite en más de un ítem del pedido; cada IMEI debe ser único."
+                    )
+                used_equipo_ids.add(id_equipo)
+                seleccionados.append(eq)
+
             for equipo in seleccionados:
                 estado_normalizado = (equipo.estado_comercial or "").strip().lower()
                 requiere_verificacion = estado_normalizado in AVAILABILITY_CHECK_STATES
@@ -1030,8 +1068,8 @@ def listar_candidatos_reasignacion_equipo(
     pedido = db.query(Pedido).filter(Pedido.id == id_pedido).first()
     if not pedido:
         raise ValueError("Pedido no encontrado")
-    if pedido.estado != "confirmado":
-        raise ValueError("Solo se puede reasignar IMEI en pedidos confirmados.")
+    if pedido.estado not in {"confirmado", "pendiente_confirmacion"}:
+        raise ValueError("Solo se puede consultar IMEI para pedidos pendientes o confirmados.")
 
     detalle = (
         db.query(DetallePedido)

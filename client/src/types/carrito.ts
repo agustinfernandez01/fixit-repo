@@ -58,6 +58,14 @@ export type VarianteTienda = {
   foto_url?: string | null
   nombre_corto?: string | null
   stock?: number | null
+  disponible?: boolean
+  atributos?: Record<string, string>
+}
+
+export type VarianteAtributoDisponible = {
+  code: string
+  label: string
+  options: string[]
 }
 
 export type ProductoCompra = {
@@ -104,4 +112,5 @@ export type ProductoDetalle = ProductoCompra & {
   detalle_equipo?: ProductoEquipoDetalle | null
   detalle_accesorio?: ProductoAccesorioDetalle | null
   variantes_tienda?: VarianteTienda[] | null
+  atributos_disponibles?: VarianteAtributoDisponible[] | null
 }

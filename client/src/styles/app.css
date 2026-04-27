@@ -706,3 +706,267 @@ table.data tbody tr:hover td {
 .admin-dashboard-footer-link:hover {
   color: var(--app-text-strong);
 }
+
+/* ——— Modal ——— */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 1rem;
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  background: var(--app-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1.5rem 1.6rem;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 24px 60px rgba(0, 0, 0, 0.14),
+    0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.modal-lg {
+  max-width: 720px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.modal-title {
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  color: var(--app-text-strong);
+  margin: 0;
+}
+
+.modal-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--app-border);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-muted);
+  font-size: 1rem;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modal-close:hover {
+  background: var(--app-muted-bg);
+  color: var(--app-text-strong);
+}
+
+.modal-footer {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--app-border);
+}
+
+/* ——— Skeleton ——— */
+@keyframes sk-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--app-muted-bg) 25%,
+    #e8e8ea 50%,
+    var(--app-muted-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.4s ease infinite;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.skeleton-row td {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+/* ——— Row busy (operación en curso) ——— */
+tr.row-busy > td {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ——— Badge extra ——— */
+.badge-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.badge-warn {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.badge-neu {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+/* ——— Attribute chips (ModelosPage) ——— */
+.attr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.attr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
+  background: var(--app-bg);
+  font-size: 0.78rem;
+  color: var(--app-text);
+}
+
+.attr-chip-del {
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--app-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.attr-chip-del:hover {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+/* ——— Inline attr section ——— */
+.attr-section {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin-top: 0.75rem;
+  background: var(--app-muted-bg);
+}
+
+.attr-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+  margin: 0 0 0.65rem;
+}
+
+.attr-row {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  margin-bottom: 0.5rem;
+  background: var(--app-bg);
+}
+
+.attr-row:last-child {
+  margin-bottom: 0;
+}
+
+.attr-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.attr-row-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--app-text-strong);
+}
+
+.attr-row-code {
+  font-size: 0.72rem;
+  color: var(--app-muted);
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.attr-add-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.attr-add-row input {
+  flex: 1;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-bg);
+  color: var(--app-text-strong);
+}
+
+/* ——— Table improvements ——— */
+table.data th:first-child,
+table.data td:first-child {
+  padding-left: 1rem;
+}
+
+table.data th:last-child,
+table.data td:last-child {
+  padding-right: 1rem;
+}
+
+table.data td.td-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ——— Spinner ——— */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}

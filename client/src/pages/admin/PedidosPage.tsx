@@ -17,6 +17,7 @@ type Pedido = {
     telefono: string | null
   } | null
   items?: Array<{
+    id_detalle_pedido: number
     id_producto: number
     producto_nombre: string
     cantidad: number
@@ -37,6 +38,14 @@ type ConfirmResponse = {
   estado: string
   mensaje: string
   warnings?: string[]
+}
+
+type ConfirmPedidoPayload = {
+  force?: boolean
+  asignaciones: Array<{
+    id_detalle_pedido: number
+    id_equipos: number[]
+  }>
 }
 
 type CandidatoEquipo = {
@@ -194,11 +203,41 @@ export default function PedidosPage() {
     setError(null)
     setWarningMsg(null)
     try {
+      const pedido = pedidosPendientes.find((p) => p.id_pedido === id_pedido)
+      if (!pedido) {
+        throw new Error('No se encontró el pedido a confirmar.')
+      }
+      const items = pedido.items ?? []
+      const asignaciones: ConfirmPedidoPayload['asignaciones'] = []
+      const usadosEnPedido = new Set<number>()
+
+      for (const item of items) {
+        if (!item.id_detalle_pedido || !item.id_producto || (item.cantidad ?? 0) < 1) continue
+        const candidatos = await fetchJson<CandidatoEquipo[]>(
+          `/api/v1/carrito/pedido/${id_pedido}/candidatos-reasignacion?id_producto=${item.id_producto}`,
+          {
+            headers: { Authorization: `Bearer ${getAccessToken()}` },
+          },
+        )
+        const disponibles = candidatos.filter(
+          (c) => c.disponible_para_reasignar && !usadosEnPedido.has(c.id_equipo),
+        )
+        if (disponibles.length < item.cantidad) {
+          throw new Error(
+            `No hay stock suficiente para asignar IMEI en ${item.producto_nombre}. Requeridos: ${item.cantidad}, disponibles: ${disponibles.length}.`,
+          )
+        }
+        const ids = disponibles.slice(0, item.cantidad).map((c) => c.id_equipo)
+        ids.forEach((id) => usadosEnPedido.add(id))
+        asignaciones.push({ id_detalle_pedido: item.id_detalle_pedido, id_equipos: ids })
+      }
+
       const result = await fetchJson<ConfirmResponse>(`/api/v1/carrito/confirmar-pedido/${id_pedido}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${getAccessToken()}`,
         },
+        body: JSON.stringify({ force: false, asignaciones } satisfies ConfirmPedidoPayload),
       })
 
       if (result.estado === 'requiere_verificacion_whatsapp') {
@@ -218,12 +257,13 @@ export default function PedidosPage() {
         }
 
         const forcedResult = await fetchJson<ConfirmResponse>(
-          `/api/v1/carrito/confirmar-pedido/${id_pedido}?force=true`,
+          `/api/v1/carrito/confirmar-pedido/${id_pedido}`,
           {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${getAccessToken()}`,
             },
+            body: JSON.stringify({ force: true, asignaciones } satisfies ConfirmPedidoPayload),
           }
         )
 

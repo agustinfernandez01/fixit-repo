@@ -5,6 +5,7 @@ import { productosApi } from '../../services/productosApi'
 import type { ProductoCompra } from '../../types/carrito'
 import { getAccessToken } from '../../lib/auth'
 import { mediaUrl } from '../../services/api'
+import { isRepairProduct, isUsedProduct, normalizeCatalogText } from '../../lib/catalogProductRules'
 import productosAppleFilterImg from '../../assets/filtradocatalogoimg/productos-apple.svg'
 import accesoriosFilterImg from '../../assets/filtradocatalogoimg/accesorios.svg'
 
@@ -79,10 +80,6 @@ const ACCESORIOS_SUBCATEGORY_OPTIONS: Array<{
 
 const ITEMS_PER_PAGE = 9
 
-function normalize(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase()
-}
-
 function toNumber(value: string | number | null | undefined): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string') {
@@ -124,7 +121,7 @@ function inferFamilyLabel(name: string): string {
 }
 
 function inferFamilyFromTipoEquipo(tipoEquipo: string | null | undefined): string | null {
-  const t = normalize(tipoEquipo)
+  const t = normalizeCatalogText(tipoEquipo)
   if (!t) return null
   if (t.includes('iphone')) return 'iPhone'
   if (t.includes('ipad') || t.includes('tablet')) return 'iPad'
@@ -137,40 +134,10 @@ function inferFamilyFromTipoEquipo(tipoEquipo: string | null | undefined): strin
   return t
 }
 
-function isRepairProduct(producto: ProductoCompra): boolean {
-  const name = normalize(producto.nombre)
-  const desc = normalize(producto.descripcion ?? '')
-  return (
-    name.startsWith('reparación') ||
-    name.startsWith('reparacion') ||
-    name.includes('reparación -') ||
-    name.includes('reparacion -') ||
-    desc.includes('servicio de reparación') ||
-    desc.includes('servicio de reparacion')
-  )
-}
-
-function isUsedProduct(producto: ProductoCompra): boolean {
-  const estado = normalize(producto.estado_comercial)
-  if (estado) {
-    return estado === 'usado'
-  }
-  const t = normalize(producto.tipo_equipo)
-  const n = normalize(producto.nombre)
-  return (
-    t.includes('usad') ||
-    t.includes('reacond') ||
-    t.includes('semi') ||
-    n.includes('usado') ||
-    n.includes('reacondicionado') ||
-    n.endsWith('- usado')
-  )
-}
-
 function classifyCategory(producto: ProductoCompra): CatalogCategory {
-  const tipoProducto = normalize(producto.tipo_producto)
-  const tipoEquipo = normalize(producto.tipo_equipo)
-  const nombre = normalize(producto.nombre)
+  const tipoProducto = normalizeCatalogText(producto.tipo_producto)
+  const tipoEquipo = normalizeCatalogText(producto.tipo_equipo)
+  const nombre = normalizeCatalogText(producto.nombre)
   if (
     tipoProducto === 'accesorio' ||
     tipoEquipo.includes('accesorio') ||
@@ -182,7 +149,7 @@ function classifyCategory(producto: ProductoCompra): CatalogCategory {
 }
 
 function toCatalogItem(producto: ProductoCompra): CatalogItem {
-  const normalizedName = normalize(producto.nombre)
+  const normalizedName = normalizeCatalogText(producto.nombre)
   const familyByTipo = inferFamilyFromTipoEquipo(producto.tipo_equipo)
   return {
     ...producto,
@@ -197,7 +164,7 @@ function itemMatchesSubcategory(
 ): boolean {
   if (subcategory === 'all') return true
 
-  const haystack = `${normalize(item.nombre)} ${normalize(item.descripcion)} ${normalize(item.tipo_equipo)} ${normalize(item.familyLabel)}`
+  const haystack = `${normalizeCatalogText(item.nombre)} ${normalizeCatalogText(item.descripcion)} ${normalizeCatalogText(item.tipo_equipo)} ${normalizeCatalogText(item.familyLabel)}`
 
   if (subcategory === 'iphone') return haystack.includes('iphone')
   if (subcategory === 'ipad') return haystack.includes('ipad') || haystack.includes('tablet')
@@ -486,12 +453,12 @@ export default function TiendaPage() {
   const catalogItems = useMemo(() => items.map(toCatalogItem), [items])
 
   const filtered = useMemo(() => {
-    const q = normalize(search)
+    const q = normalizeCatalogText(search)
     let data = catalogItems.filter((item) => item.category === visibleCategory)
     data = data.filter((item) => itemMatchesSubcategory(item, selectedSubcategory))
     if (q) {
       data = data.filter((item) => {
-        const hay = `${normalize(item.nombre)} ${normalize(item.descripcion)} ${normalize(item.familyLabel)}`
+        const hay = `${normalizeCatalogText(item.nombre)} ${normalizeCatalogText(item.descripcion)} ${normalizeCatalogText(item.familyLabel)}`
         return hay.includes(q)
       })
     }

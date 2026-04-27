@@ -1,6 +1,6 @@
 """API del carrito de compras."""
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -9,6 +9,7 @@ from app.schemas.carrito import (
     CarritoBase,
     CarritoCheckoutRequest,
     CarritoCheckoutResponse,
+    ConfirmPedidoRequest,
     CarritoDetalleBase,
     CarritoItemAdd,
     CarritoItemUpdate,
@@ -182,13 +183,22 @@ def confirmar_checkout(
 @router.post("/confirmar-pedido/{id_pedido}", response_model=dict)
 def confirmar_pedido_endpoint(
     id_pedido: int,
+    payload: ConfirmPedidoRequest = Body(default_factory=ConfirmPedidoRequest),
     db: Session = Depends(get_db),
-    force: bool = Query(False, description="Confirma aunque requiera validación comercial"),
     _id_admin: int = Depends(require_admin_user_id),
 ):
     """Admin endpoint: confirma pedido pendiente, bloquea stock, aprueba pago."""
     try:
-        pedido, warnings = confirm_pedido(db, id_pedido, force=force)
+        asignaciones_por_detalle = {
+            int(a.id_detalle_pedido): [int(x) for x in a.id_equipos]
+            for a in payload.asignaciones
+        }
+        pedido, warnings = confirm_pedido(
+            db,
+            id_pedido,
+            force=bool(payload.force),
+            asignaciones_por_detalle=asignaciones_por_detalle,
+        )
 
         if warnings:
             return {

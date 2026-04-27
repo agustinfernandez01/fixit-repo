@@ -65,6 +65,16 @@ class CarritoCheckoutResponse(BaseModel):
     mensaje: str
 
 
+class ConfirmPedidoItemAsignacion(BaseModel):
+    id_detalle_pedido: int = Field(ge=1)
+    id_equipos: List[int] = Field(min_length=1)
+
+
+class ConfirmPedidoRequest(BaseModel):
+    force: bool = False
+    asignaciones: List[ConfirmPedidoItemAsignacion] = []
+
+
 class CarritoResumen(BaseModel):
     carrito: CarritoBase
     items: List[CarritoDetalleBase]

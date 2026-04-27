@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import UPLOAD_DIR
 from app.models.accesorios import Accesorios
-from app.models.equipos import Equipos
+from app.models.equipos import Equipos, ModeloAtributo, ModeloAtributoOpcion, EquipoConfiguracion
 from app.models.productos import Productos
 from app.schemas.productos import ProductoBase, ProductoCreate, ProductoPatch
 
@@ -30,6 +30,26 @@ def titulo_tienda_sin_etiqueta_nuevo(nombre: str | None) -> str:
     s = re.sub(r"(?i)\bnuevo\b", "", s)
     s = re.sub(r"\s{2,}", " ", s).strip(" -–·").strip()
     return s or (nombre or "").strip()
+
+
+def _titulo_familia_sin_capacidad(nombre: str | None) -> str:
+    s = titulo_tienda_sin_etiqueta_nuevo(nombre)
+    if not s:
+        return ""
+    s = re.sub(r"(?i)\b\d{2,4}\s*gb\b", "", s)
+    s = re.sub(r"\s{2,}", " ", s).strip(" -–·").strip()
+    return s or titulo_tienda_sin_etiqueta_nuevo(nombre)
+
+
+def _clave_familia_catalogo(p: Productos, e: Equipos) -> str:
+    m = e.modelo
+    fuente = (
+        (m.nombre_modelo if m and m.nombre_modelo else None)
+        or e.tipo_equipo
+        or p.nombre
+        or f"producto-{p.id}"
+    )
+    return _titulo_familia_sin_capacidad(fuente).lower() or f"producto-{p.id}"
 
 
 def _es_reparacion(nombre: str | None, descripcion: str | None) -> bool:
@@ -65,6 +85,7 @@ def _es_linea_usado_por_estado_o_nombre(
 def _variante_tienda_dict(p: Productos, e: Equipos) -> dict:
     m = e.modelo
     color = (e.color or (m.color if m else None) or "").strip() or None
+    atributos = _extraer_atributos_variante(p, e)
     return {
         "id_producto": p.id,
         "color": color,
@@ -73,6 +94,8 @@ def _variante_tienda_dict(p: Productos, e: Equipos) -> dict:
         "foto_url": _foto_url_si_existe(e.foto_url),
         "nombre_corto": titulo_tienda_sin_etiqueta_nuevo(p.nombre),
         "stock": 1,
+        "disponible": True,
+        "atributos": atributos,
     }
 
 
@@ -80,7 +103,11 @@ def _coleccion_variantes_mismo_modelo_nuevos(db: Session, id_modelo: int) -> lis
     rows = (
         db.query(Productos, Equipos)
         .join(Equipos, Equipos.id_producto == Productos.id)
-        .options(joinedload(Equipos.modelo))
+        .options(
+            joinedload(Equipos.modelo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
         .filter(
             Equipos.id_modelo == id_modelo,
             Productos.activo.is_(True),
@@ -113,7 +140,61 @@ def _coleccion_variantes_mismo_modelo_nuevos(db: Session, id_modelo: int) -> lis
             if prev.get("precio_usd") is None and item.get("precio_usd") is not None:
                 prev["precio_usd"] = item.get("precio_usd")
     out = list(agg.values())
+    for item in out:
+        item["disponible"] = int(item.get("stock", 0)) > 0
     out.sort(key=lambda v: ((v.get("color") or ""), v["id_producto"]))
+    return out
+
+
+def _coleccion_variantes_misma_familia_nuevos(db: Session, familia_key: str) -> list[dict]:
+    rows = (
+        db.query(Productos, Equipos)
+        .join(Equipos, Equipos.id_producto == Productos.id)
+        .options(
+            joinedload(Equipos.modelo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
+        .filter(
+            Productos.activo.is_(True),
+            Equipos.activo.is_(True),
+        )
+        .all()
+    )
+    agg: dict[tuple[int, str], dict] = {}
+    for sp, se in rows:
+        if _es_reparacion(sp.nombre, sp.descripcion):
+            continue
+        if _es_linea_usado_por_estado_o_nombre(se.estado_comercial, se.tipo_equipo, sp.nombre):
+            continue
+        if _clave_familia_catalogo(sp, se) != familia_key:
+            continue
+        item = _variante_tienda_dict(sp, se)
+        key = (int(item["id_producto"]), (item.get("color") or "").lower())
+        prev = agg.get(key)
+        if prev is None:
+            agg[key] = item
+        else:
+            prev["stock"] = int(prev.get("stock", 1)) + 1
+            if not prev.get("foto_url") and item.get("foto_url"):
+                prev["foto_url"] = item["foto_url"]
+            try:
+                prev["precio"] = min(float(prev.get("precio", 0.0)), float(item.get("precio", 0.0)))
+            except Exception:
+                pass
+            if prev.get("precio_usd") is None and item.get("precio_usd") is not None:
+                prev["precio_usd"] = item.get("precio_usd")
+
+    out = list(agg.values())
+    for item in out:
+        item["disponible"] = int(item.get("stock", 0)) > 0
+    out.sort(
+        key=lambda v: (
+            (v.get("atributos", {}).get("almacenamiento") or ""),
+            (v.get("color") or ""),
+            v["id_producto"],
+        )
+    )
     return out
 
 
@@ -151,6 +232,133 @@ def _foto_canonica_modelo(db: Session, id_modelo: int) -> str | None:
         if fu:
             return fu
     return None
+
+
+def _valor_especificacion_por_regex(texto: str, patron: str) -> str | None:
+    match = re.search(patron, texto, flags=re.IGNORECASE)
+    if not match:
+        return None
+    value = (match.group(1) or "").strip()
+    return value or None
+
+
+def _normalizar_chip(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    return re.sub(r"\s{2,}", " ", s)
+
+
+def _extraer_atributos_variante(p: Productos, e: Equipos) -> dict[str, str]:
+    if getattr(e, "configuraciones", None):
+        attrs_cfg: dict[str, str] = {}
+        for cfg in e.configuraciones:
+            atributo = getattr(cfg, "atributo", None)
+            opcion = getattr(cfg, "opcion", None)
+            code = (getattr(atributo, "code", None) or "").strip()
+            value = (getattr(opcion, "label", None) or getattr(opcion, "valor", None) or "").strip()
+            if code and value:
+                attrs_cfg[code] = value
+        if attrs_cfg:
+            return attrs_cfg
+
+    m = e.modelo
+    attrs: dict[str, str] = {}
+
+    color = (e.color or (m.color if m else None) or "").strip()
+    if color:
+        attrs["color"] = color
+
+    if m and m.capacidad_gb:
+        attrs["almacenamiento"] = f"{m.capacidad_gb}GB"
+
+    base_texto = " ".join(
+        t
+        for t in [
+            p.nombre or "",
+            p.descripcion or "",
+            (m.nombre_modelo if m else "") or "",
+            e.tipo_equipo or "",
+        ]
+        if t
+    )
+
+    ram = _valor_especificacion_por_regex(base_texto, r"\b(\d{1,2}\s?GB)\s*(?:RAM|de RAM)\b")
+    if ram:
+        attrs["ram"] = ram.replace(" ", "")
+
+    chip = _valor_especificacion_por_regex(
+        base_texto,
+        r"\b(?:chip|procesador)\s*[:\-]?\s*([A-Za-z0-9\-\+ ]{2,30})",
+    )
+    if not chip:
+        chip = _valor_especificacion_por_regex(base_texto, r"\b(M\d(?:\s?(?:Pro|Max|Ultra))?)\b")
+    chip_norm = _normalizar_chip(chip)
+    if chip_norm:
+        attrs["chip"] = chip_norm
+
+    return attrs
+
+
+def _atributos_disponibles_desde_variantes(variantes: list[dict]) -> list[dict]:
+    labels = {
+        "color": "Color",
+        "almacenamiento": "Almacenamiento",
+        "ram": "Memoria RAM",
+        "chip": "Chip / Procesador",
+    }
+    by_key: dict[str, set[str]] = defaultdict(set)
+    for v in variantes:
+        attrs = v.get("atributos") or {}
+        if not isinstance(attrs, dict):
+            continue
+        for key, value in attrs.items():
+            if not value:
+                continue
+            by_key[str(key)].add(str(value))
+
+    out: list[dict] = []
+    for code, opts in by_key.items():
+        ordered = sorted(opts, key=lambda x: x.lower())
+        out.append(
+            {
+                "code": code,
+                "label": labels.get(code, code.capitalize()),
+                "options": ordered,
+            }
+        )
+    out.sort(key=lambda a: a["label"].lower())
+    return out
+
+
+def _atributos_modelo_definidos(db: Session, id_modelo: int) -> list[dict]:
+    atributos = (
+        db.query(ModeloAtributo)
+        .options(joinedload(ModeloAtributo.opciones))
+        .filter(ModeloAtributo.id_modelo == id_modelo, ModeloAtributo.activo.is_(True))
+        .order_by(ModeloAtributo.orden.asc(), ModeloAtributo.id.asc())
+        .all()
+    )
+    out: list[dict] = []
+    for a in atributos:
+        opciones = [
+            (op.label or op.valor or "").strip()
+            for op in sorted(a.opciones, key=lambda x: (int(x.orden or 0), int(x.id)))
+            if bool(op.activo)
+        ]
+        opciones = [x for x in opciones if x]
+        if not opciones:
+            continue
+        out.append(
+            {
+                "code": a.code,
+                "label": a.label,
+                "options": opciones,
+            }
+        )
+    return out
 
 #get - listar productos
 def get_productos(db: Session) -> list[dict]:
@@ -251,11 +459,16 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         "detalle_equipo": None,
         "detalle_accesorio": None,
         "variantes_tienda": None,
+        "atributos_disponibles": None,
     }
 
     equipo = (
         db.query(Equipos)
-        .options(joinedload(Equipos.modelo))
+        .options(
+            joinedload(Equipos.modelo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
         .filter(Equipos.id_producto == producto.id)
         .first()
     )
@@ -277,9 +490,14 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         if not _es_reparacion(producto.nombre, producto.descripcion) and not _es_linea_usado_por_estado_o_nombre(
             equipo.estado_comercial, equipo.tipo_equipo, producto.nombre
         ):
-            base["variantes_tienda"] = _coleccion_variantes_mismo_modelo_nuevos(db, int(equipo.id_modelo))
+            familia_key = _clave_familia_catalogo(producto, equipo)
+            base["variantes_tienda"] = _coleccion_variantes_misma_familia_nuevos(db, familia_key)
+            base["atributos_disponibles"] = _atributos_modelo_definidos(db, int(equipo.id_modelo))
+            if not base["atributos_disponibles"]:
+                base["atributos_disponibles"] = _atributos_disponibles_desde_variantes(base["variantes_tienda"])
         else:
             base["variantes_tienda"] = []
+            base["atributos_disponibles"] = []
         return base
 
     accesorio = db.query(Accesorios).filter(Accesorios.id_producto == producto.id).first()
@@ -306,11 +524,15 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
     rows = (
         db.query(Productos, Equipos)
         .join(Equipos, Equipos.id_producto == Productos.id)
-        .options(joinedload(Equipos.modelo))
+        .options(
+            joinedload(Equipos.modelo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
         .filter(Productos.activo.is_(True), Equipos.activo.is_(True))
         .all()
     )
-    by_model: dict[int, list[tuple[Productos, Equipos]]] = defaultdict(list)
+    by_family: dict[str, list[tuple[Productos, Equipos]]] = defaultdict(list)
     for p, e in rows:
         if _es_reparacion(p.nombre, p.descripcion):
             continue
@@ -318,10 +540,10 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
             continue
         if not e.modelo:
             continue
-        by_model[int(e.id_modelo)].append((p, e))
+        by_family[_clave_familia_catalogo(p, e)].append((p, e))
 
     catalogo: list[dict] = []
-    for id_modelo, pairs in by_model.items():
+    for family_key, pairs in by_family.items():
         variantes: list[dict] = []
         agg_var: dict[tuple[int, str], dict] = {}
         for p, eq in pairs:
@@ -341,19 +563,24 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
                 if prev.get("precio_usd") is None and item.get("precio_usd") is not None:
                     prev["precio_usd"] = item.get("precio_usd")
         variantes = list(agg_var.values())
-        variantes.sort(key=lambda v: ((v.get("color") or ""), v["id_producto"]))
+        for item in variantes:
+            item["disponible"] = int(item.get("stock", 0)) > 0
+        variantes.sort(
+            key=lambda v: (
+                (v.get("atributos", {}).get("almacenamiento") or ""),
+                (v.get("color") or ""),
+                v["id_producto"],
+            )
+        )
 
         min_row = min(pairs, key=lambda pe: float(pe[0].precio or 0))
         p0, e0 = min_row
         m0 = e0.modelo
         assert m0 is not None
-        cap = m0.capacidad_gb
-        titulo_base = titulo_tienda_sin_etiqueta_nuevo(m0.nombre_modelo)
-        titulo = titulo_base
-        if cap is not None:
-            titulo = f"{titulo_base} {cap} GB".strip()
+        titulo = _titulo_familia_sin_capacidad(m0.nombre_modelo)
 
-        foto_grupo = _foto_principal_producto(p0) or _foto_canonica_modelo(db, id_modelo)
+        id_modelo_ref = min(int(eq.id_modelo) for _, eq in pairs)
+        foto_grupo = _foto_principal_producto(p0) or _foto_canonica_modelo(db, id_modelo_ref)
         if foto_grupo is None:
             for _, eq in pairs:
                 fu = _foto_url_si_existe(eq.foto_url)
@@ -375,7 +602,7 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
         catalogo.append(
             {
                 "tipo_catalogo": "grupo_equipo",
-                "id_modelo": id_modelo,
+                "id_modelo": id_modelo_ref,
                 "id": rep_id,
                 "nombre": titulo,
                 "descripcion": _descripcion_catalogo(p0.descripcion),

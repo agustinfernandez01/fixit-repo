@@ -46,6 +46,81 @@ function tituloSinEtiquetaNuevo(nombre: string): string {
   return s || nombre.trim()
 }
 
+function tituloFamilia(nombre: string): string {
+  const base = tituloSinEtiquetaNuevo(nombre)
+  return base.replace(/\b\d{2,4}\s*gb\b/giu, '').replace(/\s{2,}/gu, ' ').trim()
+}
+
+function normalizeSpecValue(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+type VarianteTiendaDetalle = NonNullable<ProductoDetalle['variantes_tienda']>[number]
+
+function normalizeAttributeCode(code: string): string {
+  const normalized = code.trim().toLowerCase()
+  if (normalized === 'gb' || normalized === 'almacenamiento' || normalized === 'storage') {
+    return 'almacenamiento'
+  }
+  return normalized
+}
+
+function variantValueForCode(variant: VarianteTiendaDetalle, code: string): string {
+  const normalizedCode = normalizeAttributeCode(code)
+  const attrs = variant.atributos ?? {}
+  if (normalizedCode in attrs) return attrs[normalizedCode] ?? ''
+  if (normalizedCode === 'color') return variant.color ?? ''
+  return ''
+}
+
+function buildVariantAttributes(
+  producto: ProductoDetalle,
+): Array<{ code: string; label: string; options: string[] }> {
+  const attrsFromApi = producto.atributos_disponibles ?? []
+  const attrsByCode = new Map<
+    string,
+    { code: string; label: string; options: Set<string> }
+  >()
+
+  for (const attr of attrsFromApi) {
+    const code = normalizeAttributeCode(attr.code)
+    attrsByCode.set(code, {
+      code,
+      label: attr.label,
+      options: new Set(attr.options ?? []),
+    })
+  }
+
+  const colores = Array.from(
+    new Set(
+      (producto.variantes_tienda ?? [])
+        .map((v) => (v.color ?? '').trim())
+        .filter((v) => v.length > 0),
+    ),
+  )
+
+  if (colores.length > 0) {
+    const colorAttr = attrsByCode.get('color') ?? {
+      code: 'color',
+      label: 'Color',
+      options: new Set<string>(),
+    }
+    for (const color of colores) {
+      colorAttr.options.add(color)
+    }
+    attrsByCode.set('color', colorAttr)
+  }
+
+  if (attrsByCode.size === 0) return []
+  return Array.from(attrsByCode.values())
+    .map((attr) => ({
+      code: attr.code,
+      label: attr.label,
+      options: Array.from(attr.options),
+    }))
+    .filter((attr) => attr.options.length > 0)
+}
+
 export default function ProductoDetallePage() {
   const { id } = useParams<{ id: string }>()
   const [producto, setProducto] = useState<ProductoDetalle | null>(null)
@@ -56,7 +131,7 @@ export default function ProductoDetallePage() {
   const [showUsdPrice, setShowUsdPrice] = useState(false)
   const [dolarRate, setDolarRate] = useState<number | null>(null)
   const [loadingDolar, setLoadingDolar] = useState(true)
-  const [selectedVarianteId, setSelectedVarianteId] = useState<number | null>(null)
+  const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({})
 
   useEffect(() => {
     let alive = true
@@ -74,15 +149,19 @@ export default function ProductoDetallePage() {
         const data = await productosApi.get(parsedId)
         if (!alive) return
         setProducto(data)
-        const defaultVar = data.variantes_tienda?.[0]
-        setSelectedVarianteId(defaultVar?.id_producto ?? data.id)
+        const firstVar = data.variantes_tienda?.[0]
+        const normalizedInitialAttributes = Object.fromEntries(
+          Object.entries(firstVar?.atributos ?? {}).map(([key, value]) => [normalizeAttributeCode(key), value]),
+        )
+        setSelectedAttributes(normalizedInitialAttributes)
         setShowUsdPrice(false)
       } catch (e) {
         if (!alive) return
         setError(e instanceof Error ? e.message : 'No se pudo cargar el detalle del producto')
       } finally {
-        if (!alive) return
-        setLoading(false)
+        if (alive) {
+          setLoading(false)
+        }
       }
     }
 
@@ -122,14 +201,11 @@ export default function ProductoDetallePage() {
   }, [])
 
   async function handleAddToCart() {
-    if (!producto) return
+    if (!producto || !variantForCart || !canAddToCart) return
     setAdding(true)
     setFeedback(null)
     try {
-      const productoTarget =
-        selectedVarianteId && Number.isInteger(selectedVarianteId) && selectedVarianteId > 0
-          ? selectedVarianteId
-          : producto.id
+      const productoTarget = variantForCart.id_producto
       await carritoApi.addItem(productoTarget, 1, !!getAccessToken())
       setFeedback('Producto agregado al carrito.')
     } catch (e) {
@@ -144,22 +220,87 @@ export default function ProductoDetallePage() {
     window.open(buildWhatsAppUrl(producto.nombre), '_self')
   }
 
+  const variantAttributes = useMemo(
+    () => (producto ? buildVariantAttributes(producto) : []),
+    [producto],
+  )
+  const variants = useMemo(() => producto?.variantes_tienda ?? [], [producto])
+  const requiredAttributeCodes = useMemo(
+    () => variantAttributes.map((a) => a.code),
+    [variantAttributes],
+  )
+  const hasAllRequiredAttributes = useMemo(
+    () =>
+      requiredAttributeCodes.every((code) => {
+        const value = selectedAttributes[code]
+        return typeof value === 'string' && value.trim().length > 0
+      }),
+    [requiredAttributeCodes, selectedAttributes],
+  )
+  const variantForCart = useMemo(() => {
+    if (!producto) return null
+    if (variants.length === 0) return null
+    if (requiredAttributeCodes.length === 0) {
+      return variants[0] ?? null
+    }
+    if (!hasAllRequiredAttributes) return null
+    return (
+      variants.find((variant) =>
+        requiredAttributeCodes.every(
+          (code) =>
+            normalizeSpecValue(variantValueForCode(variant, code)) === normalizeSpecValue(selectedAttributes[code]),
+        ),
+      ) ?? null
+    )
+  }, [producto, variants, requiredAttributeCodes, hasAllRequiredAttributes, selectedAttributes])
+  const outOfStockForSelection =
+    hasAllRequiredAttributes &&
+    (!variantForCart || (variantForCart.stock ?? 0) === 0)
+  const canAddToCart =
+    !!producto?.activo &&
+    !outOfStockForSelection &&
+    (variantForCart ? (variantForCart.stock ?? 0) > 0 : !producto?.variantes_tienda || producto.variantes_tienda.length === 0)
   const precioArsNumber =
     (() => {
       if (!producto) return Number.NaN
-      const varianteActiva = producto.variantes_tienda?.find((v) => v.id_producto === selectedVarianteId)
-      const precio = varianteActiva?.precio ?? producto.precio
+      const precio = variantForCart?.precio ?? producto.precio
       return typeof precio === 'string' ? Number(precio) : precio
     })()
   const precioUsdConvertido =
     Number.isFinite(precioArsNumber) && dolarRate && dolarRate > 0
       ? precioArsNumber / dolarRate
       : null
-  const varianteActiva = useMemo(
-    () => producto?.variantes_tienda?.find((v) => v.id_producto === selectedVarianteId) ?? null,
-    [producto, selectedVarianteId],
-  )
-  const fotoActiva = varianteActiva?.foto_url ?? producto?.detalle_equipo?.foto_url ?? null
+  const fotoActiva = variantForCart?.foto_url ?? producto?.detalle_equipo?.foto_url ?? null
+  const missingAttributeLabel = variantAttributes.find((attr) => !selectedAttributes[attr.code])?.label ?? null
+
+  const optionEnabled = (code: string, option: string) => {
+    const normalizedCode = normalizeAttributeCode(code)
+    const currentSelection = { ...selectedAttributes, [normalizedCode]: option }
+    return variants.some((variant) =>
+      variantAttributes.every((attr) => {
+        const expected = currentSelection[normalizeAttributeCode(attr.code)]
+        if (!expected) return true
+        return normalizeSpecValue(variantValueForCode(variant, attr.code)) === normalizeSpecValue(expected)
+      }),
+    )
+  }
+
+  const optionAvailability = (code: string, option: string) => {
+    const normalizedCode = normalizeAttributeCode(code)
+    const currentSelection = { ...selectedAttributes, [normalizedCode]: option }
+    const match = variants.find((variant) =>
+      variantAttributes.every((attr) => {
+        const expected = currentSelection[normalizeAttributeCode(attr.code)]
+        if (!expected) return true
+        return normalizeSpecValue(variantValueForCode(variant, attr.code)) === normalizeSpecValue(expected)
+      }),
+    )
+    return match ? ((match.stock ?? 0) > 0 ? 'available' : 'out' ) : 'missing'
+  }
+
+  const applyOptionSelection = (code: string, option: string) => {
+    setSelectedAttributes((prev) => ({ ...prev, [code]: option }))
+  }
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-10">
@@ -185,26 +326,60 @@ export default function ProductoDetallePage() {
               {producto.tipo_producto ?? 'producto'}
             </p>
             <h1 className="mb-3 text-3xl font-black tracking-tight text-gray-900">
-              {tituloSinEtiquetaNuevo(producto.nombre)}
+              {tituloFamilia(producto.detalle_equipo?.nombre_modelo ?? producto.nombre)}
             </h1>
-            {producto.variantes_tienda && producto.variantes_tienda.length > 0 ? (
-              <div className="mb-5">
-                <label htmlFor="variante-tienda" className="mb-1.5 block text-xs font-semibold text-gray-600">
-                  Color
-                </label>
-                <select
-                  id="variante-tienda"
-                  value={selectedVarianteId ?? producto.id}
-                  onChange={(e) => setSelectedVarianteId(Number(e.target.value))}
-                  className="w-full max-w-md rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
-                >
-                  {producto.variantes_tienda.map((va) => (
-                    <option key={va.id_producto} value={va.id_producto}>
-                      {(va.color || va.nombre_corto || `Opción ${va.id_producto}`) +
-                        ` · ${money(va.precio)} · Stock: ${va.stock ?? 1}`}
-                    </option>
-                  ))}
-                </select>
+            {variantAttributes.length > 0 ? (
+              <div className="mb-6 space-y-4">
+                {variantAttributes.map((attr) => (
+                  <div key={attr.code}>
+                    <p className="mb-2 text-xs font-semibold tracking-wide text-gray-600 uppercase">{attr.label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {attr.options.map((option) => {
+                        const selected =
+                          normalizeSpecValue(selectedAttributes[attr.code]) === normalizeSpecValue(option)
+                        const enabled = optionEnabled(attr.code, option)
+                        const availability = optionAvailability(attr.code, option)
+                        const selectedValue = selectedAttributes[attr.code]
+                        const selectedNormalized = normalizeSpecValue(selectedValue)
+                        const optionNormalized = normalizeSpecValue(option)
+                        const clashesWithCurrent =
+                          selectedValue &&
+                          selectedNormalized !== optionNormalized &&
+                          !variants.some((variant) =>
+                            requiredAttributeCodes.every((attrCode) => {
+                              const expected =
+                                attrCode === attr.code
+                                  ? option
+                                  : selectedAttributes[attrCode]
+                              if (!expected) return true
+                              const vv =
+                                variant.atributos?.[attrCode] ??
+                                (attrCode === 'color' ? variant.color : undefined)
+                              return normalizeSpecValue(vv) === normalizeSpecValue(expected)
+                            }),
+                          )
+                        return (
+                          <button
+                            key={`${attr.code}-${option}`}
+                            type="button"
+                            onClick={() => applyOptionSelection(attr.code, option)}
+                            className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                              selected
+                                ? 'border-gray-900 bg-gray-900 text-white'
+                                : availability === 'available'
+                                  ? 'border-gray-300 bg-white text-gray-800 hover:border-gray-500'
+                                  : availability === 'out'
+                                    ? 'border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400'
+                                    : 'border-gray-200 bg-gray-100 text-gray-400'
+                            }`}
+                          >
+                            {option}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : null}
             {producto.detalle_equipo?.estado_comercial?.toLowerCase() === 'usado' ? (
@@ -237,12 +412,24 @@ export default function ProductoDetallePage() {
             <p className="mb-6 text-4xl font-black text-gray-900">
               {showUsdPrice && precioUsdConvertido != null
                 ? moneyUsd(precioUsdConvertido)
-                : money(varianteActiva?.precio ?? producto.precio)}
+                : money(variantForCart?.precio ?? producto.precio)}
             </p>
-            {varianteActiva ? (
+            {variantForCart && (variantForCart.stock ?? 0) > 0 ? (
               <p className="mb-3 text-xs text-gray-500">
-                Variante: {varianteActiva.color ?? 'Sin color'} · Stock: {varianteActiva.stock ?? 1}
+                Variante seleccionada · Stock: {variantForCart.stock}
               </p>
+            ) : null}
+            {variantAttributes.length > 0 && missingAttributeLabel ? (
+              <p className="mb-3 text-xs text-amber-700">Seleccioná {missingAttributeLabel} para continuar.</p>
+            ) : null}
+            {outOfStockForSelection ? (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-800">Sin stock disponible</p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  Este modelo / variación no se encuentra disponible en stock actualmente.
+                  Podés consultarnos y avisarte cuando esté disponible.
+                </p>
+              </div>
             ) : null}
             {producto.detalle_equipo?.estado_comercial?.toLowerCase() === 'usado' ? (
               <p className="mb-4 text-xs text-gray-500">
@@ -275,7 +462,7 @@ export default function ProductoDetallePage() {
                   </div>
                   <div>
                     <dt className="text-gray-400">Color</dt>
-                    <dd>{producto.detalle_equipo.color ?? '-'}</dd>
+                    <dd>{variantForCart?.color ?? producto.detalle_equipo.color ?? '-'}</dd>
                   </div>
                   {(producto.detalle_equipo.estado_comercial ?? '').toLowerCase().trim() === 'usado' ? (
                     <div>
@@ -326,26 +513,34 @@ export default function ProductoDetallePage() {
               actual.
             </p>
 
-            {producto.activo ? (
+            {producto.activo && canAddToCart ? (
               <button
                 type="button"
-                onClick={() => {
-                  void handleAddToCart()
-                }}
+                onClick={() => { void handleAddToCart() }}
                 disabled={adding}
                 className="w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-gray-900 transition-colors duration-150 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {adding ? 'Agregando...' : 'Agregar al carrito'}
               </button>
-            ) : (
+            ) : null}
+            {(!producto.activo || outOfStockForSelection) && !canAddToCart ? (
               <button
                 type="button"
                 onClick={handleConsultAvailability}
                 className="w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-gray-950 transition-colors duration-150 hover:bg-emerald-300"
               >
-                Consultar disponibilidad
+                Consultar disponibilidad por WhatsApp
               </button>
-            )}
+            ) : null}
+            {producto.activo && !outOfStockForSelection && !canAddToCart && !missingAttributeLabel ? (
+              <button
+                type="button"
+                disabled
+                className="w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-gray-900 opacity-50 cursor-not-allowed"
+              >
+                No disponible
+              </button>
+            ) : null}
 
             {feedback && <p className="mt-3 text-sm text-emerald-200">{feedback}</p>}
           </aside>

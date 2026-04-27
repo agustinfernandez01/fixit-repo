@@ -9,14 +9,17 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import UPLOAD_DIR
 from app.db import get_db
 from app.models import (
     ModeloEquipo,
+    ModeloAtributo,
+    ModeloAtributoOpcion,
     Equipo,
+    EquipoConfiguracion,
     EquipoUsadoDetalle,
     Deposito,
     EquipoDeposito,
@@ -27,6 +30,12 @@ from app.schemas.inventario import (
     ModeloEquipoCreate,
     ModeloEquipoUpdate,
     ModeloEquipoResponse,
+    ModeloAtributoCreate,
+    ModeloAtributoUpdate,
+    ModeloAtributoResponse,
+    ModeloAtributoOpcionCreate,
+    ModeloAtributoOpcionUpdate,
+    ModeloAtributoOpcionResponse,
     EquipoCreate,
     EquipoUpdate,
     EquipoResponse,
@@ -43,6 +52,105 @@ from app.schemas.inventario import (
 )
 
 router = APIRouter()
+
+
+def _is_missing_variaciones_table(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "modelo_atributo" in text
+        or "modelo_atributo_opcion" in text
+        or "equipo_configuracion" in text
+    )
+
+
+def _equipo_configuracion_payload(eq: Equipo) -> list[dict]:
+    out: list[dict] = []
+    for cfg in getattr(eq, "configuraciones", []) or []:
+        atributo = getattr(cfg, "atributo", None)
+        opcion = getattr(cfg, "opcion", None)
+        out.append(
+            {
+                "id": int(cfg.id),
+                "id_equipo": int(cfg.id_equipo),
+                "id_atributo": int(cfg.id_atributo),
+                "id_opcion": int(cfg.id_opcion),
+                "atributo_code": getattr(atributo, "code", None),
+                "atributo_label": getattr(atributo, "label", None),
+                "opcion_valor": getattr(opcion, "valor", None),
+                "opcion_label": getattr(opcion, "label", None),
+            }
+        )
+    out.sort(key=lambda x: ((x.get("atributo_code") or ""), x["id"]))
+    return out
+
+
+def _equipo_response_payload(eq: Equipo) -> dict:
+    return {
+        "id": int(eq.id),
+        "id_modelo": int(eq.id_modelo),
+        "imei": eq.imei,
+        "color": eq.color,
+        "tipo_equipo": eq.tipo_equipo,
+        "estado_comercial": eq.estado_comercial,
+        "activo": bool(eq.activo),
+        "id_producto": eq.id_producto,
+        "foto_url": eq.foto_url,
+        "fecha_ingreso": eq.fecha_ingreso,
+        "configuracion": _equipo_configuracion_payload(eq),
+    }
+
+
+def _modelo_response_payload(modelo: ModeloEquipo, *, atributos: list[dict] | None = None) -> dict:
+    return {
+        "id": int(modelo.id),
+        "nombre_modelo": modelo.nombre_modelo,
+        "capacidad_gb": modelo.capacidad_gb,
+        "descripcion": getattr(modelo, "descripcion", None),
+        "activo": bool(modelo.activo),
+        "atributos": atributos or [],
+    }
+
+
+def _atributo_response_payload(attr: ModeloAtributo) -> dict:
+    return {
+        "id": int(attr.id),
+        "id_modelo": int(attr.id_modelo),
+        "code": attr.code,
+        "label": attr.label,
+        "tipo_ui": attr.tipo_ui,
+        "requerido": bool(attr.requerido),
+        "orden": int(attr.orden or 0),
+        "activo": bool(attr.activo),
+        "opciones": [
+            {
+                "id": int(op.id),
+                "id_atributo": int(op.id_atributo),
+                "valor": op.valor,
+                "label": op.label,
+                "color_hex": op.color_hex,
+                "orden": int(op.orden or 0),
+                "activo": bool(op.activo),
+            }
+            for op in (attr.opciones or [])
+        ],
+    }
+
+
+def _equipo_con_modelo_payload(eq: Equipo, *, modelo_atributos: list[dict] | None = None) -> dict:
+    base = _equipo_response_payload(eq)
+    modelo = getattr(eq, "modelo", None)
+    if modelo is not None:
+        base["modelo"] = _modelo_response_payload(modelo, atributos=modelo_atributos or [])
+    else:
+        base["modelo"] = {
+            "id": int(eq.id_modelo),
+            "nombre_modelo": "—",
+            "capacidad_gb": None,
+            "descripcion": None,
+            "activo": True,
+            "atributos": [],
+        }
+    return base
 
 
 def _descripcion_catalogo_normalizada(texto: str | None) -> str | None:
@@ -92,7 +200,20 @@ def listar_modelos(
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    return db.query(ModeloEquipo).offset(skip).limit(limit).all()
+    try:
+        return (
+            db.query(ModeloEquipo)
+            .options(joinedload(ModeloEquipo.atributos).joinedload(ModeloAtributo.opciones))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+    except ProgrammingError as exc:
+        db.rollback()
+        if not _is_missing_variaciones_table(exc):
+            raise
+        rows = db.query(ModeloEquipo).offset(skip).limit(limit).all()
+        return [_modelo_response_payload(r, atributos=[]) for r in rows]
 
 
 @router.post("/modelos", response_model=ModeloEquipoResponse, status_code=status.HTTP_201_CREATED)
@@ -109,15 +230,40 @@ def crear_modelo(payload: ModeloEquipoCreate, db: Session = Depends(get_db)):
 
 @router.get("/modelos/{id_modelo}", response_model=ModeloEquipoResponse)
 def obtener_modelo(id_modelo: int, db: Session = Depends(get_db)):
-    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
+    try:
+        obj = (
+            db.query(ModeloEquipo)
+            .options(joinedload(ModeloEquipo.atributos).joinedload(ModeloAtributo.opciones))
+            .filter(ModeloEquipo.id == id_modelo)
+            .first()
+        )
+    except ProgrammingError as exc:
+        db.rollback()
+        if not _is_missing_variaciones_table(exc):
+            raise
+        obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
-    return obj
+    try:
+        return _modelo_response_payload(obj, atributos=[_atributo_response_payload(a) for a in list(obj.atributos or [])])
+    except Exception:
+        return _modelo_response_payload(obj, atributos=[])
 
 
 @router.patch("/modelos/{id_modelo}", response_model=ModeloEquipoResponse)
 def actualizar_modelo(id_modelo: int, payload: ModeloEquipoUpdate, db: Session = Depends(get_db)):
-    obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
+    try:
+        obj = (
+            db.query(ModeloEquipo)
+            .options(joinedload(ModeloEquipo.atributos).joinedload(ModeloAtributo.opciones))
+            .filter(ModeloEquipo.id == id_modelo)
+            .first()
+        )
+    except ProgrammingError as exc:
+        db.rollback()
+        if not _is_missing_variaciones_table(exc):
+            raise
+        obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
 
@@ -128,7 +274,7 @@ def actualizar_modelo(id_modelo: int, payload: ModeloEquipoUpdate, db: Session =
 
     db.commit()
     db.refresh(obj)
-    return obj
+    return _modelo_response_payload(obj, atributos=[])
 
 
 @router.delete("/modelos/{id_modelo}", status_code=status.HTTP_204_NO_CONTENT)
@@ -136,6 +282,159 @@ def borrar_modelo(id_modelo: int, db: Session = Depends(get_db)):
     obj = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
+    equipos_asociados = db.query(Equipo).filter(Equipo.id_modelo == id_modelo).count()
+    if equipos_asociados > 0:
+      raise HTTPException(
+            status_code=409,
+            detail=(
+                f"No se puede eliminar el modelo porque tiene {equipos_asociados} equipo(s) asociado(s). "
+                "Primero reasigná o eliminá esos equipos."
+            ),
+        )
+    db.delete(obj)
+    db.commit()
+    return None
+
+
+@router.get("/modelos/{id_modelo}/atributos", response_model=list[ModeloAtributoResponse])
+def listar_modelo_atributos(id_modelo: int, db: Session = Depends(get_db)):
+    modelo = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
+    if not modelo:
+        raise HTTPException(status_code=404, detail="Modelo no encontrado")
+    try:
+        return (
+            db.query(ModeloAtributo)
+            .options(joinedload(ModeloAtributo.opciones))
+            .filter(ModeloAtributo.id_modelo == id_modelo)
+            .order_by(ModeloAtributo.orden.asc(), ModeloAtributo.id.asc())
+            .all()
+        )
+    except ProgrammingError as exc:
+        db.rollback()
+        if _is_missing_variaciones_table(exc):
+            return []
+        raise
+
+
+@router.post(
+    "/modelos/{id_modelo}/atributos",
+    response_model=ModeloAtributoResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_modelo_atributo(
+    id_modelo: int,
+    payload: ModeloAtributoCreate,
+    db: Session = Depends(get_db),
+):
+    modelo = db.query(ModeloEquipo).filter(ModeloEquipo.id == id_modelo).first()
+    if not modelo:
+        raise HTTPException(status_code=404, detail="Modelo no encontrado")
+    try:
+        obj = ModeloAtributo(id_modelo=id_modelo, **payload.model_dump())
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return obj
+    except ProgrammingError as exc:
+        db.rollback()
+        if _is_missing_variaciones_table(exc):
+            raise HTTPException(
+                status_code=400,
+                detail="Faltan tablas de variaciones. Ejecutá `alembic upgrade head` y reiniciá backend.",
+            )
+        raise
+
+
+@router.patch("/modelos/atributos/{id_atributo}", response_model=ModeloAtributoResponse)
+def actualizar_modelo_atributo(
+    id_atributo: int,
+    payload: ModeloAtributoUpdate,
+    db: Session = Depends(get_db),
+):
+    obj = (
+        db.query(ModeloAtributo)
+        .options(joinedload(ModeloAtributo.opciones))
+        .filter(ModeloAtributo.id == id_atributo)
+        .first()
+    )
+    if not obj:
+        raise HTTPException(status_code=404, detail="Atributo no encontrado")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(obj, k, v)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@router.delete("/modelos/atributos/{id_atributo}", status_code=status.HTTP_204_NO_CONTENT)
+def borrar_modelo_atributo(id_atributo: int, db: Session = Depends(get_db)):
+    obj = db.query(ModeloAtributo).filter(ModeloAtributo.id == id_atributo).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Atributo no encontrado")
+    db.query(EquipoConfiguracion).filter(EquipoConfiguracion.id_atributo == id_atributo).delete(
+        synchronize_session=False,
+    )
+    db.query(ModeloAtributoOpcion).filter(ModeloAtributoOpcion.id_atributo == id_atributo).delete(
+        synchronize_session=False,
+    )
+    db.delete(obj)
+    db.commit()
+    return None
+
+
+@router.post(
+    "/modelos/atributos/{id_atributo}/opciones",
+    response_model=ModeloAtributoOpcionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_modelo_atributo_opcion(
+    id_atributo: int,
+    payload: ModeloAtributoOpcionCreate,
+    db: Session = Depends(get_db),
+):
+    atributo = db.query(ModeloAtributo).filter(ModeloAtributo.id == id_atributo).first()
+    if not atributo:
+        raise HTTPException(status_code=404, detail="Atributo no encontrado")
+    try:
+        obj = ModeloAtributoOpcion(id_atributo=id_atributo, **payload.model_dump())
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return obj
+    except ProgrammingError as exc:
+        db.rollback()
+        if _is_missing_variaciones_table(exc):
+            raise HTTPException(
+                status_code=400,
+                detail="Faltan tablas de variaciones. Ejecutá `alembic upgrade head` y reiniciá backend.",
+            )
+        raise
+
+
+@router.patch("/modelos/opciones/{id_opcion}", response_model=ModeloAtributoOpcionResponse)
+def actualizar_modelo_atributo_opcion(
+    id_opcion: int,
+    payload: ModeloAtributoOpcionUpdate,
+    db: Session = Depends(get_db),
+):
+    obj = db.query(ModeloAtributoOpcion).filter(ModeloAtributoOpcion.id == id_opcion).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Opción no encontrada")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(obj, k, v)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@router.delete("/modelos/opciones/{id_opcion}", status_code=status.HTTP_204_NO_CONTENT)
+def borrar_modelo_atributo_opcion(id_opcion: int, db: Session = Depends(get_db)):
+    obj = db.query(ModeloAtributoOpcion).filter(ModeloAtributoOpcion.id == id_opcion).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Opción no encontrada")
+    db.query(EquipoConfiguracion).filter(EquipoConfiguracion.id_opcion == id_opcion).delete(
+        synchronize_session=False,
+    )
     db.delete(obj)
     db.commit()
     return None
@@ -148,16 +447,34 @@ def listar_equipos(
     db: Session = Depends(get_db),
 ):
     """Lista equipos trayendo en la misma consulta el modelo (join)."""
-    rows = (
-        db.query(Equipo)
-        .options(joinedload(Equipo.modelo))
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    variaciones_disponibles = True
+    try:
+        rows = (
+            db.query(Equipo)
+            .options(
+                joinedload(Equipo.modelo),
+                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            )
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+    except ProgrammingError as exc:
+        db.rollback()
+        if not _is_missing_variaciones_table(exc):
+            raise
+        variaciones_disponibles = False
+        rows = db.query(Equipo).options(joinedload(Equipo.modelo)).offset(skip).limit(limit).all()
     for row in rows:
         row.foto_url = _foto_url_si_existe(row.foto_url)
-    return rows
+    return [
+        _equipo_con_modelo_payload(
+            row,
+            modelo_atributos=[] if not variaciones_disponibles else None,
+        )
+        for row in rows
+    ]
 
 
 @router.post("/equipos", response_model=EquipoResponse, status_code=status.HTTP_201_CREATED)
@@ -173,12 +490,35 @@ def crear_equipo_usado(payload: EquipoCreate, db: Session = Depends(get_db)):
 def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forzado: str):
     data = payload.model_dump()
     data["estado_comercial"] = estado_forzado
+    opciones_ids = [int(x) for x in (data.pop("opciones_configuracion_ids", []) or []) if int(x) > 0]
     if data.get("fecha_ingreso") is None:
         data["fecha_ingreso"] = datetime.now(timezone.utc)
 
     modelo = db.query(ModeloEquipo).filter(ModeloEquipo.id == data["id_modelo"]).first()
     if not modelo:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
+    atributos_requeridos = []
+    try:
+        atributos_requeridos = (
+            db.query(ModeloAtributo)
+            .filter(
+                ModeloAtributo.id_modelo == int(modelo.id),
+                ModeloAtributo.requerido.is_(True),
+                ModeloAtributo.activo.is_(True),
+            )
+            .all()
+        )
+    except ProgrammingError as exc:
+        db.rollback()
+        if _is_missing_variaciones_table(exc):
+            if opciones_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se pueden guardar variaciones: falta migración (`alembic upgrade head`).",
+                )
+            atributos_requeridos = []
+        else:
+            raise
 
     precio_ars = data.pop("precio_ars", None)
     precio_usd = data.pop("precio_usd", None)
@@ -246,6 +586,75 @@ def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forza
 
     obj = Equipo(**data)
     db.add(obj)
+    db.flush()
+    if opciones_ids:
+        try:
+            opciones = (
+                db.query(ModeloAtributoOpcion)
+                .join(ModeloAtributo, ModeloAtributo.id == ModeloAtributoOpcion.id_atributo)
+                .filter(
+                    ModeloAtributoOpcion.id.in_(opciones_ids),
+                    ModeloAtributo.id_modelo == int(modelo.id),
+                    ModeloAtributoOpcion.activo.is_(True),
+                    ModeloAtributo.activo.is_(True),
+                )
+                .all()
+            )
+        except ProgrammingError as exc:
+            db.rollback()
+            if _is_missing_variaciones_table(exc):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se pueden guardar variaciones: falta migración (`alembic upgrade head`).",
+                )
+            raise
+        if len(opciones) != len(set(opciones_ids)):
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="Una o más opciones de configuración no pertenecen al modelo o están inactivas.",
+            )
+        seen_attr: set[int] = set()
+        for op_item in opciones:
+            attr_id = int(op_item.id_atributo)
+            if attr_id in seen_attr:
+                db.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail="No podés elegir más de una opción para el mismo atributo.",
+                )
+            seen_attr.add(attr_id)
+            db.add(
+                EquipoConfiguracion(
+                    id_equipo=int(obj.id),
+                    id_atributo=attr_id,
+                    id_opcion=int(op_item.id),
+                )
+            )
+        db.flush()
+    req_ids = {int(a.id) for a in atributos_requeridos}
+    cfg_req_ids: set[int] = set()
+    if req_ids:
+        try:
+            cfg_req_ids = {
+                int(cfg.id_atributo)
+                for cfg in db.query(EquipoConfiguracion).filter(EquipoConfiguracion.id_equipo == int(obj.id)).all()
+            }
+        except ProgrammingError as exc:
+            db.rollback()
+            if _is_missing_variaciones_table(exc):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se pueden validar variaciones: falta migración (`alembic upgrade head`).",
+                )
+            raise
+    if req_ids and not req_ids.issubset(cfg_req_ids):
+        faltantes = sorted(req_ids - cfg_req_ids)
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Faltan opciones requeridas para atributos del modelo: {faltantes}.",
+        )
     try:
         db.commit()
     except IntegrityError:
@@ -254,23 +663,45 @@ def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forza
             status_code=400,
             detail="No se pudo guardar el equipo. Revisá IMEI único e ID producto válido.",
         )
-    db.refresh(obj)
-    return obj
+    obj = (
+        db.query(Equipo)
+        .options(
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            joinedload(Equipo.modelo),
+        )
+        .filter(Equipo.id == int(obj.id))
+        .first()
+    )
+    assert obj is not None
+    return _equipo_response_payload(obj)
 
 
 @router.get("/equipos/{id_equipo}", response_model=EquipoConModeloResponse)
 def obtener_equipo(id_equipo: int, db: Session = Depends(get_db)):
     """Obtiene un equipo con su modelo en la misma consulta (join)."""
-    obj = (
-        db.query(Equipo)
-        .options(joinedload(Equipo.modelo))
-        .filter(Equipo.id == id_equipo)
-        .first()
-    )
+    variaciones_disponibles = True
+    try:
+        obj = (
+            db.query(Equipo)
+            .options(
+                joinedload(Equipo.modelo),
+                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            )
+            .filter(Equipo.id == id_equipo)
+            .first()
+        )
+    except ProgrammingError as exc:
+        db.rollback()
+        if not _is_missing_variaciones_table(exc):
+            raise
+        variaciones_disponibles = False
+        obj = db.query(Equipo).options(joinedload(Equipo.modelo)).filter(Equipo.id == id_equipo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
     obj.foto_url = _foto_url_si_existe(obj.foto_url)
-    return obj
+    return _equipo_con_modelo_payload(obj, modelo_atributos=[] if not variaciones_disponibles else None)
 
 
 @router.patch("/equipos/{id_equipo}", response_model=EquipoResponse)
@@ -282,6 +713,7 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
     patch = payload.model_dump(exclude_unset=True)
     precio_ars = patch.pop("precio_ars", None)
     precio_usd = patch.pop("precio_usd", None)
+    opciones_ids_input = patch.pop("opciones_configuracion_ids", None)
     if "id_producto" in patch and patch["id_producto"] is not None:
         prod = db.query(Productos).filter(Productos.id == patch["id_producto"]).first()
         if not prod:
@@ -332,6 +764,65 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
             prod.precio = Decimal(str(precio_ars))
         if precio_usd is not None:
             prod.precio_usd = Decimal(str(precio_usd))
+
+    if opciones_ids_input is not None:
+        opciones_ids = [int(x) for x in opciones_ids_input if int(x) > 0]
+        if opciones_ids:
+            try:
+                opciones = (
+                    db.query(ModeloAtributoOpcion)
+                    .join(ModeloAtributo, ModeloAtributo.id == ModeloAtributoOpcion.id_atributo)
+                    .filter(
+                        ModeloAtributoOpcion.id.in_(opciones_ids),
+                        ModeloAtributo.id_modelo == int(obj.id_modelo),
+                        ModeloAtributoOpcion.activo.is_(True),
+                        ModeloAtributo.activo.is_(True),
+                    )
+                    .all()
+                )
+            except ProgrammingError as exc:
+                db.rollback()
+                if _is_missing_variaciones_table(exc):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No se pueden actualizar variaciones: falta migración (`alembic upgrade head`).",
+                    )
+                raise
+            if len(opciones) != len(set(opciones_ids)):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Una o más opciones de configuración no pertenecen al modelo o están inactivas.",
+                )
+            seen_attr: set[int] = set()
+            for op_item in opciones:
+                attr_id = int(op_item.id_atributo)
+                if attr_id in seen_attr:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No podés elegir más de una opción para el mismo atributo.",
+                    )
+                seen_attr.add(attr_id)
+
+        try:
+            db.query(EquipoConfiguracion).filter(EquipoConfiguracion.id_equipo == int(obj.id)).delete(
+                synchronize_session=False
+            )
+        except ProgrammingError as exc:
+            db.rollback()
+            if _is_missing_variaciones_table(exc):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se pueden actualizar variaciones: falta migración (`alembic upgrade head`).",
+                )
+            raise
+        for op_item in opciones if opciones_ids else []:
+            db.add(
+                EquipoConfiguracion(
+                    id_equipo=int(obj.id),
+                    id_atributo=int(op_item.id_atributo),
+                    id_opcion=int(op_item.id),
+                )
+            )
 
     # Si el equipo sigue en "nuevo" y cambian atributos comerciales (p. ej. color),
     # lo re-vinculamos al producto canónico de esa variante para evitar que quede
@@ -420,8 +911,18 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
             status_code=400,
             detail="No se pudo actualizar el equipo. Revisá IMEI único e ID producto válido.",
         )
-    db.refresh(obj)
-    return obj
+    obj = (
+        db.query(Equipo)
+        .options(
+            joinedload(Equipo.modelo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
+        .filter(Equipo.id == id_equipo)
+        .first()
+    )
+    assert obj is not None
+    return _equipo_response_payload(obj)
 
 
 @router.delete("/equipos/{id_equipo}", status_code=status.HTTP_204_NO_CONTENT)
@@ -486,8 +987,18 @@ async def subir_foto_equipo(
         if set_principal_tienda or not foto_principal_actual:
             obj.producto.foto_principal_url = obj.foto_url
     db.commit()
-    db.refresh(obj)
-    return obj
+    obj = (
+        db.query(Equipo)
+        .options(
+            joinedload(Equipo.modelo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
+        .filter(Equipo.id == id_equipo)
+        .first()
+    )
+    assert obj is not None
+    return _equipo_response_payload(obj)
 
 
 @router.post("/equipos/{id_equipo}/foto-principal", response_model=EquipoResponse)
@@ -504,8 +1015,18 @@ def usar_foto_equipo_como_principal_tienda(
         raise HTTPException(status_code=400, detail="El equipo no tiene producto asociado.")
     obj.producto.foto_principal_url = obj.foto_url
     db.commit()
-    db.refresh(obj)
-    return obj
+    obj = (
+        db.query(Equipo)
+        .options(
+            joinedload(Equipo.modelo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
+        .filter(Equipo.id == id_equipo)
+        .first()
+    )
+    assert obj is not None
+    return _equipo_response_payload(obj)
 
 
 @router.get("/equipos-usados-detalle", response_model=list[EquipoUsadoDetalleResponse])

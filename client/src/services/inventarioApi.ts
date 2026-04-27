@@ -5,6 +5,8 @@ import type {
   EquipoDeposito,
   EquipoUsadoDetalle,
   ModeloEquipo,
+  ModeloAtributo,
+  ModeloAtributoOpcion,
 } from '../types/inventario'
 import { apiUrl, fetchJson } from './api'
 
@@ -31,6 +33,32 @@ export const inventarioApi = {
       }),
     delete: (id: number) =>
       fetchJson<void>(`${P}/modelos/${id}`, { method: 'DELETE' }),
+    listAtributos: (idModelo: number) =>
+      fetchJson<ModeloAtributo[]>(`${P}/modelos/${idModelo}/atributos`),
+    createAtributo: (idModelo: number, body: Record<string, unknown>) =>
+      fetchJson<ModeloAtributo>(`${P}/modelos/${idModelo}/atributos`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    patchAtributo: (idAtributo: number, body: Record<string, unknown>) =>
+      fetchJson<ModeloAtributo>(`${P}/modelos/atributos/${idAtributo}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    deleteAtributo: (idAtributo: number) =>
+      fetchJson<void>(`${P}/modelos/atributos/${idAtributo}`, { method: 'DELETE' }),
+    createOpcion: (idAtributo: number, body: Record<string, unknown>) =>
+      fetchJson<ModeloAtributoOpcion>(`${P}/modelos/atributos/${idAtributo}/opciones`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    patchOpcion: (idOpcion: number, body: Record<string, unknown>) =>
+      fetchJson<ModeloAtributoOpcion>(`${P}/modelos/opciones/${idOpcion}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    deleteOpcion: (idOpcion: number) =>
+      fetchJson<void>(`${P}/modelos/opciones/${idOpcion}`, { method: 'DELETE' }),
   },
 
   equipos: {

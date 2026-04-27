@@ -7,6 +7,29 @@ export type ModeloEquipo = {
   capacidad_gb: number | null
   descripcion?: string | null
   activo: boolean
+  atributos?: ModeloAtributo[]
+}
+
+export type ModeloAtributoOpcion = {
+  id: number
+  id_atributo: number
+  valor: string
+  label: string
+  color_hex?: string | null
+  orden: number
+  activo: boolean
+}
+
+export type ModeloAtributo = {
+  id: number
+  id_modelo: number
+  code: string
+  label: string
+  tipo_ui: string
+  requerido: boolean
+  orden: number
+  activo: boolean
+  opciones: ModeloAtributoOpcion[]
 }
 
 export type Equipo = {
@@ -27,6 +50,16 @@ export type Equipo = {
     capacidad_gb: number | null
   }
   foto_url: string | null
+  configuracion?: {
+    id: number
+    id_equipo: number
+    id_atributo: number
+    id_opcion: number
+    atributo_code?: string | null
+    atributo_label?: string | null
+    opcion_valor?: string | null
+    opcion_label?: string | null
+  }[]
 }
 
 export type EquipoConModelo = Equipo

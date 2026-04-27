@@ -2,9 +2,10 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.config import UPLOAD_DIR
-from app.db import Base, engine, ensure_schema_patches
+from app.db import engine
 from app.routers import roles, usuarios, login, refresh, logout, equipos, productos
 import app.models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.api.v1 import api_router
@@ -18,16 +19,16 @@ app = FastAPI(
 )
 
 @app.on_event("startup")
-def crear_tablas_si_hay_db():
-    """Crea las tablas si la conexión a la DB funciona (DATABASE_URL / PG_* o MySQL en .env)."""
+def verificar_db_en_startup():
+    """
+    Verifica conectividad a la DB en startup.
+    El esquema se gestiona EXCLUSIVAMENTE con Alembic (sin create_all ni parches runtime).
+    """
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Tablas creadas o ya existentes en la base de datos.")
-        try:
-            ensure_schema_patches()
-        except Exception as patch_exc:
-            logger.warning("Parche de esquema equipos (estado_comercial_previo_reserva): %s", patch_exc)
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("Conexión a la base de datos OK.")
     except Exception as e:
         err = str(e)
         hint = ""
@@ -38,7 +39,8 @@ def crear_tablas_si_hay_db():
             )
         logger.warning(
             "No se pudo conectar a la base de datos. Revisa .env (DATABASE_URL o PG_* para Postgres; DB_* para MySQL). "
-            "La API arranca igual; los endpoints que usen DB fallarán hasta que configures la DB. Error: %s%s",
+            "La API arranca igual; los endpoints que usen DB fallarán hasta que configures la DB. "
+            "Recuerda aplicar migraciones con `alembic upgrade head`. Error: %s%s",
             e,
             hint,
         )

@@ -36,6 +36,7 @@ class ModeloEquipoUpdate(BaseModel):
 
 class ModeloEquipoResponse(ModeloEquipoBase):
     id: int
+    atributos: list["ModeloAtributoResponse"] = []
 
     class Config:
         from_attributes = True
@@ -57,6 +58,7 @@ class EquipoCreate(EquipoBase):
     fecha_ingreso: Optional[datetime] = None
     precio_ars: Optional[Decimal] = None
     precio_usd: Optional[Decimal] = None
+    opciones_configuracion_ids: list[int] = []
 
     @field_validator("precio_ars", "precio_usd", mode="before")
     @classmethod
@@ -105,6 +107,7 @@ class EquipoUpdate(BaseModel):
     id_producto: Optional[int] = None
     precio_ars: Optional[Decimal] = None
     precio_usd: Optional[Decimal] = None
+    opciones_configuracion_ids: Optional[list[int]] = None
 
     @field_validator("precio_ars", "precio_usd", mode="before")
     @classmethod
@@ -145,6 +148,7 @@ class EquipoUpdate(BaseModel):
 class EquipoResponse(EquipoBase):
     id: int
     fecha_ingreso: Optional[datetime] = None
+    configuracion: list["EquipoConfiguracionResponse"] = []
 
     class Config:
         from_attributes = True
@@ -243,6 +247,79 @@ class EquipoUsadoDetalleResponse(BaseModel):
     incluye_caja: bool = False
     incluye_cargador: bool = False
     observaciones: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ModeloAtributoBase(BaseModel):
+    code: str
+    label: str
+    tipo_ui: str = "chip"
+    requerido: bool = True
+    orden: int = 0
+    activo: bool = True
+
+
+class ModeloAtributoCreate(ModeloAtributoBase):
+    pass
+
+
+class ModeloAtributoUpdate(BaseModel):
+    code: Optional[str] = None
+    label: Optional[str] = None
+    tipo_ui: Optional[str] = None
+    requerido: Optional[bool] = None
+    orden: Optional[int] = None
+    activo: Optional[bool] = None
+
+
+class ModeloAtributoOpcionBase(BaseModel):
+    valor: str
+    label: str
+    color_hex: Optional[str] = None
+    orden: int = 0
+    activo: bool = True
+
+
+class ModeloAtributoOpcionCreate(ModeloAtributoOpcionBase):
+    pass
+
+
+class ModeloAtributoOpcionUpdate(BaseModel):
+    valor: Optional[str] = None
+    label: Optional[str] = None
+    color_hex: Optional[str] = None
+    orden: Optional[int] = None
+    activo: Optional[bool] = None
+
+
+class ModeloAtributoOpcionResponse(ModeloAtributoOpcionBase):
+    id: int
+    id_atributo: int
+
+    class Config:
+        from_attributes = True
+
+
+class ModeloAtributoResponse(ModeloAtributoBase):
+    id: int
+    id_modelo: int
+    opciones: list[ModeloAtributoOpcionResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class EquipoConfiguracionResponse(BaseModel):
+    id: int
+    id_equipo: int
+    id_atributo: int
+    id_opcion: int
+    atributo_code: Optional[str] = None
+    atributo_label: Optional[str] = None
+    opcion_valor: Optional[str] = None
+    opcion_label: Optional[str] = None
 
     class Config:
         from_attributes = True
