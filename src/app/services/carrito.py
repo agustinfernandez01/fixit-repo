@@ -978,6 +978,12 @@ def confirm_pedido(
                         f"{nombre_producto} requiere confirmar disponibilidad con el local por WhatsApp antes de cerrar la venta."
                     )
                     break
+
+            # Persistimos el vínculo equipo<->pedido/detalle para poder cerrar entrega
+            # sobre las unidades exactas (y evitar vender/alterar la unidad incorrecta).
+            for equipo in seleccionados:
+                equipo.reservado_pedido_id = int(id_pedido)
+                equipo.reservado_detalle_pedido_id = int(detalle.id)
             equipos_a_reservar.extend(seleccionados)
             productos_afectados.add(int(detalle.id_producto))
 
@@ -1060,13 +1066,53 @@ def finalizar_entrega_pedido(db: Session, id_pedido: int) -> Pedido:
         detalles = db.query(DetallePedido).filter(DetallePedido.id_pedido == id_pedido).all()
         productos_afectados: set[int] = set()
         for detalle in detalles:
-            equipo = db.query(Equipo).filter(Equipo.id_producto == detalle.id_producto).first()
-            if not equipo:
+            qty = int(detalle.cantidad or 0)
+            if qty < 1:
                 continue
-            en = (equipo.estado_comercial or "").strip().lower()
-            if en == RESERVADO_VENTA:
+            # Accesorios: el stock se descuenta en confirm_pedido; acá sólo sincronizamos "activo".
+            if _hay_accesorio_para_producto(db, int(detalle.id_producto)):
+                productos_afectados.add(int(detalle.id_producto))
+                continue
+
+            reservados = (
+                db.query(Equipo)
+                .filter(
+                    Equipo.reservado_pedido_id == int(id_pedido),
+                    Equipo.reservado_detalle_pedido_id == int(detalle.id),
+                    Equipo.id_producto == int(detalle.id_producto),
+                )
+                .order_by(Equipo.id.asc())
+                .all()
+            )
+
+            # Compatibilidad con pedidos antiguos (sin vínculo persistido): tomar unidades reservadas "sueltas".
+            if len(reservados) < qty:
+                faltan = qty - len(reservados)
+                extra = (
+                    db.query(Equipo)
+                    .filter(
+                        Equipo.id_producto == int(detalle.id_producto),
+                        func.lower(func.trim(func.coalesce(Equipo.estado_comercial, ""))) == RESERVADO_VENTA,
+                        Equipo.reservado_pedido_id.is_(None),
+                        Equipo.reservado_detalle_pedido_id.is_(None),
+                    )
+                    .order_by(Equipo.id.asc())
+                    .limit(faltan)
+                    .all()
+                )
+                reservados.extend(extra)
+
+            if len(reservados) < qty:
+                raise ValueError(
+                    f"No hay suficientes unidades reservadas para cerrar la entrega del producto {detalle.id_producto} "
+                    f"(esperadas {qty}, encontradas {len(reservados)})."
+                )
+
+            for equipo in reservados[:qty]:
                 equipo.estado_comercial = "vendido"
                 equipo.estado_comercial_previo_reserva = None
+                equipo.reservado_pedido_id = None
+                equipo.reservado_detalle_pedido_id = None
                 productos_afectados.add(int(detalle.id_producto))
 
         for id_producto in productos_afectados:
@@ -1115,16 +1161,43 @@ def cancel_pedido_confirmado(db: Session, id_pedido: int, motivo: Optional[str] 
                     hubo_rest_accesorio = True
                     productos_afectados.add(int(detalle.id_producto))
                 continue
-            equipo = db.query(Equipo).filter(Equipo.id_producto == detalle.id_producto).first()
-            if not equipo:
-                continue
-            en = (equipo.estado_comercial or "").strip().lower()
-            if en == RESERVADO_VENTA:
+            reservados = (
+                db.query(Equipo)
+                .filter(
+                    Equipo.reservado_pedido_id == int(id_pedido),
+                    Equipo.reservado_detalle_pedido_id == int(detalle.id),
+                    Equipo.id_producto == int(detalle.id_producto),
+                )
+                .order_by(Equipo.id.asc())
+                .all()
+            )
+            # Fallback para pedidos antiguos sin vínculo.
+            if len(reservados) < qty:
+                faltan = qty - len(reservados)
+                extra = (
+                    db.query(Equipo)
+                    .filter(
+                        Equipo.id_producto == int(detalle.id_producto),
+                        func.lower(func.trim(func.coalesce(Equipo.estado_comercial, ""))) == RESERVADO_VENTA,
+                        Equipo.reservado_pedido_id.is_(None),
+                        Equipo.reservado_detalle_pedido_id.is_(None),
+                    )
+                    .order_by(Equipo.id.asc())
+                    .limit(faltan)
+                    .all()
+                )
+                reservados.extend(extra)
+
+            if reservados:
                 hay_reserva_equipo = True
+
+            for equipo in reservados[:qty]:
                 prev = (equipo.estado_comercial_previo_reserva or "").strip() or None
                 equipo.estado_comercial = prev if prev else "nuevo"
                 equipo.estado_comercial_previo_reserva = None
                 equipo.activo = True
+                equipo.reservado_pedido_id = None
+                equipo.reservado_detalle_pedido_id = None
                 productos_afectados.add(int(detalle.id_producto))
 
         if not hay_reserva_equipo and not hubo_rest_accesorio:
@@ -1333,11 +1406,15 @@ def reasignar_equipo_reservado_en_pedido(
         equipo_actual.estado_comercial = prev_actual
         equipo_actual.estado_comercial_previo_reserva = None
         equipo_actual.activo = True
+        equipo_actual.reservado_pedido_id = None
+        equipo_actual.reservado_detalle_pedido_id = None
 
         prev_nuevo = (equipo_nuevo.estado_comercial or "").strip() or None
         equipo_nuevo.estado_comercial_previo_reserva = prev_nuevo
         equipo_nuevo.estado_comercial = RESERVADO_VENTA
         equipo_nuevo.activo = False
+        equipo_nuevo.reservado_pedido_id = int(id_pedido)
+        equipo_nuevo.reservado_detalle_pedido_id = int(detalle.id)
 
         motivo_txt = (motivo or "").strip() or "Sin motivo informado"
         obs = (

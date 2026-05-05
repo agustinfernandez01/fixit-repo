@@ -320,36 +320,44 @@ export default function ProductoDetallePage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl px-6 py-10">
-      <div className="mb-6 flex items-center justify-between">
-        <Link to="/" className="text-sm text-gray-500 hover:text-gray-900">
+    <section className="bg-white">
+      <div className="mx-auto max-w-6xl px-6 py-10">
+        <div className="mb-8 flex items-center justify-between">
+          <Link to="/" className="text-sm text-neutral-500 hover:text-neutral-900">
           ← Volver al inicio
         </Link>
-        <Link to="/carrito" className="text-sm text-gray-500 hover:text-gray-900">
+          <Link to="/carrito" className="text-sm text-neutral-500 hover:text-neutral-900">
           Ir al carrito →
         </Link>
       </div>
 
       {loading ? (
-        <div className="rounded-3xl border border-gray-100 bg-white p-8 text-gray-500">Cargando detalle...</div>
+        <div className="rounded-3xl border border-neutral-200/70 bg-white/70 p-8 text-neutral-600 backdrop-blur">
+          Cargando detalle...
+        </div>
       ) : error ? (
         <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-red-700">{error}</div>
       ) : !producto ? (
-        <div className="rounded-3xl border border-gray-100 bg-white p-8 text-gray-500">No se encontró el producto.</div>
+        <div className="rounded-3xl border border-neutral-200/70 bg-white/70 p-8 text-neutral-600 backdrop-blur">
+          No se encontró el producto.
+        </div>
       ) : (
-        <div className="grid gap-8 lg:grid-cols-[1.15fr_1fr]">
-          <article className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-            <p className="mb-3 text-xs font-semibold tracking-[0.18em] text-gray-400 uppercase">
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
+          <article className="min-w-0">
+            <p className="mb-3 text-xs font-semibold tracking-[0.22em] text-neutral-400 uppercase">
               {producto.tipo_producto ?? 'producto'}
             </p>
-            <h1 className="mb-3 text-3xl font-black tracking-tight text-gray-900">
+            <h1 className="text-balance mb-4 text-4xl font-semibold leading-[1.05] tracking-[-0.04em] text-neutral-900 sm:text-5xl">
               {tituloFamilia(producto.detalle_equipo?.nombre_modelo ?? producto.nombre)}
             </h1>
+
             {variantAttributes.length > 0 ? (
-              <div className="mb-6 space-y-4">
+              <div className="mb-7 space-y-5">
                 {variantAttributes.map((attr) => (
                   <div key={attr.code}>
-                    <p className="mb-2 text-xs font-semibold tracking-wide text-gray-600 uppercase">{attr.label}</p>
+                    <p className="mb-2 text-[11px] font-semibold tracking-[0.22em] text-neutral-500 uppercase">
+                      {attr.label}
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {attr.options.map((option) => {
                         const selected =
@@ -380,15 +388,16 @@ export default function ProductoDetallePage() {
                             key={`${attr.code}-${option}`}
                             type="button"
                             onClick={() => applyOptionSelection(attr.code, option)}
+                            disabled={!enabled || clashesWithCurrent || availability === 'missing'}
                             className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                               selected
-                                ? 'border-gray-900 bg-gray-900 text-white'
+                                ? 'border-neutral-900 bg-neutral-900 text-white'
                                 : availability === 'available'
-                                  ? 'border-gray-300 bg-white text-gray-800 hover:border-gray-500'
+                                  ? 'border-neutral-300/80 bg-white/80 text-neutral-900 hover:border-neutral-500/70'
                                   : availability === 'out'
-                                    ? 'border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400'
-                                    : 'border-gray-200 bg-gray-100 text-gray-400'
-                            }`}
+                                    ? 'border-amber-300 bg-amber-50/80 text-amber-900 hover:border-amber-400'
+                                    : 'border-neutral-200 bg-neutral-100/70 text-neutral-400'
+                            } ${!enabled || clashesWithCurrent ? 'cursor-not-allowed opacity-50' : ''}`}
                           >
                             {option}
                           </button>
@@ -426,30 +435,32 @@ export default function ProductoDetallePage() {
                 </span>
               </div>
             ) : null}
-            <p className="mb-6 text-4xl font-black text-gray-900">
+            <p className="mb-4 text-5xl font-semibold tracking-[-0.04em] text-neutral-900">
               {showUsdPrice && precioUsdConvertido != null
                 ? moneyUsd(precioUsdConvertido)
                 : money(variantForCart?.precio ?? producto.precio)}
             </p>
             {variantForCart && (variantForCart.stock ?? 0) > 0 ? (
-              <p className="mb-3 text-xs text-gray-500">
+              <p className="mb-3 text-xs font-medium text-neutral-500">
                 Variante seleccionada · Stock: {variantForCart.stock}
               </p>
             ) : null}
             {variantAttributes.length > 0 && missingAttributeLabel ? (
-              <p className="mb-3 text-xs text-amber-700">Seleccioná {missingAttributeLabel} para continuar.</p>
+              <p className="mb-3 text-xs font-medium text-amber-700">
+                Seleccioná {missingAttributeLabel} para continuar.
+              </p>
             ) : null}
             {outOfStockForSelection ? (
-              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-sm font-semibold text-amber-800">Sin stock disponible</p>
-                <p className="mt-0.5 text-xs text-amber-700">
+              <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-900">Sin stock disponible</p>
+                <p className="mt-0.5 text-xs text-amber-800">
                   Este modelo / variación no se encuentra disponible en stock actualmente.
                   Podés consultarnos y avisarte cuando esté disponible.
                 </p>
               </div>
             ) : null}
             {producto.detalle_equipo?.estado_comercial?.toLowerCase() === 'usado' ? (
-              <p className="mb-4 text-xs text-gray-500">
+              <p className="mb-5 text-xs text-neutral-500">
                 {loadingDolar
                   ? 'Cotizacion USD: cargando...'
                   : dolarRate
@@ -457,34 +468,36 @@ export default function ProductoDetallePage() {
                     : 'Cotizacion USD no disponible'}
               </p>
             ) : null}
-            <p className="mb-7 text-sm leading-relaxed text-gray-600">
+            <p className="mb-7 text-[15px] leading-relaxed text-neutral-600">
               {producto.descripcion?.trim() || 'Sin descripción disponible.'}
             </p>
 
             {producto.detalle_equipo && (
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                <h2 className="mb-3 text-sm font-bold tracking-wide text-gray-900 uppercase">Detalle del equipo</h2>
-                <dl className="grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
+              <div className="mt-7 border-t border-neutral-200/70 pt-6">
+                <h2 className="mb-4 text-[11px] font-semibold tracking-[0.22em] text-neutral-500 uppercase">
+                  Detalle del equipo
+                </h2>
+                <dl className="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
                   <div>
-                    <dt className="text-gray-400">Modelo</dt>
-                    <dd>{producto.detalle_equipo.nombre_modelo ?? '-'}</dd>
+                    <dt className="text-neutral-400">Modelo</dt>
+                    <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.nombre_modelo ?? '-'}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-400">Capacidad</dt>
-                    <dd>
-                      {producto.detalle_equipo.capacidad_gb != null
-                        ? `${producto.detalle_equipo.capacidad_gb} GB`
-                        : '-'}
+                    <dt className="text-neutral-400">Capacidad</dt>
+                    <dd className="mt-0.5 font-medium text-neutral-900">
+                      {producto.detalle_equipo.capacidad_gb != null ? `${producto.detalle_equipo.capacidad_gb} GB` : '-'}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-gray-400">Color</dt>
-                    <dd>{variantForCart?.color ?? producto.detalle_equipo.color ?? '-'}</dd>
+                    <dt className="text-neutral-400">Color</dt>
+                    <dd className="mt-0.5 font-medium text-neutral-900">
+                      {variantForCart?.color ?? producto.detalle_equipo.color ?? '-'}
+                    </dd>
                   </div>
                   {(producto.detalle_equipo.estado_comercial ?? '').toLowerCase().trim() === 'usado' ? (
                     <div>
-                      <dt className="text-gray-400">Condición</dt>
-                      <dd>{producto.detalle_equipo.estado_comercial}</dd>
+                      <dt className="text-neutral-400">Condición</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.estado_comercial}</dd>
                     </div>
                   ) : null}
                 </dl>
@@ -492,77 +505,99 @@ export default function ProductoDetallePage() {
             )}
 
             {producto.detalle_accesorio && (
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                <h2 className="mb-3 text-sm font-bold tracking-wide text-gray-900 uppercase">Detalle del accesorio</h2>
-                <dl className="grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
+              <div className="mt-7 border-t border-neutral-200/70 pt-6">
+                <h2 className="mb-4 text-[11px] font-semibold tracking-[0.22em] text-neutral-500 uppercase">
+                  Detalle del accesorio
+                </h2>
+                <dl className="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
                   <div>
-                    <dt className="text-gray-400">Tipo</dt>
-                    <dd>{producto.detalle_accesorio.tipo}</dd>
+                    <dt className="text-neutral-400">Tipo</dt>
+                    <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_accesorio.tipo}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-400">Color</dt>
-                    <dd>{producto.detalle_accesorio.color ?? '-'}</dd>
+                    <dt className="text-neutral-400">Color</dt>
+                    <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_accesorio.color ?? '-'}</dd>
                   </div>
                   <div className="sm:col-span-2">
-                    <dt className="text-gray-400">Descripción</dt>
-                    <dd>{producto.detalle_accesorio.descripcion ?? '-'}</dd>
+                    <dt className="text-neutral-400">Descripción</dt>
+                    <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_accesorio.descripcion ?? '-'}</dd>
                   </div>
                 </dl>
               </div>
             )}
           </article>
 
-          <aside className="rounded-3xl border border-gray-200 bg-gray-900 p-8 text-white shadow-sm">
-            {fotoActiva ? (
-              <img
-                src={mediaUrl(fotoActiva)}
-                alt={producto.nombre}
-                className="mb-5 h-56 w-full rounded-2xl object-cover"
-              />
-            ) : (
-              <div className="mb-5 flex h-56 w-full items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-sm text-white/75">
-                Sin imagen disponible
+          <aside className="relative">
+            <div className="mx-auto max-w-md">
+              <div className="relative">
+                {fotoActiva ? (
+                  <div className="relative mx-auto w-full max-w-[560px]">
+                    <div className="relative overflow-hidden rounded-3xl border border-neutral-200/70 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+                      <div className="relative aspect-[4/3] w-full sm:aspect-square">
+                        {/* Plinto sutil para “apoyar” el producto sin ensuciar el fondo */}
+                        <div className="pointer-events-none absolute bottom-10 left-1/2 h-12 w-[70%] -translate-x-1/2 rounded-full bg-neutral-900/5 blur-xl" />
+                        <div className="pointer-events-none absolute bottom-10 left-1/2 h-10 w-[58%] -translate-x-1/2 rounded-full bg-neutral-900/6 blur-lg" />
+
+                        <img
+                          src={mediaUrl(fotoActiva)}
+                          alt={producto.nombre}
+                          className="absolute inset-0 mx-auto h-full w-full select-none object-contain p-4 sm:p-6 drop-shadow-[0_22px_38px_rgba(15,23,42,0.16)]"
+                          loading="eager"
+                          decoding="async"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex h-72 w-full items-center justify-center rounded-3xl border border-neutral-200/70 bg-white text-sm text-neutral-500">
+                    Sin imagen disponible
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
-            <p className="mb-5 text-sm text-white/75">
-              Si querés confirmarlo antes de comprar, consultanos por WhatsApp y te respondemos con la disponibilidad
-              actual.
-            </p>
+            <div className="mx-auto mt-8 flex max-w-md flex-col items-stretch gap-3">
+              <p className="text-sm leading-relaxed text-neutral-600">
+                Si querés confirmarlo antes de comprar, consultanos por WhatsApp y te respondemos con la disponibilidad actual.
+              </p>
 
-            {producto.activo && canAddToCart ? (
-              <button
-                type="button"
-                onClick={() => { void handleAddToCart() }}
-                disabled={adding}
-                className="w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-gray-900 transition-colors duration-150 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {adding ? 'Agregando...' : 'Agregar al carrito'}
-              </button>
-            ) : null}
-            {(!producto.activo || outOfStockForSelection) && !canAddToCart ? (
-              <button
-                type="button"
-                onClick={handleConsultAvailability}
-                className="w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-gray-950 transition-colors duration-150 hover:bg-emerald-300"
-              >
-                Consultar disponibilidad por WhatsApp
-              </button>
-            ) : null}
-            {producto.activo && !outOfStockForSelection && !canAddToCart && !missingAttributeLabel ? (
-              <button
-                type="button"
-                disabled
-                className="w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-gray-900 opacity-50 cursor-not-allowed"
-              >
-                No disponible
-              </button>
-            ) : null}
+              {producto.activo && canAddToCart ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleAddToCart()
+                  }}
+                  disabled={adding}
+                  className="w-full rounded-full bg-neutral-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {adding ? 'Agregando...' : 'Agregar al carrito'}
+                </button>
+              ) : null}
+              {(!producto.activo || outOfStockForSelection) && !canAddToCart ? (
+                <button
+                  type="button"
+                  onClick={handleConsultAvailability}
+                  className="w-full rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-400"
+                >
+                  Consultar disponibilidad por WhatsApp
+                </button>
+              ) : null}
+              {producto.activo && !outOfStockForSelection && !canAddToCart && !missingAttributeLabel ? (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full cursor-not-allowed rounded-full bg-neutral-200 px-5 py-3 text-sm font-semibold text-neutral-600"
+                >
+                  No disponible
+                </button>
+              ) : null}
 
-            {feedback && <p className="mt-3 text-sm text-emerald-200">{feedback}</p>}
+              {feedback ? <p className="text-sm font-medium text-emerald-700">{feedback}</p> : null}
+            </div>
           </aside>
         </div>
       )}
+      </div>
     </section>
   )
 }

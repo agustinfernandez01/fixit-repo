@@ -27,6 +27,10 @@ class Equipo(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     id_modelo = Column(Integer, ForeignKey("modelos_equipo.id"), nullable=False)
     id_producto = Column(Integer, ForeignKey("productos.id"), nullable=True)
+    # Reservas de venta (checkout online). Persistimos el vínculo para que el cierre
+    # operativo (finalizar_entrega) sepa exactamente qué unidad/IMEI corresponde al pedido.
+    reservado_pedido_id = Column(Integer, ForeignKey("pedidos.id"), nullable=True)
+    reservado_detalle_pedido_id = Column(Integer, ForeignKey("detalle_pedido.id"), nullable=True)
     imei = Column(String(20), nullable=True, unique=True)
     color = Column(String(50), nullable=True)
     tipo_equipo = Column(String(50), nullable=True)
