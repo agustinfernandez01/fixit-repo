@@ -179,7 +179,7 @@ export default function Home() {
                 Productos destacados
               </h3>
               <Link
-                to="/marketplace"
+                to="/comparativa"
                 className="shrink-0 text-sm font-normal text-neutral-500 transition-colors duration-200 hover:text-neutral-900"
               >
                 Comparar todos los modelos ›

@@ -18,6 +18,7 @@ import TiendaPage from './pages/client/TiendaPage'
 import CarritoPage from './pages/client/CarritoPage'
 import ProductoDetallePage from './pages/client/ProductoDetallePage'
 import PerfilPage from './pages/client/PerfilPage'
+import ComparativaPage from './pages/client/ComparativaPage'
 import { ModelosPage } from './pages/inventario/ModelosPage'
 import { EquiposPage } from './pages/inventario/EquiposPage'
 import { AccesoriosPage } from './pages/inventario/AccesoriosPage'
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="carrito" element={<CarritoPage />} />
         <Route path="perfil" element={<PerfilPage />} />
         <Route path="producto/:id" element={<ProductoDetallePage />} />
+        <Route path="comparativa" element={<ComparativaPage />} />
       </Route>
 
       <Route path="/admin" element={<AdminLayout />}>
