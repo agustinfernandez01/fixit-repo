@@ -420,22 +420,23 @@ def get_productos(db: Session) -> list[dict]:
             id_origen = accesorios_por_producto[p.id]
             foto_url = foto_por_producto_accesorio.get(p.id)
 
-        response.append(
-            {
-                "id": p.id,
-                "nombre": p.nombre,
-                "descripcion": _descripcion_catalogo(p.descripcion),
-                "foto_url": foto_url,
-                "precio": p.precio,
-                "precio_usd": getattr(p, "precio_usd", None),
-                "id_categoria": p.id_categoria,
-                "activo": p.activo,
-                "tipo_producto": tipo_producto,
-                "id_origen": id_origen,
-                "tipo_equipo": tipo_equipo_por_producto.get(p.id),
-                "estado_comercial": estado_comercial_por_producto.get(p.id),
-            }
-        )
+        item: dict = {
+            "id": p.id,
+            "nombre": p.nombre,
+            "descripcion": _descripcion_catalogo(p.descripcion),
+            "foto_url": foto_url,
+            "precio": p.precio,
+            "precio_usd": getattr(p, "precio_usd", None),
+            "id_categoria": p.id_categoria,
+            "activo": p.activo,
+            "tipo_producto": tipo_producto,
+            "id_origen": id_origen,
+            "tipo_equipo": tipo_equipo_por_producto.get(p.id),
+            "estado_comercial": estado_comercial_por_producto.get(p.id),
+        }
+        if tipo_producto == "accesorio":
+            item["stock"] = int(p.stock or 0)
+        response.append(item)
 
     return response
 
@@ -504,6 +505,25 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
     if accesorio:
         base["tipo_producto"] = "accesorio"
         base["id_origen"] = accesorio.id
+        base["foto_url"] = _foto_principal_producto(producto) or _foto_url_si_existe(accesorio.foto_url)
+        raw_stock = getattr(producto, "stock", None)
+        is_active = bool(accesorio.estado) and bool(producto.activo)
+        if raw_stock is not None and int(raw_stock) > 0:
+            stock_val = int(raw_stock)
+        else:
+            stock_val = 1 if is_active else 0
+        base["stock"] = stock_val
+        base["variantes_tienda"] = [
+            {
+                "id_producto": producto.id,
+                "color": accesorio.color or None,
+                "precio": float(producto.precio) if producto.precio is not None else 0.0,
+                "stock": stock_val,
+                "disponible": stock_val > 0,
+                "atributos": {},
+            }
+        ]
+        base["atributos_disponibles"] = []
         base["detalle_accesorio"] = {
             "id_accesorio": accesorio.id,
             "tipo": accesorio.tipo,

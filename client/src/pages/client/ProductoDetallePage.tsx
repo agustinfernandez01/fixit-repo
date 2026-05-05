@@ -220,6 +220,11 @@ export default function ProductoDetallePage() {
     window.open(buildWhatsAppUrl(producto.nombre), '_self')
   }
 
+  const isAccesorio = useMemo(
+    () => producto?.tipo_producto === 'accesorio' || !!producto?.detalle_accesorio,
+    [producto],
+  )
+
   const variantAttributes = useMemo(
     () => (producto ? buildVariantAttributes(producto) : []),
     [producto],
@@ -239,6 +244,18 @@ export default function ProductoDetallePage() {
   )
   const variantForCart = useMemo(() => {
     if (!producto) return null
+    // Accesorios: el stock vive en `productos.stock`, no hay variantes/IMEI.
+    if (isAccesorio && variants.length === 0) {
+      const st = Number(producto.stock ?? 0)
+      return {
+        id_producto: producto.id,
+        precio: producto.precio,
+        stock: st,
+        foto_url: producto.foto_url ?? null,
+        color: null,
+        atributos: {} as Record<string, string>,
+      } as VarianteTiendaDetalle
+    }
     if (variants.length === 0) return null
     if (requiredAttributeCodes.length === 0) {
       return variants[0] ?? null
@@ -252,7 +269,7 @@ export default function ProductoDetallePage() {
         ),
       ) ?? null
     )
-  }, [producto, variants, requiredAttributeCodes, hasAllRequiredAttributes, selectedAttributes])
+  }, [producto, isAccesorio, variants, requiredAttributeCodes, hasAllRequiredAttributes, selectedAttributes])
   const outOfStockForSelection =
     hasAllRequiredAttributes &&
     (!variantForCart || (variantForCart.stock ?? 0) === 0)

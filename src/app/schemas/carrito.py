@@ -36,6 +36,10 @@ class CarritoDetalleBase(BaseModel):
     precio_unitario: Decimal
     subtotal: Decimal
     producto: Optional[ProductoCarritoBase] = None
+    stock_disponible: int = Field(
+        default=0,
+        description="Equipos activos y no bloqueados para este id_producto (tope de cantidad).",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

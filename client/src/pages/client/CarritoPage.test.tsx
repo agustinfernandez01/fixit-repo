@@ -51,6 +51,7 @@ beforeEach(() => {
           tipo_producto: 'equipo',
           id_origen: 5,
         },
+        stock_disponible: 5,
       },
     ],
     total_unidades: 1,

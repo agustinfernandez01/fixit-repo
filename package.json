@@ -4,10 +4,12 @@
   "scripts": {
     "front": "npm --prefix client run dev",
     "back": "cd src && .\\venv\\Scripts\\python.exe -m uvicorn app.main:app --reload",
-    "levantar": "concurrently -n FRONT,BACK -c cyan,green \"npm --prefix client run dev\" \"cd src && .\\venv\\Scripts\\python.exe -m uvicorn app.main:app --reload\"",
+    "front:wait": "wait-on tcp:127.0.0.1:8000 && npm --prefix client run dev",
+    "levantar": "concurrently -n FRONT,BACK -c cyan,green \"npm run front:wait\" \"npm run back\"",
     "dev": "npm run levantar"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "wait-on": "^8.0.3"
   }
 }

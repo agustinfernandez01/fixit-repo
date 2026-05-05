@@ -1,18 +1,21 @@
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401 - registra todos los modelos
 from app.db import Base
 from app.models.carrito import Carrito, CarritoDetalle
-from app.models.pedido import Pedido
+from app.models.pedido import DetallePedido, Pedido
+from app.models.accesorios import Accesorios
 from app.models.equipos import Equipo, ModeloEquipo
 from app.models.productos import CategoriaProducto, Productos
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
 from app.services.carrito import (
     RESERVADO_VENTA,
+    add_item_to_carrito,
     cancel_pedido,
     cancel_pedido_confirmado,
     checkout_carrito,
@@ -111,7 +114,10 @@ def test_checkout_carrito_generates_whatsapp_and_defers_stock_lock_until_confirm
         assert "Pedido%20%23" in whatsapp_url
         assert "iPhone%2014%20128GB" in whatsapp_url
 
-        confirmed_pedido, warnings = confirm_pedido(db, pedido.id)
+        det = db.query(DetallePedido).filter(DetallePedido.id_pedido == pedido.id).one()
+        confirmed_pedido, warnings = confirm_pedido(
+            db, pedido.id, asignaciones_por_detalle={det.id: [equipo.id]}
+        )
         assert confirmed_pedido is not None
         assert warnings == []
 
@@ -206,12 +212,18 @@ def test_confirm_pedido_requires_whatsapp_availability_check_before_force():
             metodo_pago="transferencia",
         )
 
-        pending_pedido, warnings = confirm_pedido(db, pedido.id, force=False)
+        det = db.query(DetallePedido).filter(DetallePedido.id_pedido == pedido.id).one()
+        assign = {det.id: [equipo.id]}
+        pending_pedido, warnings = confirm_pedido(
+            db, pedido.id, force=False, asignaciones_por_detalle=assign
+        )
         assert pending_pedido is None
         assert warnings
         assert "WhatsApp" in warnings[0]
 
-        confirmed_pedido, forced_warnings = confirm_pedido(db, pedido.id, force=True)
+        confirmed_pedido, forced_warnings = confirm_pedido(
+            db, pedido.id, force=True, asignaciones_por_detalle=assign
+        )
         assert confirmed_pedido is not None
         assert forced_warnings == []
         assert confirmed_pedido.estado == "confirmado"
@@ -268,8 +280,8 @@ def test_confirm_pedido_auto_cancels_when_stock_is_already_sold():
             id_producto=producto.id,
             imei="323456789012345",
             tipo_equipo="smartphone",
-            estado_comercial="vendido",
-            activo=False,
+            estado_comercial="nuevo",
+            activo=True,
         )
         db.add(equipo)
         db.flush()
@@ -295,10 +307,263 @@ def test_confirm_pedido_auto_cancels_when_stock_is_already_sold():
             metodo_pago="transferencia",
         )
 
+        # Simula que la unidad se vendió antes de que el admin confirme este pedido.
+        equipo.estado_comercial = "vendido"
+        equipo.activo = False
+        db.commit()
+
         processed_pedido, warnings = confirm_pedido(db, pedido.id, force=False)
         assert processed_pedido is not None
         assert warnings == []
         assert processed_pedido.estado == "cancelado_sin_stock"
+    finally:
+        db.close()
+
+
+def test_add_item_accesorio_sin_equipo_usa_stock_de_accesorios():
+    engine = create_engine("sqlite:///:memory:")
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    Base.metadata.create_all(bind=engine)
+
+    db = SessionLocal()
+    try:
+        categoria = CategoriaProducto(nombre="Acc", descripcion="", activo=True)
+        db.add(categoria)
+        db.flush()
+
+        producto = Productos(
+            nombre="Funda USB-C",
+            descripcion="",
+            precio=Decimal("50.00"),
+            id_categoria=categoria.id,
+            activo=True,
+            stock=1,
+        )
+        db.add(producto)
+        db.flush()
+
+        acc = Accesorios(
+            tipo="cable",
+            nombre="USB-C",
+            color="negro",
+            descripcion="1m",
+            estado=True,
+            id_producto=producto.id,
+        )
+        db.add(acc)
+        db.commit()
+
+        add_item_to_carrito(db, "token-acc-1", producto.id, 1)
+        with pytest.raises(ValueError, match="Stock insuficiente"):
+            add_item_to_carrito(db, "token-acc-1", producto.id, 1)
+    finally:
+        db.close()
+
+
+def test_confirm_pedido_solo_accesorio_desconta_stock_en_productos():
+    engine = create_engine("sqlite:///:memory:")
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    Base.metadata.create_all(bind=engine)
+
+    db = SessionLocal()
+    try:
+        rol = Rol(nombre="cliente")
+        db.add(rol)
+        db.flush()
+
+        usuario = Usuario(
+            nombre="Acc",
+            apellido="Tester",
+            email="acc@example.com",
+            telefono="5491111111120",
+            password_hash="x",
+            id_rol=rol.id,
+        )
+        db.add(usuario)
+        db.flush()
+
+        categoria = CategoriaProducto(nombre="Acc", descripcion="", activo=True)
+        db.add(categoria)
+        db.flush()
+
+        producto = Productos(
+            nombre="Cable tipo C",
+            descripcion="",
+            precio=Decimal("40.00"),
+            id_categoria=categoria.id,
+            activo=True,
+            stock=5,
+        )
+        db.add(producto)
+        db.flush()
+
+        acc = Accesorios(
+            tipo="cable",
+            nombre="USB",
+            color="negro",
+            descripcion="2m",
+            estado=True,
+            id_producto=producto.id,
+        )
+        db.add(acc)
+        db.flush()
+
+        carrito = Carrito(token_identificador="token-acc-confirm", estado=True)
+        db.add(carrito)
+        db.flush()
+
+        linea = CarritoDetalle(
+            id_carrito=carrito.id,
+            id_producto=producto.id,
+            cant=2,
+            precio_unitario=Decimal("40.00"),
+            subtotal=Decimal("80.00"),
+        )
+        db.add(linea)
+        db.commit()
+
+        pedido, _, _ = checkout_carrito(
+            db,
+            token="token-acc-confirm",
+            id_usuario=usuario.id,
+            metodo_pago="transferencia",
+        )
+
+        confirmed, warnings = confirm_pedido(
+            db,
+            pedido.id,
+            force=False,
+            asignaciones_por_detalle={},
+        )
+        assert confirmed is not None
+        assert warnings == []
+        assert confirmed.estado == "confirmado"
+
+        db.refresh(producto)
+        assert int(producto.stock or 0) == 3
+    finally:
+        db.close()
+
+
+def test_add_item_rejects_when_qty_exceeds_vendible_stock():
+    engine = create_engine("sqlite:///:memory:")
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    Base.metadata.create_all(bind=engine)
+
+    db = SessionLocal()
+    try:
+        rol = Rol(nombre="cliente")
+        db.add(rol)
+        db.flush()
+
+        categoria = CategoriaProducto(nombre="Cat", descripcion="", activo=True)
+        db.add(categoria)
+        db.flush()
+
+        producto = Productos(
+            nombre="Pixel 8",
+            descripcion="",
+            precio=Decimal("800.00"),
+            id_categoria=categoria.id,
+            activo=True,
+        )
+        db.add(producto)
+        db.flush()
+
+        modelo = ModeloEquipo(nombre_modelo="Pixel 8", capacidad_gb=128, color="Negro", activo=True)
+        db.add(modelo)
+        db.flush()
+
+        equipo = Equipo(
+            id_modelo=modelo.id,
+            id_producto=producto.id,
+            imei="423456789012345",
+            tipo_equipo="smartphone",
+            estado_comercial="nuevo",
+            activo=True,
+        )
+        db.add(equipo)
+        db.commit()
+
+        add_item_to_carrito(db, "token-cart-stock", producto.id, 1)
+        with pytest.raises(ValueError, match="Stock insuficiente"):
+            add_item_to_carrito(db, "token-cart-stock", producto.id, 1)
+    finally:
+        db.close()
+
+
+def test_checkout_rejects_when_cart_qty_exceeds_vendible_stock():
+    engine = create_engine("sqlite:///:memory:")
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    Base.metadata.create_all(bind=engine)
+
+    db = SessionLocal()
+    try:
+        rol = Rol(nombre="cliente")
+        db.add(rol)
+        db.flush()
+
+        usuario = Usuario(
+            nombre="Zoe",
+            apellido="Tester",
+            email="zoe@example.com",
+            telefono="5491111111119",
+            password_hash="x",
+            id_rol=rol.id,
+        )
+        db.add(usuario)
+        db.flush()
+
+        categoria = CategoriaProducto(nombre="Cat", descripcion="", activo=True)
+        db.add(categoria)
+        db.flush()
+
+        producto = Productos(
+            nombre="Pixel 9",
+            descripcion="",
+            precio=Decimal("900.00"),
+            id_categoria=categoria.id,
+            activo=True,
+        )
+        db.add(producto)
+        db.flush()
+
+        modelo = ModeloEquipo(nombre_modelo="Pixel 9", capacidad_gb=256, color="Blanco", activo=True)
+        db.add(modelo)
+        db.flush()
+
+        equipo = Equipo(
+            id_modelo=modelo.id,
+            id_producto=producto.id,
+            imei="523456789012345",
+            tipo_equipo="smartphone",
+            estado_comercial="nuevo",
+            activo=True,
+        )
+        db.add(equipo)
+        db.flush()
+
+        carrito = Carrito(token_identificador="token-cart-checkout-2", estado=True)
+        db.add(carrito)
+        db.flush()
+
+        linea = CarritoDetalle(
+            id_carrito=carrito.id,
+            id_producto=producto.id,
+            cant=2,
+            precio_unitario=Decimal("900.00"),
+            subtotal=Decimal("1800.00"),
+        )
+        db.add(linea)
+        db.commit()
+
+        with pytest.raises(ValueError, match="Stock insuficiente"):
+            checkout_carrito(
+                db,
+                token="token-cart-checkout-2",
+                id_usuario=usuario.id,
+                metodo_pago="transferencia",
+            )
     finally:
         db.close()
 
@@ -374,7 +639,10 @@ def test_cancel_pedido_confirmado_libera_reserva():
             id_usuario=usuario.id,
             metodo_pago="transferencia",
         )
-        confirm_pedido(db, pedido.id, force=True)
+        det = db.query(DetallePedido).filter(DetallePedido.id_pedido == pedido.id).one()
+        confirm_pedido(
+            db, pedido.id, force=True, asignaciones_por_detalle={det.id: [equipo.id]}
+        )
         db.refresh(equipo)
         assert equipo.estado_comercial == RESERVADO_VENTA
 

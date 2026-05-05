@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { accesoriosApi } from '../../services/accesoriosApi'
 import type { Accesorio } from '../../types/accesorios'
 
@@ -15,6 +15,7 @@ const emptyForm = {
   color: '',
   descripcion: '',
   precio: '' as string | number,
+  stock: '0' as string | number,
   estado: true,
 }
 
@@ -24,31 +25,6 @@ export function AccesoriosPage() {
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
-
-  const groupedRows = useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        representative: Accesorio
-        cantidad: number
-      }
-    >()
-
-    for (const row of rows) {
-      const key = [row.tipo, row.nombre, row.color, row.descripcion, row.estado ? '1' : '0'].join('::')
-      const current = groups.get(key)
-      if (current) {
-        current.cantidad += 1
-      } else {
-        groups.set(key, {
-          representative: row,
-          cantidad: 1,
-        })
-      }
-    }
-
-    return Array.from(groups.values())
-  }, [rows])
 
   const load = useCallback(async () => {
     setError(null)
@@ -80,6 +56,7 @@ export function AccesoriosPage() {
       color: row.color,
       descripcion: row.descripcion,
       precio: '',
+      stock: row.stock ?? 0,
       estado: row.estado,
     })
   }
@@ -93,26 +70,37 @@ export function AccesoriosPage() {
     event.preventDefault()
     setError(null)
 
-    const precio = Number(form.precio)
-    if (!Number.isFinite(precio) || precio < 0) {
-      setError('Ingresá un precio válido.')
+    const stockNum = parseInt(String(form.stock).trim(), 10)
+    if (!Number.isFinite(stockNum) || stockNum < 0) {
+      setError('Ingresá un stock válido (entero ≥ 0).')
       return
-    }
-
-    const body = {
-      tipo: form.tipo.trim().toLowerCase(),
-      nombre: form.nombre.trim(),
-      color: form.color.trim(),
-      descripcion: form.descripcion.trim(),
-      precio,
-      estado: form.estado,
     }
 
     try {
       if (editingId != null) {
-        await accesoriosApi.patch(editingId, body)
+        await accesoriosApi.patch(editingId, {
+          tipo: form.tipo.trim().toLowerCase(),
+          nombre: form.nombre.trim(),
+          color: form.color.trim(),
+          descripcion: form.descripcion.trim(),
+          estado: form.estado,
+          stock: stockNum,
+        })
       } else {
-        await accesoriosApi.create(body)
+        const precio = Number(form.precio)
+        if (!Number.isFinite(precio) || precio < 0) {
+          setError('Ingresá un precio válido.')
+          return
+        }
+        await accesoriosApi.create({
+          tipo: form.tipo.trim().toLowerCase(),
+          nombre: form.nombre.trim(),
+          color: form.color.trim(),
+          descripcion: form.descripcion.trim(),
+          precio,
+          estado: form.estado,
+          stock: stockNum,
+        })
       }
       cancelEdit()
       await load()
@@ -137,7 +125,8 @@ export function AccesoriosPage() {
     <>
       <h1>Accesorios</h1>
       <p className="lead">
-        Alta y mantenimiento de accesorios. El backend crea el producto del catálogo de forma automática.
+        Alta y mantenimiento de accesorios. El backend crea el producto del catálogo de forma automática. El{' '}
+        <strong>stock</strong> es la cantidad de unidades disponibles para venta (sin IMEI).
       </p>
 
       {error ? <div className="msg-error">{error}</div> : null}
@@ -182,8 +171,22 @@ export function AccesoriosPage() {
               <input
                 type="number"
                 min={0}
+                step="0.01"
                 value={form.precio}
                 onChange={(e) => setForm((f) => ({ ...f, precio: e.target.value }))}
+                required={editingId == null}
+                disabled={editingId != null}
+                title={editingId != null ? 'El precio se gestiona desde el producto en inventario si aplica.' : undefined}
+              />
+            </label>
+            <label>
+              Stock (unidades)
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={form.stock}
+                onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
                 required
               />
             </label>
@@ -222,14 +225,14 @@ export function AccesoriosPage() {
         <h2>Listado</h2>
         {loading ? (
           <p className="msg-muted">Cargando…</p>
-        ) : groupedRows.length === 0 ? (
+        ) : rows.length === 0 ? (
           <p className="msg-muted">No hay accesorios.</p>
         ) : (
           <div className="table-wrap">
             <table className="data">
               <thead>
                 <tr>
-                  <th>Cantidad</th>
+                  <th>Stock</th>
                   <th>Tipo</th>
                   <th>Nombre</th>
                   <th>Color</th>
@@ -240,9 +243,9 @@ export function AccesoriosPage() {
                 </tr>
               </thead>
               <tbody>
-                {groupedRows.map(({ representative: row, cantidad }) => (
-                  <tr key={`${row.tipo}-${row.nombre}-${row.color}-${row.descripcion}-${row.estado ? '1' : '0'}`}>
-                    <td>{cantidad}</td>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.stock ?? 0}</td>
                     <td>{row.tipo}</td>
                     <td>
                       <strong>{row.nombre}</strong>

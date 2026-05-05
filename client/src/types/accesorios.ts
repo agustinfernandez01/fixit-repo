@@ -6,6 +6,8 @@ export type Accesorio = {
   descripcion: string
   estado: boolean
   id_producto: number
+  /** Unidades disponibles (viene de `productos.stock`). */
+  stock: number
   foto_url?: string | null
 }
 
@@ -16,6 +18,7 @@ export type AccesorioCreatePayload = {
   descripcion: string
   precio: number
   estado: boolean
+  stock?: number
 }
 
 export type AccesorioPatchPayload = Partial<AccesorioCreatePayload> & {

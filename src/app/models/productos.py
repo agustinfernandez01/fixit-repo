@@ -25,6 +25,8 @@ class Productos(Base):
     foto_principal_url = Column(String(255), nullable=True)
     id_categoria = Column(Integer, ForeignKey("categoria_producto.id"), nullable=False)
     activo = Column(Boolean, default=True)
+    # Stock para accesorios (sin IMEI); equipos usan inventario por unidad física.
+    stock = Column(Integer, nullable=False, default=0)
 
     categoria = relationship("CategoriaProducto", back_populates="productos")
     equipo = relationship("Equipo", back_populates="producto", uselist=False)

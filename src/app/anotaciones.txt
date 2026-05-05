@@ -16,16 +16,7 @@ Contraseña: ClienteDemo2026!
 
 que hacer:
 
-Logica entre usados y nuevos:
+- Pulir accesorios
+- Pulir logica de foto de equipos
 
-Probar logica y arreglarla
-
-Markeplace:
-
-Seccionar por modelo cada equipo usado o mostrar todos tambien
-
-Errores en la terminal:
-
-INFO:     127.0.0.1:60242 - "GET /uploads/fd019ac1250041f783d51ec937b542d3.jpg HTTP/1.1"
- 404 Not Found
 

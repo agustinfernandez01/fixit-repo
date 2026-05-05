@@ -29,6 +29,7 @@ from app.services.carrito import (
     list_pedidos_confirmados_pendientes_entrega_admin,
     list_pedidos_pendientes_admin,
     listar_candidatos_reasignacion_equipo,
+    map_carrito_detalles_con_stock,
     merge_guest_cart_into_user_cart,
     reasignar_equipo_reservado_en_pedido,
     remove_line,
@@ -94,7 +95,7 @@ def listar_items_carrito(
 ):
     try:
         carrito = get_or_create_carrito(db, token)[0]
-        return get_carrito_items(db, carrito.id)
+        return map_carrito_detalles_con_stock(db, get_carrito_items(db, carrito.id))
     except ValueError as exc:
         raise _http_error_from_value_error(exc)
 

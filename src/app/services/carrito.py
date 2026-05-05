@@ -15,7 +15,7 @@ from app.models.pedido import DetallePedido, Pago, Pedido
 from app.models.productos import Productos
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
-from app.schemas.carrito import CarritoResumen
+from app.schemas.carrito import CarritoDetalleBase, CarritoResumen
 
 
 AVAILABILITY_CHECK_STATES = {
@@ -196,6 +196,91 @@ def _detalle_pertenece_a_carrito(
     return linea
 
 
+def _equipo_es_vendible(equipo: Equipo) -> bool:
+    estado_normalizado = (equipo.estado_comercial or "").strip().lower()
+    if estado_normalizado in BLOCKED_STATES:
+        return False
+    if not bool(equipo.activo):
+        return False
+    return True
+
+
+def list_equipos_vendibles_por_producto(db: Session, id_producto: int) -> List[Equipo]:
+    equipos_producto = (
+        db.query(Equipo)
+        .filter(Equipo.id_producto == id_producto)
+        .order_by(Equipo.id.asc())
+        .all()
+    )
+    return [eq for eq in equipos_producto if _equipo_es_vendible(eq)]
+
+
+def _hay_equipo_para_producto(db: Session, id_producto: int) -> bool:
+    return (
+        db.query(Equipo.id)
+        .filter(Equipo.id_producto == id_producto)
+        .first()
+        is not None
+    )
+
+
+def _hay_accesorio_para_producto(db: Session, id_producto: int) -> bool:
+    return (
+        db.query(Accesorios.id)
+        .filter(Accesorios.id_producto == id_producto)
+        .first()
+        is not None
+    )
+
+
+def stock_accesorio_producto(db: Session, id_producto: int) -> int:
+    """Unidades disponibles de accesorio: `productos.stock` con accesorio de catálogo activo."""
+    acc = (
+        db.query(Accesorios)
+        .filter(Accesorios.id_producto == id_producto)
+        .first()
+    )
+    if not acc or not acc.estado:
+        return 0
+    p = db.query(Productos).filter(Productos.id == id_producto).first()
+    if not p:
+        return 0
+    return max(0, int(p.stock or 0))
+
+
+def unidades_vendibles_por_producto(db: Session, id_producto: int) -> int:
+    """
+    Stock vendible según el tipo de vínculo del producto (no se combinan fuentes):
+
+    - Si hay fila en `accesorios` para este `id_producto` → `productos.stock` (accesorio activo).
+    - Si no hay accesorios pero sí `equipo` → equipos elegibles.
+    - Si no hay ninguna de las dos → 0.
+    """
+    if _hay_accesorio_para_producto(db, id_producto):
+        return stock_accesorio_producto(db, id_producto)
+    if _hay_equipo_para_producto(db, id_producto):
+        return len(list_equipos_vendibles_por_producto(db, id_producto))
+    return 0
+
+
+def _validar_cantidad_contra_stock_vendible(
+    db: Session, id_producto: int, cantidad: int
+) -> None:
+    if cantidad < 1:
+        return
+    if not _hay_equipo_para_producto(db, id_producto) and not _hay_accesorio_para_producto(
+        db, id_producto
+    ):
+        raise ValueError(
+            f"El producto {id_producto} no tiene unidades físicas asociadas para vender en línea."
+        )
+    n = unidades_vendibles_por_producto(db, id_producto)
+    if cantidad > n:
+        raise ValueError(
+            f"Stock insuficiente: pedís {cantidad} unidad(es) y hay {n} disponible(s)."
+        )
+
+
 def add_item_to_carrito(
     db: Session, token: str, id_producto: int, cant: int = 1
 ) -> CarritoDetalle:
@@ -226,12 +311,14 @@ def add_item_to_carrito(
         if linea_existente:
             precio_unit = Decimal(str(linea_existente.precio_unitario))
             nueva_cant = linea_existente.cant + cant
+            _validar_cantidad_contra_stock_vendible(db, id_producto, nueva_cant)
             linea_existente.cant = nueva_cant
             linea_existente.subtotal = precio_unit * nueva_cant
             db.commit()
             db.refresh(linea_existente)
             return linea_existente
 
+        _validar_cantidad_contra_stock_vendible(db, id_producto, cant)
         subtotal = precio * cant
         linea = CarritoDetalle(
             id_carrito=carrito.id,
@@ -265,6 +352,8 @@ def update_line_quantity(
 
         carrito = _require_carrito_por_token(db, token)
         linea = _detalle_pertenece_a_carrito(carrito, detalle_id, db)
+
+        _validar_cantidad_contra_stock_vendible(db, linea.id_producto, cant)
 
         precio = Decimal(str(linea.precio_unitario))
         linea.cant = cant
@@ -320,12 +409,25 @@ def clear_carrito(db: Session, token: str) -> None:
         raise ValueError("Ocurrió un error al vaciar el carrito")
 
 
+def _carrito_detalle_con_stock(db: Session, d: CarritoDetalle) -> CarritoDetalleBase:
+    parsed = CarritoDetalleBase.model_validate(d)
+    stock = unidades_vendibles_por_producto(db, d.id_producto)
+    return parsed.model_copy(update={"stock_disponible": stock})
+
+
+def map_carrito_detalles_con_stock(
+    db: Session, items: List[CarritoDetalle]
+) -> List[CarritoDetalleBase]:
+    return [_carrito_detalle_con_stock(db, d) for d in items]
+
+
 def carrito_resumen(db: Session, token: str) -> CarritoResumen:
     carrito = get_carrito_by_token(db, token)
     if not carrito:
         raise ValueError("Carrito no encontrado")
 
     items = get_carrito_items(db, carrito.id)
+    items_out = map_carrito_detalles_con_stock(db, items)
     total_unidades = sum(d.cant for d in items) if items else 0
     total_importe = sum(
         (Decimal(str(d.subtotal)) for d in items),
@@ -334,7 +436,7 @@ def carrito_resumen(db: Session, token: str) -> CarritoResumen:
 
     return CarritoResumen(
         carrito=carrito,
-        items=items,
+        items=items_out,
         total_unidades=total_unidades,
         total_importe=total_importe,
     )
@@ -420,11 +522,13 @@ def merge_guest_cart_into_user_cart(
             )
             if existente:
                 nueva_cant = existente.cant + linea.cant
+                _validar_cantidad_contra_stock_vendible(db, linea.id_producto, nueva_cant)
                 existente.cant = nueva_cant
                 pu = Decimal(str(existente.precio_unitario))
                 existente.subtotal = pu * nueva_cant
                 db.delete(linea)
             else:
+                _validar_cantidad_contra_stock_vendible(db, linea.id_producto, linea.cant)
                 linea.id_carrito = user_cart.id
 
         db.delete(guest)
@@ -476,6 +580,7 @@ def list_pedidos_pendientes_admin(db: Session, skip: int = 0, limit: int = 50) -
             prod = d.producto
             nombre = prod.nombre if prod is not None else f"Producto {d.id_producto}"
             eq = db.query(Equipo).filter(Equipo.id_producto == d.id_producto).first()
+            es_accesorio = _hay_accesorio_para_producto(db, d.id_producto)
             sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
             items.append(
                 {
@@ -485,6 +590,7 @@ def list_pedidos_pendientes_admin(db: Session, skip: int = 0, limit: int = 50) -
                     "cantidad": d.cantidad,
                     "precio_unitario": str(d.precio_unitario),
                     "subtotal": str(sub),
+                    "tipo_producto": "accesorio" if es_accesorio else "equipo",
                     "id_equipo": int(eq.id) if eq else None,
                     "imei": eq.imei if eq and eq.imei else None,
                     "estado_equipo": eq.estado_comercial if eq else None,
@@ -567,6 +673,7 @@ def list_pedidos_confirmados_pendientes_entrega_admin(
             prod = d.producto
             nombre = prod.nombre if prod is not None else f"Producto {d.id_producto}"
             eq = db.query(Equipo).filter(Equipo.id_producto == d.id_producto).first()
+            es_accesorio = _hay_accesorio_para_producto(db, d.id_producto)
             sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
             items.append(
                 {
@@ -576,6 +683,7 @@ def list_pedidos_confirmados_pendientes_entrega_admin(
                     "cantidad": d.cantidad,
                     "precio_unitario": str(d.precio_unitario),
                     "subtotal": str(sub),
+                    "tipo_producto": "accesorio" if es_accesorio else "equipo",
                     "id_equipo": int(eq.id) if eq else None,
                     "imei": eq.imei if eq and eq.imei else None,
                     "estado_equipo": eq.estado_comercial if eq else None,
@@ -654,6 +762,8 @@ def checkout_carrito(
             )
             if not producto:
                 raise ValueError(f"Producto {linea.id_producto} no disponible")
+
+            _validar_cantidad_contra_stock_vendible(db, linea.id_producto, linea.cant)
 
             total += Decimal(str(linea.subtotal))
 
@@ -763,6 +873,7 @@ def confirm_pedido(
 
         equipos_a_reservar: list[Equipo] = []
         productos_afectados: set[int] = set()
+        accesorio_a_descontar: list[tuple[int, int]] = []
 
         used_equipo_ids: set[int] = set()
         asignaciones_por_detalle = asignaciones_por_detalle or {}
@@ -771,6 +882,39 @@ def confirm_pedido(
             qty = int(detalle.cantidad or 0)
             if qty < 1:
                 continue
+
+            if _hay_accesorio_para_producto(db, detalle.id_producto):
+                acc = (
+                    db.query(Accesorios)
+                    .filter(Accesorios.id_producto == detalle.id_producto)
+                    .first()
+                )
+                if not acc or not acc.estado:
+                    cancel_reasons.append(
+                        f"Accesorio inactivo o inexistente (producto {detalle.id_producto})."
+                    )
+                    continue
+                producto_linea = (
+                    db.query(Productos)
+                    .filter(Productos.id == detalle.id_producto)
+                    .first()
+                )
+                if not producto_linea or not producto_linea.activo:
+                    cancel_reasons.append(
+                        f"Producto {detalle.id_producto} no disponible para la venta."
+                    )
+                    continue
+                disp = int(producto_linea.stock or 0)
+                if disp < qty:
+                    cancel_reasons.append(
+                        f"Stock insuficiente para accesorio (producto {detalle.id_producto}): "
+                        f"solicitado {qty}, disponible {disp}."
+                    )
+                    continue
+                accesorio_a_descontar.append((int(detalle.id_producto), qty))
+                productos_afectados.add(int(detalle.id_producto))
+                continue
+
             equipos_producto = (
                 db.query(Equipo)
                 .filter(Equipo.id_producto == detalle.id_producto)
@@ -783,15 +927,7 @@ def confirm_pedido(
                 )
                 continue
 
-            # Candidatos vendibles para esta línea.
-            elegibles = []
-            for equipo in equipos_producto:
-                estado_normalizado = (equipo.estado_comercial or "").strip().lower()
-                if estado_normalizado in BLOCKED_STATES:
-                    continue
-                if not bool(equipo.activo):
-                    continue
-                elegibles.append(equipo)
+            elegibles = [eq for eq in equipos_producto if _equipo_es_vendible(eq)]
 
             if len(elegibles) < qty:
                 cancel_reasons.append(
@@ -864,6 +1000,19 @@ def confirm_pedido(
         if warnings:
             db.rollback()
             return None, warnings
+
+        for id_producto, qty in accesorio_a_descontar:
+            producto_acc = db.query(Productos).filter(Productos.id == id_producto).first()
+            if not producto_acc:
+                db.rollback()
+                raise ValueError(f"Producto {id_producto} no encontrado al descontar accesorio.")
+            resto = int(producto_acc.stock or 0) - qty
+            if resto < 0:
+                db.rollback()
+                raise ValueError(
+                    f"Stock inconsistente para producto {id_producto} al confirmar accesorios."
+                )
+            producto_acc.stock = resto
 
         for equipo in equipos_a_reservar:
             prev = (equipo.estado_comercial or "").strip() or None
@@ -948,24 +1097,40 @@ def cancel_pedido_confirmado(db: Session, id_pedido: int, motivo: Optional[str] 
             raise ValueError(f"Pedido en estado {pedido.estado}, no aplica cancelación post-confirmación.")
 
         detalles = db.query(DetallePedido).filter(DetallePedido.id_pedido == id_pedido).all()
-        hay_reserva = False
+        hay_reserva_equipo = False
+        hubo_rest_accesorio = False
         productos_afectados: set[int] = set()
         for detalle in detalles:
+            qty = int(detalle.cantidad or 0)
+            if qty < 1:
+                continue
+            if _hay_accesorio_para_producto(db, detalle.id_producto):
+                producto_acc = (
+                    db.query(Productos)
+                    .filter(Productos.id == detalle.id_producto)
+                    .first()
+                )
+                if producto_acc:
+                    producto_acc.stock = int(producto_acc.stock or 0) + qty
+                    hubo_rest_accesorio = True
+                    productos_afectados.add(int(detalle.id_producto))
+                continue
             equipo = db.query(Equipo).filter(Equipo.id_producto == detalle.id_producto).first()
             if not equipo:
                 continue
             en = (equipo.estado_comercial or "").strip().lower()
             if en == RESERVADO_VENTA:
-                hay_reserva = True
+                hay_reserva_equipo = True
                 prev = (equipo.estado_comercial_previo_reserva or "").strip() or None
                 equipo.estado_comercial = prev if prev else "nuevo"
                 equipo.estado_comercial_previo_reserva = None
                 equipo.activo = True
                 productos_afectados.add(int(detalle.id_producto))
 
-        if not hay_reserva:
+        if not hay_reserva_equipo and not hubo_rest_accesorio:
             raise ValueError(
-                "No hay unidades en reserva para este pedido; puede que la entrega ya esté cerrada."
+                "No hay unidades en reserva ni stock de accesorios para revertir en este pedido; "
+                "puede que la entrega ya esté cerrada."
             )
 
         pedido.estado = "cancelado"
@@ -1045,10 +1210,20 @@ def cancel_pedido(
 
 
 def _sincronizar_producto_activo_por_unidades_disponibles(db: Session, id_producto: int) -> None:
-    """Mantiene `producto.activo` según si quedan unidades activas para vender."""
+    """Mantiene `producto.activo` según stock de accesorio o unidades `equipo` vendibles."""
     db.flush()
     producto = db.query(Productos).filter(Productos.id == id_producto).first()
     if not producto:
+        return
+    if _hay_accesorio_para_producto(db, id_producto):
+        acc = (
+            db.query(Accesorios)
+            .filter(Accesorios.id_producto == id_producto)
+            .first()
+        )
+        producto.activo = bool(
+            acc and acc.estado and int(producto.stock or 0) > 0
+        )
         return
     hay_unidad_disponible = (
         db.query(Equipo.id)

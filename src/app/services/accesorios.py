@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from app.models.productos import CategoriaProducto, Productos
 from app.models.accesorios import Accesorios
-from app.schemas.accesorios import AccesoriosCreate, AccesoriosPatch, AccesoriosResponse  
+from app.schemas.accesorios import AccesoriosCreate, AccesoriosPatch, AccesoriosResponse
 
 
 TIPOS_ACCESORIO_ALIAS = {
@@ -50,6 +50,13 @@ def _ensure_categoria_accesorios(db: Session) -> CategoriaProducto:
     return categoria
 
 
+def _accesorio_con_stock(db: Session, row: Accesorios) -> AccesoriosResponse:
+    p = db.query(Productos).filter(Productos.id == row.id_producto).first()
+    st = int(p.stock or 0) if p else 0
+    parsed = AccesoriosResponse.model_validate(row)
+    return parsed.model_copy(update={"stock": st})
+
+
 #accesorios
 
 #listar accesorios
@@ -65,7 +72,7 @@ def get_accesorios_list(db:Session):
         db.commit()
         for row in rows:
             db.refresh(row)
-    return rows
+    return [_accesorio_con_stock(db, row) for row in rows]
 
 #buscar accesorio por id
 def get_accesorios_by_id(db:Session, id:int):
@@ -77,7 +84,7 @@ def get_accesorios_by_id(db:Session, id:int):
         row.tipo = tipo_canonico
         db.commit()
         db.refresh(row)
-    return row
+    return _accesorio_con_stock(db, row)
 
 #crear accesorio
 def create_accesorios(db: Session, payload: AccesoriosCreate) -> AccesoriosResponse:
@@ -120,6 +127,7 @@ def create_accesorios(db: Session, payload: AccesoriosCreate) -> AccesoriosRespo
                 precio=Decimal(payload.precio),
                 id_categoria=categoria.id,
                 activo=payload.estado,
+                stock=int(payload.stock or 0),
             )
             db.add(producto_catalogo)
             db.flush()  # obtiene el id sin hacer commit
@@ -136,7 +144,7 @@ def create_accesorios(db: Session, payload: AccesoriosCreate) -> AccesoriosRespo
         db.add(nuevo_accesorio)
         db.commit()
         db.refresh(nuevo_accesorio)
-        return nuevo_accesorio
+        return _accesorio_con_stock(db, nuevo_accesorio)
 
     except IntegrityError:
         db.rollback()
@@ -158,6 +166,7 @@ def patch_accesorios(db:Session, id:int, payload:AccesoriosPatch) -> AccesoriosR
             raise ValueError("Accesorio no encontrado")
         
         accesorio_a_editar = payload.model_dump(exclude_unset=True)
+        stock_val = accesorio_a_editar.pop("stock", None)
 
         for field, value in accesorio_a_editar.items():
             if field in {"tipo", "nombre", "color", "descripcion"} and isinstance(value, str):
@@ -166,9 +175,18 @@ def patch_accesorios(db:Session, id:int, payload:AccesoriosPatch) -> AccesoriosR
                     value = _normalizar_tipo(value)
             setattr(accesorio, field, value)
 
+        if stock_val is not None:
+            producto = (
+                db.query(Productos)
+                .filter(Productos.id == accesorio.id_producto)
+                .first()
+            )
+            if producto:
+                producto.stock = max(0, int(stock_val))
+
         db.commit()
         db.refresh(accesorio)
-        return accesorio
+        return _accesorio_con_stock(db, accesorio)
     
     except IntegrityError:
         db.rollback()
@@ -177,14 +195,15 @@ def patch_accesorios(db:Session, id:int, payload:AccesoriosPatch) -> AccesoriosR
 #eliminar accesorio
 def delete_accesorios(db:Session, id:int) -> AccesoriosResponse:
     try:
-        accesorio = get_accesorios_by_id(db, id)
+        row = db.query(Accesorios).filter(Accesorios.id == id).first()
 
-        if not accesorio:
+        if not row:
             raise ValueError("Accesorio no encontrado")
-        
-        db.delete(accesorio)
+
+        snapshot = _accesorio_con_stock(db, row)
+        db.delete(row)
         db.commit()
-        return accesorio
+        return snapshot
     
     except IntegrityError:
         db.rollback()

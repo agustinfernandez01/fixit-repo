@@ -1,5 +1,5 @@
 from decimal import Decimal
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 
@@ -49,6 +49,7 @@ class AccesoriosCreate(BaseModel):
     descripcion: str
     precio: Decimal
     estado: bool = True
+    stock: int = Field(default=0, ge=0)
 
     @field_validator("tipo", mode="before")
     @classmethod
@@ -76,8 +77,8 @@ class AccesoriosCreate(BaseModel):
         return valor
 
 class AccesoriosResponse(Accesorios):
-    pass
-    
+    stock: int = Field(default=0, ge=0)
+
 
 class AccesoriosPatch(BaseModel):
     tipo: Optional[str] = None
@@ -86,6 +87,7 @@ class AccesoriosPatch(BaseModel):
     descripcion: Optional[str] = None
     estado: Optional[bool] = None
     id_producto: Optional[int] = None
+    stock: Optional[int] = Field(default=None, ge=0)
 
     @field_validator("tipo", mode="before")
     @classmethod

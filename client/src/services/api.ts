@@ -156,9 +156,6 @@ export async function fetchJson<T>(
     } catch {
       if (text) detail = text
     }
-    if (res.status >= 500) {
-      detail = 'No se pudo procesar la solicitud. Intentá de nuevo.'
-    }
     throw new Error(detail || `HTTP ${res.status}`)
   }
   if (!text) return undefined as T

@@ -16,6 +16,8 @@ export type CarritoDetalle = {
   precio_unitario: string | number
   subtotal: string | number
   producto: CarritoProducto | null
+  /** Unidades vendibles para este producto (tope para cantidad en carrito). */
+  stock_disponible?: number
 }
 
 export type Carrito = {
@@ -84,6 +86,7 @@ export type ProductoCompra = {
   /** Catálogo tienda agrupado (backend): variantes por unidad / color */
   tipo_catalogo?: 'grupo_equipo' | string | null
   id_modelo?: number | null
+  /** Accesorios: stock numérico en `productos`; equipos: suele venir de variantes */
   stock?: number | null
   variantes_tienda?: VarianteTienda[] | null
 }

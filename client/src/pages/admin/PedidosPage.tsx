@@ -23,6 +23,7 @@ type Pedido = {
     cantidad: number
     precio_unitario: string
     subtotal: string
+    tipo_producto?: string | null
     id_equipo?: number | null
     imei?: string | null
     estado_equipo?: string | null
@@ -213,6 +214,10 @@ export default function PedidosPage() {
 
       for (const item of items) {
         if (!item.id_detalle_pedido || !item.id_producto || (item.cantidad ?? 0) < 1) continue
+        // Los accesorios no tienen unidades físicas con IMEI; el backend descuenta stock directamente.
+        // Fallback: si id_equipo es null tampoco hay equipo físico asociado a este producto.
+        const esAccesorio = item.tipo_producto === 'accesorio' || (item.tipo_producto == null && item.id_equipo == null)
+        if (esAccesorio) continue
         const candidatos = await fetchJson<CandidatoEquipo[]>(
           `/api/v1/carrito/pedido/${id_pedido}/candidatos-reasignacion?id_producto=${item.id_producto}`,
           {

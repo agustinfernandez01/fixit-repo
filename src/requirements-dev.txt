@@ -1,0 +1,3 @@
+# Desarrollo y tests (desde la carpeta src: pip install -r requirements-dev.txt)
+-r app/requirements.txt
+pytest>=8.0.0

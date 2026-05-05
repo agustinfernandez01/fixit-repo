@@ -299,7 +299,11 @@ export default function CarritoPage() {
                         </span>
                         <button
                           type="button"
-                          disabled={busyId === item.id}
+                          disabled={
+                            busyId === item.id ||
+                            (typeof item.stock_disponible === 'number' &&
+                              item.cant >= item.stock_disponible)
+                          }
                           onClick={() => void updateQty(item.id, item.cant + 1)}
                           className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-700 transition-colors hover:border-gray-400 disabled:opacity-40"
                         >
