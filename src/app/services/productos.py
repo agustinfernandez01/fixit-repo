@@ -142,6 +142,9 @@ def _coleccion_variantes_mismo_modelo_nuevos(db: Session, id_modelo: int) -> lis
     out = list(agg.values())
     for item in out:
         item["disponible"] = int(item.get("stock", 0)) > 0
+        item["foto_url"] = _foto_canonica_variante(
+            db, int(item["id_producto"]), item.get("color")
+        ) or item.get("foto_url")
     out.sort(key=lambda v: ((v.get("color") or ""), v["id_producto"]))
     return out
 
@@ -188,6 +191,9 @@ def _coleccion_variantes_misma_familia_nuevos(db: Session, familia_key: str) -> 
     out = list(agg.values())
     for item in out:
         item["disponible"] = int(item.get("stock", 0)) > 0
+        item["foto_url"] = _foto_canonica_variante(
+            db, int(item["id_producto"]), item.get("color")
+        ) or item.get("foto_url")
     out.sort(
         key=lambda v: (
             (v.get("atributos", {}).get("almacenamiento") or ""),
@@ -228,6 +234,32 @@ def _foto_canonica_modelo(db: Session, id_modelo: int) -> str | None:
         .all()
     )
     for _, foto_url in equipos_modelo:
+        fu = _foto_url_si_existe(foto_url)
+        if fu:
+            return fu
+    return None
+
+
+def _foto_canonica_variante(db: Session, id_producto: int, color: str | None) -> str | None:
+    """
+    Foto estable por variante (producto+color).
+    No depende de `Equipos.activo` para evitar "saltos" al vender/reservar una unidad.
+    """
+    color_norm = (color or "").strip().lower()
+    equipos = (
+        db.query(Equipos.id, Equipos.foto_url, Equipos.color)
+        .filter(Equipos.id_producto == id_producto)
+        .order_by(Equipos.id.asc())
+        .all()
+    )
+    for _, foto_url, eq_color in equipos:
+        eq_color_norm = (eq_color or "").strip().lower()
+        if color_norm and eq_color_norm and eq_color_norm != color_norm:
+            continue
+        fu = _foto_url_si_existe(foto_url)
+        if fu:
+            return fu
+    for _, foto_url, _ in equipos:
         fu = _foto_url_si_existe(foto_url)
         if fu:
             return fu
@@ -585,6 +617,9 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
         variantes = list(agg_var.values())
         for item in variantes:
             item["disponible"] = int(item.get("stock", 0)) > 0
+            item["foto_url"] = _foto_canonica_variante(
+                db, int(item["id_producto"]), item.get("color")
+            ) or item.get("foto_url")
         variantes.sort(
             key=lambda v: (
                 (v.get("atributos", {}).get("almacenamiento") or ""),

@@ -501,8 +501,7 @@ export default function TiendaPage() {
               Tienda de productos
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
-              Explorá equipos disponibles para compra inmediata: iPhone, iPad, MacBook, Apple Watch y AirPods. Buscá,
-              filtrá y agregá al carrito en un flujo claro.
+              Explorá equipos disponibles para compra inmediata: iPhone, iPad, MacBook, Apple Watch y AirPods.
             </p>
           </div>
         </div>

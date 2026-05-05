@@ -471,11 +471,13 @@ export function EquiposPage() {
     try {
       if (editingId != null) {
         await inventarioApi.equipos.patch(editingId, body)
-        if (fotoFile) await inventarioApi.equipos.uploadFoto(editingId, fotoFile)
+        if (fotoFile) await inventarioApi.equipos.uploadFoto(editingId, fotoFile, { setPrincipalTienda: true })
       } else {
         const created = await inventarioApi.equipos.create(body)
         const createdId = created.id_equipo ?? created.id
-        if (fotoFile && createdId != null) await inventarioApi.equipos.uploadFoto(createdId, fotoFile)
+        if (fotoFile && createdId != null) {
+          await inventarioApi.equipos.uploadFoto(createdId, fotoFile, { setPrincipalTienda: true })
+        }
       }
       flashSuccess(editingId != null ? 'Equipo actualizado.' : 'Equipo creado.')
       closeModal()

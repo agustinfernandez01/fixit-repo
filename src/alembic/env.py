@@ -1,13 +1,24 @@
 from logging.config import fileConfig
+from pathlib import Path
+import sys
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
 
-from app.config import DATABASE_URL
-from app.db import Base
-import app.models  # noqa: F401 - registra modelos en Base.metadata
+# Importante (Windows / layout "src/"):
+# Este repo tiene los scripts de migración en `src/alembic/`, que puede llegar a
+# confundirse con el paquete `alembic` de pip si ejecutás comandos desde `src/`.
+# Para evitarlo, ejecutá Alembic desde la raíz del repo usando `-c src/alembic.ini`.
+# Acá nos aseguramos de poder importar `app.*` agregando `src/` al sys.path.
+SRC_DIR = Path(__file__).resolve().parents[1]
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from app.config import DATABASE_URL  # noqa: E402
+from app.db import Base  # noqa: E402
+import app.models  # noqa: F401,E402 - registra modelos en Base.metadata
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

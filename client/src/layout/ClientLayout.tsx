@@ -105,6 +105,9 @@ function routeTransition(pathname: string) {
 export default function ClientLayout() {
 	const location = useLocation()
 	const navigate = useNavigate()
+	const forceShowAdminLink =
+		(String(import.meta.env.VITE_SHOW_ADMIN_LINK ?? '') || '').trim().toLowerCase() in
+		{ '1': true, true: true, yes: true, y: true, on: true }
 	const [authSnapshot, setAuthSnapshot] = useState({
 		logged: !!getAccessToken(),
 		role: (getCurrentUserRole() ?? '').toLowerCase(),
@@ -113,7 +116,7 @@ export default function ClientLayout() {
 	const logged = authSnapshot.logged
 	const role = authSnapshot.role
 	const isAdmin = role.includes('admin')
-	const showAdminLink = logged && isAdmin && !isRefreshingAuth
+	const showAdminLink = forceShowAdminLink || (logged && isAdmin && !isRefreshingAuth)
 	const [cartCount, setCartCount] = useState(0)
 	const [cartReady, setCartReady] = useState(false)
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
