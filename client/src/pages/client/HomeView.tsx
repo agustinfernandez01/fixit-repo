@@ -1,9 +1,19 @@
 import { useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import fixitHeroVideo from '../../assets/fixit-hero.mp4'
 import familyIphone17Pro from '../../assets/family-iphone-17-pro.png'
 import familyMacbook from '../../assets/family-macbook.png'
 import familyIpad from '../../assets/family-ipad.png'
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 28 },
+  visible: (delay: number = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.55, ease: [0.25, 0.1, 0.25, 1], delay },
+  }),
+}
 
 const FEATURES = [
   {
@@ -11,11 +21,7 @@ const FEATURES = [
     desc: 'Cada equipo pasa controles para que sepas el estado real antes de comprar: sin sorpresas.',
     icon: (
       <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     ),
   },
@@ -24,11 +30,7 @@ const FEATURES = [
     desc: 'Respaldamos tu compra con garantía y atención para que uses tu tecnología con tranquilidad.',
     icon: (
       <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
-        />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
       </svg>
     ),
   },
@@ -37,11 +39,7 @@ const FEATURES = [
     desc: 'Pantallas, baterías y más. Servicio técnico en un solo lugar, con la confianza de Fix It.',
     icon: (
       <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655-5.653a2.548 2.548 0 010-3.586l4.101-4.101a2.548 2.548 0 013.586 0l5.653 4.655"
-        />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655-5.653a2.548 2.548 0 010-3.586l4.101-4.101a2.548 2.548 0 013.586 0l5.653 4.655" />
       </svg>
     ),
   },
@@ -50,11 +48,7 @@ const FEATURES = [
     desc: 'Usados, nuevos y marketplace con condiciones claras. Sin letras chicas innecesarias.',
     icon: (
       <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     ),
   },
@@ -111,8 +105,13 @@ export default function Home() {
 
   return (
     <>
+      {/* ── Hero ── */}
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-6 pb-20 pt-4 sm:gap-12 sm:pt-6 lg:grid-cols-2 lg:gap-16 lg:pb-24">
-        <div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
+        >
           <span className="mb-5 inline-block rounded-full border border-gray-200 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gray-400 uppercase sm:mb-6">
             Nuevos · usados · reparaciones · marketplace
           </span>
@@ -140,9 +139,14 @@ export default function Home() {
               Vender mi celular
             </Link>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="relative min-w-0">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1], delay: 0.12 }}
+          className="relative min-w-0"
+        >
           <video
             className="h-[320px] w-full object-cover sm:h-[380px] lg:h-[460px]"
             autoPlay
@@ -154,17 +158,16 @@ export default function Home() {
           >
             <source src={fixitHeroVideo} type="video/mp4" />
           </video>
-        </div>
+        </motion.div>
       </section>
 
       <div className="border-t border-neutral-200/60" />
 
+      {/* ── Lineup ── */}
       <section className="bg-white">
         <div className="mx-auto max-w-7xl px-6 pt-16 pb-24">
           <div className="mb-12 flex items-end justify-between gap-6">
-            <div>
-              <p className="mb-2 text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">Lineup</p>
-            </div>
+            <p className="text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">Lineup</p>
             <Link
               to="/marketplace"
               className="text-sm font-normal text-neutral-500 transition-colors duration-200 hover:text-neutral-900"
@@ -187,16 +190,24 @@ export default function Home() {
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {FAMILY_LINEUP.map((item) => (
-                <div key={item.id} className="flex flex-col items-center text-center">
+              {FAMILY_LINEUP.map((item, i) => (
+                <motion.div
+                  key={item.id}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, margin: '-80px' }}
+                  variants={fadeUp}
+                  custom={i * 0.1}
+                  className="flex flex-col items-center text-center"
+                >
                   <div
-                    className={`relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] ${item.imageBackdrop}`}
+                    className={`group relative w-full overflow-hidden rounded-[2rem] shadow-[0_12px_48px_-20px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.03] ${item.imageBackdrop}`}
                   >
                     <div className="relative flex h-[230px] w-full items-center justify-center sm:h-[260px] md:h-[290px]">
                       <img
                         src={item.image}
                         alt={item.title}
-                        className="max-h-full w-auto max-w-[min(100%,260px)] object-contain object-center mix-blend-multiply p-4 sm:max-w-[280px]"
+                        className="max-h-full w-auto max-w-[min(100%,260px)] object-contain object-center mix-blend-multiply p-4 transition-transform duration-500 group-hover:scale-105 sm:max-w-[280px]"
                         loading="lazy"
                         decoding="async"
                       />
@@ -204,11 +215,8 @@ export default function Home() {
                   </div>
 
                   <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
-                    {item.swatches.map((sw, i) => (
-                      <span
-                        key={`${item.id}-sw-${i}`}
-                        className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`}
-                      />
+                    {item.swatches.map((sw, j) => (
+                      <span key={`${item.id}-sw-${j}`} className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`} />
                     ))}
                   </div>
 
@@ -220,7 +228,6 @@ export default function Home() {
 
                   <p className="mx-auto mt-3 max-w-[22rem] text-[16px] leading-snug text-neutral-600">{item.line1}</p>
                   <p className="mx-auto mt-1 max-w-[22rem] text-[16px] leading-snug text-neutral-600">{item.line2}</p>
-
                   <p className="mx-auto mt-3 max-w-[24rem] text-sm leading-relaxed text-neutral-700">{item.price}</p>
 
                   <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
@@ -234,42 +241,61 @@ export default function Home() {
                       to="/tienda"
                       className="inline-flex items-center gap-0.5 text-[15px] font-normal text-[#0071e3] transition-colors hover:underline"
                     >
-                      Comprar
-                      <span aria-hidden className="text-lg leading-none">
-                        ›
-                      </span>
+                      Comprar <span aria-hidden className="text-lg leading-none">›</span>
                     </Link>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
         </div>
       </section>
 
+      {/* ── Por qué Fix It ── */}
       <section className="border-t border-neutral-200/60 bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-12 sm:py-14">
-          <div className="mb-6 sm:mb-8">
+        <div className="mx-auto max-w-6xl px-6 py-14 sm:py-16">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: '-60px' }}
+            variants={fadeUp}
+            custom={0}
+            className="mb-8 sm:mb-10"
+          >
             <p className="mb-1.5 text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">Por qué Fix It</p>
             <h2 className="max-w-xl text-3xl font-semibold tracking-[-0.03em] text-neutral-900 sm:text-4xl">
               Tecnología con respaldo.
             </h2>
-          </div>
+          </motion.div>
 
-          <div className="grid gap-px bg-neutral-200/80 sm:grid-cols-2 lg:grid-cols-4">
-            {FEATURES.map((f) => (
-              <div
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {FEATURES.map((f, i) => (
+              <motion.div
                 key={f.title}
-                className="bg-white p-6 transition-colors duration-150 hover:bg-neutral-50/80 sm:min-h-[180px]"
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: '-60px' }}
+                variants={fadeUp}
+                custom={i * 0.08}
+                className="rounded-2xl bg-neutral-50 p-6 transition-colors duration-200 hover:bg-neutral-100/70"
               >
-                <div className="mb-3 text-neutral-400">{f.icon}</div>
+                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-black/[0.04] text-neutral-600">
+                  {f.icon}
+                </div>
                 <h3 className="mb-2 text-sm font-semibold tracking-[-0.02em] text-neutral-900">{f.title}</h3>
                 <p className="text-sm leading-relaxed text-neutral-500">{f.desc}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
 
-          <div className="mt-7 border-t border-neutral-200/80 pt-7 text-center sm:mt-8 sm:pt-8">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: '-40px' }}
+            variants={fadeUp}
+            custom={0.1}
+            className="mt-8 border-t border-neutral-200/80 pt-8 text-center"
+          >
             <p className="mx-auto mb-4 max-w-md text-[15px] leading-relaxed text-neutral-600">
               Encontrá tu próximo equipo o repará el que ya tenés.
             </p>
@@ -287,12 +313,20 @@ export default function Home() {
                 Reparaciones
               </Link>
             </div>
-          </div>
+          </motion.div>
         </div>
       </section>
 
+      {/* ── Trade-in CTA ── */}
       <section className="mx-auto max-w-6xl px-6 pt-8 pb-14 sm:pt-10 sm:pb-16">
-        <div className="rounded-3xl bg-gray-900 px-8 py-10 text-center sm:px-10 sm:py-12">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: '-60px' }}
+          variants={fadeUp}
+          custom={0}
+          className="rounded-3xl bg-gray-900 px-8 py-10 text-center sm:px-10 sm:py-12"
+        >
           <span className="mb-4 inline-block rounded-full border border-gray-700 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
             Plan canje · Marketplace
           </span>
@@ -317,7 +351,7 @@ export default function Home() {
               Ver usados y canje
             </Link>
           </div>
-        </div>
+        </motion.div>
       </section>
     </>
   )
