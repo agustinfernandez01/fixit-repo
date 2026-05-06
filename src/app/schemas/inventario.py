@@ -58,6 +58,7 @@ class EquipoCreate(EquipoBase):
     fecha_ingreso: Optional[datetime] = None
     precio_ars: Optional[Decimal] = None
     precio_usd: Optional[Decimal] = None
+    capacidad_gb: Optional[int] = None
     opciones_configuracion_ids: list[int] = []
 
     @field_validator("precio_ars", "precio_usd", mode="before")
@@ -72,6 +73,19 @@ class EquipoCreate(EquipoBase):
         if dec < 0:
             raise ValueError("El precio no puede ser negativo")
         return dec
+
+    @field_validator("capacidad_gb", mode="before")
+    @classmethod
+    def validar_capacidad_gb(cls, valor):
+        if valor is None or valor == "":
+            return None
+        try:
+            cap = int(valor)
+        except Exception as e:
+            raise ValueError("Capacidad inválida") from e
+        if cap <= 0:
+            raise ValueError("La capacidad debe ser mayor a cero")
+        return cap
 
     @field_validator("tipo_equipo", mode="before")
     @classmethod

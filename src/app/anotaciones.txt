@@ -16,8 +16,8 @@ Contraseña: ClienteDemo2026!
 
 que hacer:
 
-- Pulir accesorios
-- Pulir logica de foto de equipos
+- Acciones de equipos usados
+- Probar flujo de marketplace
 
 
 | Modelo    | Pantalla  | Batería | Zoom            | Cargador  |

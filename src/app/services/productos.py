@@ -283,6 +283,33 @@ def _normalizar_chip(raw: str | None) -> str | None:
     return re.sub(r"\s{2,}", " ", s)
 
 
+def _parse_capacidad_gb(texto: str | None) -> int | None:
+    if not texto:
+        return None
+    m = re.search(r"\b(\d{2,4})\s*gb\b", texto, flags=re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        capacidad = int(m.group(1))
+    except Exception:
+        return None
+    return capacidad if capacidad > 0 else None
+
+
+def _capacidad_gb_desde_configuracion(e: Equipos) -> int | None:
+    for cfg in getattr(e, "configuraciones", []) or []:
+        atributo = getattr(cfg, "atributo", None)
+        opcion = getattr(cfg, "opcion", None)
+        code = (getattr(atributo, "code", None) or "").strip().lower()
+        if code not in {"almacenamiento", "storage", "gb", "capacidad"}:
+            continue
+        valor = (getattr(opcion, "label", None) or getattr(opcion, "valor", None) or "").strip()
+        capacidad = _parse_capacidad_gb(valor)
+        if capacidad is not None:
+            return capacidad
+    return None
+
+
 def _extraer_atributos_variante(p: Productos, e: Equipos) -> dict[str, str]:
     if getattr(e, "configuraciones", None):
         attrs_cfg: dict[str, str] = {}
@@ -506,6 +533,25 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         .first()
     )
     if equipo:
+        es_usado = _es_linea_usado_por_estado_o_nombre(
+            equipo.estado_comercial, equipo.tipo_equipo, producto.nombre
+        )
+        capacidad_gb_detalle = equipo.modelo.capacidad_gb if equipo.modelo else None
+        if es_usado and capacidad_gb_detalle is None:
+            capacidad_gb_detalle = _capacidad_gb_desde_configuracion(equipo)
+            if capacidad_gb_detalle is None:
+                capacidad_gb_detalle = _parse_capacidad_gb(
+                    " ".join(
+                        t
+                        for t in [
+                            producto.nombre,
+                            producto.descripcion,
+                            equipo.modelo.nombre_modelo if equipo.modelo else None,
+                            equipo.tipo_equipo,
+                        ]
+                        if t and str(t).strip()
+                    )
+                )
         base["tipo_producto"] = "equipo"
         base["id_origen"] = equipo.id
         base["tipo_equipo"] = equipo.tipo_equipo
@@ -514,15 +560,13 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
             "id_equipo": equipo.id,
             "id_modelo": equipo.id_modelo,
             "nombre_modelo": equipo.modelo.nombre_modelo if equipo.modelo else None,
-            "capacidad_gb": equipo.modelo.capacidad_gb if equipo.modelo else None,
+            "capacidad_gb": capacidad_gb_detalle,
             "color": getattr(equipo, "color", None),
             "tipo_equipo": equipo.tipo_equipo,
             "estado_comercial": equipo.estado_comercial,
             "foto_url": _foto_url_si_existe(equipo.foto_url),
         }
-        if not _es_reparacion(producto.nombre, producto.descripcion) and not _es_linea_usado_por_estado_o_nombre(
-            equipo.estado_comercial, equipo.tipo_equipo, producto.nombre
-        ):
+        if not _es_reparacion(producto.nombre, producto.descripcion) and not es_usado:
             familia_key = _clave_familia_catalogo(producto, equipo)
             base["variantes_tienda"] = _coleccion_variantes_misma_familia_nuevos(db, familia_key)
             base["atributos_disponibles"] = _atributos_modelo_definidos(db, int(equipo.id_modelo))

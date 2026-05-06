@@ -54,6 +54,7 @@ export function EquiposUsadosDetallePage() {
   const [fotoFile, setFotoFile] = useState<File | null>(null)
   const [form, setForm] = useState({
     id_modelo: '' as string | number,
+    capacidad_gb: '' as string | number,
     imei: '',
     color: '',
     tipo_equipo: '',
@@ -90,6 +91,11 @@ export function EquiposUsadosDetallePage() {
     if (!Number.isFinite(ars) || ars < 0 || !dolarRate || dolarRate <= 0) return ''
     return formatUsdInput(ars / dolarRate)
   }, [form.precio_ars, dolarRate])
+
+  const selectedModelo = useMemo(
+    () => modelos.find((m) => m.id === Number(form.id_modelo)) ?? null,
+    [modelos, form.id_modelo],
+  )
 
   const load = useCallback(async () => {
     setError(null)
@@ -170,11 +176,24 @@ export function EquiposUsadosDetallePage() {
       precioArs !== null && Number.isFinite(precioArs) && dolarRate && dolarRate > 0
         ? precioArs / dolarRate
         : null
+    const capacidadRaw = String(form.capacidad_gb ?? '').trim()
+    const capacidadModelo = selectedModelo?.capacidad_gb ?? null
+    const capacidadGb =
+      capacidadRaw !== ''
+        ? Number(capacidadRaw)
+        : capacidadModelo != null
+          ? Number(capacidadModelo)
+          : null
+    if (capacidadGb == null || !Number.isFinite(capacidadGb) || capacidadGb <= 0) {
+      setError('Ingresá la capacidad en GB para el equipo usado.')
+      return
+    }
 
     setSaving(true)
     try {
       const createdEquipo = await inventarioApi.equipos.createUsado({
         id_modelo: idModelo,
+        capacidad_gb: capacidadGb,
         imei: form.imei.trim() || null,
         color: form.color.trim() || null,
         tipo_equipo: form.tipo_equipo.trim().toLowerCase(),
@@ -202,6 +221,7 @@ export function EquiposUsadosDetallePage() {
 
       setForm({
         id_modelo: '',
+        capacidad_gb: '',
         imei: '',
         color: '',
         tipo_equipo: '',
@@ -238,7 +258,17 @@ export function EquiposUsadosDetallePage() {
               Modelo
               <select
                 value={form.id_modelo}
-                onChange={(e) => setForm((f) => ({ ...f, id_modelo: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => {
+                    const nextModelId = e.target.value
+                    const nextModel = modelos.find((m) => m.id === Number(nextModelId)) ?? null
+                    return {
+                      ...f,
+                      id_modelo: nextModelId,
+                      capacidad_gb: nextModel?.capacidad_gb != null ? String(nextModel.capacidad_gb) : '',
+                    }
+                  })
+                }
                 required
               >
                 <option value="">Seleccionar…</option>
@@ -249,6 +279,19 @@ export function EquiposUsadosDetallePage() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label>
+              Capacidad (GB)
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={form.capacidad_gb}
+                onChange={(e) => setForm((f) => ({ ...f, capacidad_gb: e.target.value }))}
+                placeholder="Ej: 128"
+                required
+              />
             </label>
 
             <label>

@@ -270,13 +270,22 @@ export default function ProductoDetallePage() {
       ) ?? null
     )
   }, [producto, isAccesorio, variants, requiredAttributeCodes, hasAllRequiredAttributes, selectedAttributes])
+  const isUsedUniqueEquipo =
+    (producto?.detalle_equipo?.estado_comercial ?? '').toLowerCase().trim() === 'usado'
+  const hasMatchingSelection = hasAllRequiredAttributes && !!variantForCart
   const outOfStockForSelection =
-    hasAllRequiredAttributes &&
-    (!variantForCart || (variantForCart.stock ?? 0) === 0)
+    isUsedUniqueEquipo
+      ? false
+      : hasAllRequiredAttributes &&
+        (!variantForCart || (variantForCart.stock ?? 0) === 0)
   const canAddToCart =
     !!producto?.activo &&
     !outOfStockForSelection &&
-    (variantForCart ? (variantForCart.stock ?? 0) > 0 : !producto?.variantes_tienda || producto.variantes_tienda.length === 0)
+    (isUsedUniqueEquipo
+      ? hasMatchingSelection || !producto?.variantes_tienda || producto.variantes_tienda.length === 0
+      : variantForCart
+        ? (variantForCart.stock ?? 0) > 0
+        : !producto?.variantes_tienda || producto.variantes_tienda.length === 0)
   const precioArsNumber =
     (() => {
       if (!producto) return Number.NaN
@@ -312,7 +321,9 @@ export default function ProductoDetallePage() {
         return normalizeSpecValue(variantValueForCode(variant, attr.code)) === normalizeSpecValue(expected)
       }),
     )
-    return match ? ((match.stock ?? 0) > 0 ? 'available' : 'out' ) : 'missing'
+    if (!match) return 'missing'
+    if (isUsedUniqueEquipo) return 'available'
+    return (match.stock ?? 0) > 0 ? 'available' : 'out'
   }
 
   const applyOptionSelection = (code: string, option: string) => {

@@ -490,13 +490,20 @@ def crear_equipo_usado(payload: EquipoCreate, db: Session = Depends(get_db)):
 def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forzado: str):
     data = payload.model_dump()
     data["estado_comercial"] = estado_forzado
+    validar_atributos_requeridos = estado_forzado != "usado"
     opciones_ids = [int(x) for x in (data.pop("opciones_configuracion_ids", []) or []) if int(x) > 0]
+    capacidad_gb_input = data.pop("capacidad_gb", None)
     if data.get("fecha_ingreso") is None:
         data["fecha_ingreso"] = datetime.now(timezone.utc)
 
     modelo = db.query(ModeloEquipo).filter(ModeloEquipo.id == data["id_modelo"]).first()
     if not modelo:
         raise HTTPException(status_code=404, detail="Modelo no encontrado")
+    if estado_forzado == "usado" and capacidad_gb_input is not None:
+        capacidad_gb_val = int(capacidad_gb_input)
+        if capacidad_gb_val > 0 and modelo.capacidad_gb != capacidad_gb_val:
+            modelo.capacidad_gb = capacidad_gb_val
+            db.flush()
     atributos_requeridos = []
     try:
         atributos_requeridos = (
@@ -632,7 +639,7 @@ def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forza
                 )
             )
         db.flush()
-    req_ids = {int(a.id) for a in atributos_requeridos}
+    req_ids = {int(a.id) for a in atributos_requeridos} if validar_atributos_requeridos else set()
     cfg_req_ids: set[int] = set()
     if req_ids:
         try:
