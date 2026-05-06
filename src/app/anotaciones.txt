@@ -20,3 +20,38 @@ que hacer:
 - Pulir logica de foto de equipos
 
 
+| Modelo    | Pantalla  | Batería | Zoom            | Cargador  |
+| --------- | --------- | ------- | --------------- | --------- |
+| iPhone 13 | 6.1” 60Hz | Buena   | 0.5x–2x         | Lightning |
+| iPhone 14 | 6.1” 60Hz | Mejor   | 0.5x–2x         | Lightning |
+| iPhone 15 | 6.1” 60Hz | Igual   | 0.5x–2x (mejor) | USB-C     |
+| iPhone 16 | 6.1” 60Hz | Mejor   | 0.5x–2x         | USB-C     |
+
+| Modelo     | Hz  | Zoom | Batería      | Cargador  |
+| ---------- | --- | ---- | ------------ | --------- |
+| 13 Pro     | 120 | 3x   | Muy buena    | Lightning |
+| 13 Pro Max | 120 | 3x   | 🔥 Excelente | Lightning |
+| 14 Pro     | 120 | 3x   | Muy buena    | Lightning |
+| 14 Pro Max | 120 | 3x   | 🔥 Excelente | Lightning |
+| 15 Pro     | 120 | 3x   | Muy buena    | USB-C     |
+| 15 Pro Max | 120 | 5x   | 🔥 Excelente | USB-C     |
+| 16 Pro     | 120 | 5x   | Mejorada     | USB-C     |
+| 16 Pro Max | 120 | 5x   | 🔥 Top       | USB-C     |
+
+| Modelo     | Pantalla | Hz     | Zoom          | Batería   | Cargador |
+| ---------- | -------- | ------ | ------------- | --------- | -------- |
+| 17         | 6.3”     | 60 Hz  | 2x            | Muy buena | USB-C    |
+| 17 Pro     | 6.3”     | 120 Hz | 🔥 hasta 8x   | Muy buena | USB-C    |
+| 17 Pro Max | 6.9”     | 120 Hz | 🔥🔥 hasta 8x | 🔥 Top    | USB-C    |
+
+| Modelo      | Pantalla      | Hz     | Chip                                    | Batería      | Cargador |
+| ----------- | ------------- | ------ | --------------------------------------- | ------------ | -------- |
+| MacBook Air | 13.6” / 15.3” | 60 Hz  | M1 / M2 / M3 / M4                       | Muy buena 🔥 | USB-C    |
+| MacBook Pro | 14.2” / 16.2” | 120 Hz | M1 Pro / M2 Pro / M3 Pro / M4 Pro / Max | 🔥🔥 Top     | USB-C    |
+| MacBook Neo | 13” aprox     | 60 Hz  | M2 / M3                                 | Buena        | USB-C    |
+
+| Modelo   | Pantalla  | Hz     | Chip            | Batería      | Cargador |
+| -------- | --------- | ------ | --------------- | ------------ | -------- |
+| iPad     | 10.9”     | 60 Hz  | A14 Bionic      | Buena        | USB-C    |
+| iPad Air | 11” / 13” | 60 Hz  | M2 / M3 / M4    | Muy buena 🔥 | USB-C    |
+| iPad Pro | 11” / 13” | 120 Hz | M4 (última gen) | 🔥🔥 Top     | USB-C    |
