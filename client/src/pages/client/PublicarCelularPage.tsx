@@ -19,9 +19,34 @@ const empty = {
   bateria_porcentaje: '' as string | number,
   estado_estetico: '',
   estado_funcional: '',
-  descripcion: '',
   precio_publicado: '' as string | number,
+  tiene_caja: false,
+  tiene_cargador: false,
 }
+
+const MODELO_OPTIONS = [
+  'IPhone 11',
+  'IPhone 11 Pro',
+  'IPhone 11 Pro Max',
+  'IPhone 12',
+  'IPhone 12 Pro',
+  'IPhone 12 Pro Max',
+  'IPhone 13',
+  'IPhone 13 Pro',
+  'IPhone 13 Pro Max',
+  'IPhone 14',
+  'IPhone 14 Pro',
+  'IPhone 14 Pro Max',
+  'IPhone 15',
+  'IPhone 15 Pro',
+  'IPhone 15 Pro Max',
+  'IPhone 16',
+  'IPhone 16 Pro',
+  'IPhone 16 Pro Max',
+  'IPhone 17',
+  'IPhone 17 Pro',
+  'IPhone 17 Pro Max',
+] as const
 
 const CAPACIDAD_OPTIONS = [64, 128, 256, 512, 1024] as const
 const BATERIA_OPTIONS = [100, 95, 90, 85, 80, 75, 70] as const
@@ -66,16 +91,17 @@ export default function PublicarCelularPage() {
         precioRaw === '' ? null : Number.parseFloat(precioRaw)
 
       const body: Record<string, unknown> = {
-        modelo: form.modelo.trim() || null,
+        modelo: form.modelo || null,
         capacidad_gb: cap != null && Number.isFinite(cap) ? cap : null,
         color: form.color.trim() || null,
         imei: form.imei.trim() || null,
         bateria_porcentaje: bat != null && Number.isFinite(bat) ? bat : null,
         estado_estetico: form.estado_estetico.trim() || null,
         estado_funcional: form.estado_funcional.trim() || null,
-        descripcion: form.descripcion.trim() || null,
         precio_publicado:
           precio != null && Number.isFinite(precio) ? precio : null,
+        tiene_caja: form.tiene_caja,
+        tiene_cargador: form.tiene_cargador,
         fotos_urls: urls.length ? urls : null,
       }
 
@@ -191,12 +217,16 @@ export default function PublicarCelularPage() {
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">Modelo</label>
-                    <input
+                    <select
                       value={form.modelo}
                       onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))}
                       className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                      placeholder="Ej. iPhone 14"
-                    />
+                    >
+                      <option value="">Seleccionar…</option>
+                      {MODELO_OPTIONS.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">
@@ -325,18 +355,27 @@ export default function PublicarCelularPage() {
                 </div>
 
                 <div className="mt-5">
-                  <label className="mb-1 block text-xs font-medium text-gray-500">
-                    Descripción
-                  </label>
-                  <textarea
-                    value={form.descripcion}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, descripcion: e.target.value }))
-                    }
-                    rows={5}
-                    className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
-                    placeholder="Contá qué incluye (cargador, caja), detalles de uso, etc."
-                  />
+                  <p className="mb-3 text-xs font-medium text-gray-500">Accesorios incluidos</p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+                    <label className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={form.tiene_caja}
+                        onChange={(e) => setForm((f) => ({ ...f, tiene_caja: e.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300 accent-gray-900"
+                      />
+                      <span className="text-sm text-gray-700">Incluye caja original</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={form.tiene_cargador}
+                        onChange={(e) => setForm((f) => ({ ...f, tiene_cargador: e.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300 accent-gray-900"
+                      />
+                      <span className="text-sm text-gray-700">Incluye cargador</span>
+                    </label>
+                  </div>
                 </div>
               </div>
 

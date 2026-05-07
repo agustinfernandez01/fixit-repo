@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { mediaUrl } from '../../services/api'
 import { marketplaceApi } from '../../services/marketplaceApi'
 import type { InteresPublicacion, Publicacion } from '../../types/marketplace'
 
-type EstadoFiltro = 'todos' | 'pendiente_revision' | 'publicada'
+type EstadoFiltro = 'todos' | 'pendiente_revision' | 'publicada' | 'vendida' | 'rechazada' | 'dada_baja'
 
 function fmtFecha(iso: string | null) {
   if (!iso) return '—'
@@ -68,7 +69,7 @@ export function PublicacionesPage() {
     }
   }
 
-  async function cambiarEstado(idPublicacion: number, estado: 'publicada' | 'rechazada' | 'dada_baja') {
+  async function cambiarEstado(idPublicacion: number, estado: 'publicada' | 'rechazada' | 'dada_baja' | 'vendida') {
     setBusyId(idPublicacion)
     setError(null)
     try {
@@ -98,6 +99,20 @@ export function PublicacionesPage() {
     await cambiarEstado(idPublicacion, 'dada_baja')
   }
 
+  async function eliminarPublicacion(idPublicacion: number) {
+    if (!window.confirm(`¿Eliminar definitivamente la publicación #${idPublicacion}? Esta acción no se puede deshacer.`)) return
+    setBusyId(idPublicacion)
+    setError(null)
+    try {
+      await marketplaceApi.publicaciones.delete(idPublicacion)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo eliminar la publicación')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <>
       <h1>Marketplace · Publicaciones</h1>
@@ -113,6 +128,9 @@ export function PublicacionesPage() {
           <select value={filtro} onChange={(e) => setFiltro(e.target.value as EstadoFiltro)}>
             <option value="pendiente_revision">Pendientes de aprobación</option>
             <option value="publicada">Publicadas</option>
+            <option value="vendida">Vendidas</option>
+            <option value="rechazada">Rechazadas</option>
+            <option value="dada_baja">Dadas de baja</option>
             <option value="todos">Todas</option>
           </select>
         </label>
@@ -133,6 +151,7 @@ export function PublicacionesPage() {
                   <th>Foto</th>
                   <th>Publicación</th>
                   <th>Equipo</th>
+                  <th>Accesorios</th>
                   <th>Precio</th>
                   <th>Estado</th>
                   <th>Interés</th>
@@ -146,6 +165,7 @@ export function PublicacionesPage() {
                   const estadoActual = (p.estado ?? '').toLowerCase()
                   const canApproveReject = estadoActual === 'pendiente_revision'
                   const canBaja = estadoActual === 'publicada'
+                  const canVendida = estadoActual === 'publicada'
                   return (
                     <tr key={p.id_publicacion}>
                       <td>{p.id_publicacion}</td>
@@ -179,6 +199,10 @@ export function PublicacionesPage() {
                           {p.capacidad_gb != null ? `${p.capacidad_gb} GB` : 'Capacidad s/d'} · {p.color ?? 'Color s/d'}
                         </div>
                         <div className="msg-muted">Batería: {p.bateria_porcentaje != null ? `${p.bateria_porcentaje}%` : 's/d'}</div>
+                      </td>
+                      <td>
+                        <div className="msg-muted">{p.tiene_caja ? '✓ Caja' : '✗ Sin caja'}</div>
+                        <div className="msg-muted">{p.tiene_cargador ? '✓ Cargador' : '✗ Sin cargador'}</div>
                       </td>
                       <td>{fmtPrecio(p.precio_publicado)}</td>
                       <td>
@@ -241,6 +265,16 @@ export function PublicacionesPage() {
                             </button>
                           </>
                         ) : null}
+                        {canVendida ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={busyId === p.id_publicacion}
+                            onClick={() => void cambiarEstado(p.id_publicacion, 'vendida')}
+                          >
+                            Marcar vendida
+                          </button>
+                        ) : null}{' '}
                         {canBaja ? (
                           <button
                             type="button"
@@ -250,8 +284,28 @@ export function PublicacionesPage() {
                           >
                             Dar de baja
                           </button>
+                        ) : null}{' '}
+                        {estadoActual === 'publicada' ? (
+                          <Link
+                            to={`/marketplace/${p.id_publicacion}`}
+                            className="btn btn-ghost btn-sm"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Ver detalle
+                          </Link>
                         ) : null}
-                        {!canApproveReject && !canBaja ? <span className="msg-muted">Sin acciones</span> : null}
+                        {['dada_baja', 'rechazada', 'vendida'].includes(estadoActual) ? (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            disabled={busyId === p.id_publicacion}
+                            onClick={() => void eliminarPublicacion(p.id_publicacion)}
+                          >
+                            Eliminar
+                          </button>
+                        ) : null}
+                        {!canApproveReject && !canBaja && !canVendida && !['dada_baja', 'rechazada', 'vendida'].includes(estadoActual) ? <span className="msg-muted">Sin acciones</span> : null}
                       </td>
                     </tr>
                   )

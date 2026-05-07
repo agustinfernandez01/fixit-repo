@@ -106,6 +106,8 @@ export const inventarioApi = {
       fetchJson<Equipo>(`${P}/equipos/${id}/foto-principal`, {
         method: 'POST',
       }),
+    deleteFoto: (id: number) =>
+      fetchJson<void>(`${P}/equipos/${id}/foto`, { method: 'DELETE' }),
     delete: (id: number) =>
       fetchJson<void>(`${P}/equipos/${id}`, { method: 'DELETE' }),
   },

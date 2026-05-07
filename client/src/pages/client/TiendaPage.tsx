@@ -500,9 +500,6 @@ export default function TiendaPage() {
             <h1 className="text-4xl font-semibold tracking-[-0.03em] text-neutral-900">
               Tienda de productos
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
-              Explorá equipos disponibles para compra inmediata: iPhone, iPad, MacBook, Apple Watch y AirPods.
-            </p>
           </div>
         </div>
 

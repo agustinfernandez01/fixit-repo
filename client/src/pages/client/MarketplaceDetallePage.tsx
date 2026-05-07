@@ -133,6 +133,8 @@ export default function MarketplaceDetallePage() {
             <p><strong>Batería:</strong> {item.bateria_porcentaje != null ? `${item.bateria_porcentaje}%` : '—'}</p>
             <p><strong>Estado estético:</strong> {item.estado_estetico ?? '—'}</p>
             <p><strong>Estado funcional:</strong> {item.estado_funcional ?? '—'}</p>
+            <p><strong>Caja original:</strong> {item.tiene_caja ? 'Incluye' : 'No incluye'}</p>
+            <p><strong>Cargador:</strong> {item.tiene_cargador ? 'Incluye' : 'No incluye'}</p>
           </div>
 
           {item.descripcion ? <p className="mt-4 text-sm leading-relaxed text-gray-600">{item.descripcion}</p> : null}

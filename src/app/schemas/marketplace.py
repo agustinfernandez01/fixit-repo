@@ -17,6 +17,8 @@ class PublicacionBase(BaseModel):
     precio_publicado: Optional[Decimal] = None
     estado: Optional[str] = None
     fotos_urls: Optional[List[str]] = None
+    tiene_caja: Optional[bool] = None
+    tiene_cargador: Optional[bool] = None
 
 
 class PublicacionCreate(PublicacionBase):
@@ -41,6 +43,8 @@ class PublicacionUpdate(BaseModel):
     estado: Optional[str] = None
     fecha_publicacion: Optional[datetime] = None
     fotos_urls: Optional[List[str]] = None
+    tiene_caja: Optional[bool] = None
+    tiene_cargador: Optional[bool] = None
 
 
 class PublicacionResponse(PublicacionBase):

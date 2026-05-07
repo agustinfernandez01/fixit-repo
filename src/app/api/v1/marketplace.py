@@ -71,6 +71,8 @@ def _publicacion_response_payload(db: Session, obj: Publicacion) -> dict:
         "precio_publicado": obj.precio_publicado,
         "estado": obj.estado,
         "fotos_urls": obj.fotos_urls,
+        "tiene_caja": obj.tiene_caja,
+        "tiene_cargador": obj.tiene_cargador,
         "fecha_publicacion": obj.fecha_publicacion,
         "vendedor_nombre": vendedor_nombre,
         "vendedor_telefono": vendedor_telefono,
@@ -216,6 +218,8 @@ def borrar_publicacion(id_publicacion: int, db: Session = Depends(get_db)):
     obj = db.query(Publicacion).filter(Publicacion.id_publicacion == id_publicacion).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Publicación no encontrada")
+    db.query(InteresPublicacion).filter(InteresPublicacion.id_publicacion == id_publicacion).delete()
+    db.query(RevisionPublicacion).filter(RevisionPublicacion.id_publicacion == id_publicacion).delete()
     db.delete(obj)
     db.commit()
     return None

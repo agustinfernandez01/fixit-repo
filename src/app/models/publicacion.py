@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric, JSON
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, Numeric, JSON
 from sqlalchemy.orm import relationship
 from app.db import Base
 
@@ -20,8 +20,9 @@ class Publicacion(Base):
     precio_publicado = Column(Numeric(12, 2), nullable=True)
     estado = Column(String(50), nullable=True)  # borrador, pendiente_revision, publicada, vendida
     fecha_publicacion = Column(DateTime, nullable=True)
-    # Lista de URLs de fotos (JSON); ej. ["/uploads/uuid.jpg"]
     fotos_urls = Column(JSON, nullable=True)
+    tiene_caja = Column(Boolean, nullable=True, default=False)
+    tiene_cargador = Column(Boolean, nullable=True, default=False)
 
     usuario = relationship("Usuario", backref="publicaciones")
     revisiones = relationship("RevisionPublicacion", back_populates="publicacion")

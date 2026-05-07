@@ -1036,6 +1036,22 @@ def usar_foto_equipo_como_principal_tienda(
     return _equipo_response_payload(obj)
 
 
+@router.delete("/equipos/{id_equipo}/foto", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_foto_equipo(id_equipo: int, db: Session = Depends(get_db)):
+    obj = db.query(Equipo).filter(Equipo.id == id_equipo).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    if obj.foto_url:
+        abs_path = UPLOAD_DIR.parent / obj.foto_url.lstrip("/")
+        try:
+            abs_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+    obj.foto_url = None
+    db.commit()
+    return None
+
+
 @router.get("/equipos-usados-detalle", response_model=list[EquipoUsadoDetalleResponse])
 def listar_equipos_usados_detalle(
     skip: int = Query(0, ge=0),

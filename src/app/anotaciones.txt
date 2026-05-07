@@ -16,7 +16,8 @@ Contraseña: ClienteDemo2026!
 
 que hacer:
 
-- Acciones de equipos usados
+- Acciones en tabla telefonos usados
+- Formulario marketplace : select en modelo de celular , " " en color, check box en contiene caja y cargador
 - Probar flujo de marketplace
 
 
@@ -55,3 +56,27 @@ que hacer:
 | iPad     | 10.9”     | 60 Hz  | A14 Bionic      | Buena        | USB-C    |
 | iPad Air | 11” / 13” | 60 Hz  | M2 / M3 / M4    | Muy buena 🔥 | USB-C    |
 | iPad Pro | 11” / 13” | 120 Hz | M4 (última gen) | 🔥🔥 Top     | USB-C    |
+
+marketplace modelos:
+
+IPhone 11
+IPhone 11 Pro
+IPhone 11 Pro Max
+IPhone 12 
+IPhone 12 Pro 
+IPhone 12 Pro Max
+IPhone 13
+IPhone 13 Pro
+IPhone 13 Pro Max
+IPhone 14
+IPhone 14 Pro
+IPhone 14 Pro Max
+IPhone 15
+IPhone 15 Pro
+IPhone 15 Pro Max
+IPhone 16
+IPhone 16 Pro
+IPhone 16 Pro Max
+IPhone 17
+IPhone 17 Pro
+IPhone 17 Pro Max
