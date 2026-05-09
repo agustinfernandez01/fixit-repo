@@ -63,6 +63,13 @@ class ProductoEquipoDetalle(BaseModel):
     tipo_equipo: Optional[str] = None
     estado_comercial: Optional[str] = None
     foto_url: Optional[str] = None
+    bateria_porcentaje: Optional[int] = None
+    estado_estetico: Optional[str] = None
+    estado_funcional: Optional[str] = None
+    detalle_pantalla: Optional[str] = None
+    detalle_carcasa: Optional[str] = None
+    incluye_caja: Optional[bool] = None
+    incluye_cargador: Optional[bool] = None
 
 
 class ProductoAccesorioDetalle(BaseModel):

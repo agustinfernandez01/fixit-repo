@@ -511,6 +511,48 @@ export default function ProductoDetallePage() {
                       <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.estado_comercial}</dd>
                     </div>
                   ) : null}
+                  {producto.detalle_equipo.bateria_porcentaje != null ? (
+                    <div>
+                      <dt className="text-neutral-400">Batería</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.bateria_porcentaje}%</dd>
+                    </div>
+                  ) : null}
+                  {producto.detalle_equipo.estado_estetico ? (
+                    <div>
+                      <dt className="text-neutral-400">Estado estético</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.estado_estetico}</dd>
+                    </div>
+                  ) : null}
+                  {producto.detalle_equipo.estado_funcional ? (
+                    <div>
+                      <dt className="text-neutral-400">Estado funcional</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.estado_funcional}</dd>
+                    </div>
+                  ) : null}
+                  {producto.detalle_equipo.detalle_pantalla ? (
+                    <div>
+                      <dt className="text-neutral-400">Pantalla</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.detalle_pantalla}</dd>
+                    </div>
+                  ) : null}
+                  {producto.detalle_equipo.detalle_carcasa ? (
+                    <div>
+                      <dt className="text-neutral-400">Carcasa</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.detalle_carcasa}</dd>
+                    </div>
+                  ) : null}
+                  {producto.detalle_equipo.incluye_caja != null ? (
+                    <div>
+                      <dt className="text-neutral-400">Caja original</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.incluye_caja ? 'Incluye' : 'No incluye'}</dd>
+                    </div>
+                  ) : null}
+                  {producto.detalle_equipo.incluye_cargador != null ? (
+                    <div>
+                      <dt className="text-neutral-400">Cargador</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.incluye_cargador ? 'Incluye' : 'No incluye'}</dd>
+                    </div>
+                  ) : null}
                 </dl>
               </div>
             )}

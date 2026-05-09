@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { MotionConfig, motion, useAnimationControls } from 'framer-motion'
+import { MotionConfig, motion } from 'framer-motion'
 import {
 	CART_CHANGED_EVENT,
 	type CartChangedDetail,
@@ -22,85 +22,12 @@ import { carritoApi } from '../services/carritoApi'
 const NAV_LINKS = [
 	{ to: '/', label: 'Inicio' },
 	{ to: '/tienda', label: 'Tienda' },
-	{ to: '/usados', label: 'Usados', reloadDocument: true },
-	{ to: '/marketplace', label: 'Marketplace', reloadDocument: true },
+	{ to: '/usados', label: 'Usados' },
+	{ to: '/marketplace', label: 'Marketplace' },
 	{ to: '/canje', label: 'Canje' },
 	{ to: '/reparaciones', label: 'Reparaciones' },
 	{ to: '/publicar', label: 'Vender' },
 ]
-
-function routeTransition(pathname: string) {
-	if (pathname === '/') {
-		return {
-			initial: { y: 18 },
-			animate: { y: 0 },
-			exit: { y: -14 },
-			transition: { duration: 0.22, ease: 'easeOut' as const },
-		}
-	}
-	if (pathname.startsWith('/tienda')) {
-		return {
-			initial: { x: 26 },
-			animate: { x: 0 },
-			exit: { x: -18 },
-			transition: { duration: 0.22, ease: 'easeOut' as const },
-		}
-	}
-	if (pathname.startsWith('/usados')) {
-		return {
-			initial: { y: 22 },
-			animate: { y: 0 },
-			exit: { y: -16 },
-			transition: { duration: 0.22, ease: 'easeOut' as const },
-		}
-	}
-	if (pathname.startsWith('/marketplace')) {
-		return {
-			initial: { x: -26 },
-			animate: { x: 0 },
-			exit: { x: 18 },
-			transition: { duration: 0.22, ease: 'easeOut' as const },
-		}
-	}
-	if (pathname.startsWith('/canje')) {
-		return {
-			initial: { x: 24 },
-			animate: { x: 0 },
-			exit: { x: -20 },
-			transition: { duration: 0.22, ease: 'easeInOut' as const },
-		}
-	}
-	if (pathname.startsWith('/reparaciones')) {
-		return {
-			initial: { y: 20 },
-			animate: { y: 0 },
-			exit: { y: -14 },
-			transition: { duration: 0.22, ease: 'easeOut' as const },
-		}
-	}
-	if (pathname.startsWith('/publicar') || pathname.startsWith('/perfil')) {
-		return {
-			initial: { scale: 0.985, y: 10 },
-			animate: { scale: 1, y: 0 },
-			exit: { scale: 0.99, y: -8 },
-			transition: { duration: 0.2, ease: 'easeOut' as const },
-		}
-	}
-	if (pathname.startsWith('/producto/')) {
-		return {
-			initial: { x: 20 },
-			animate: { x: 0 },
-			exit: { x: -14 },
-			transition: { duration: 0.2, ease: 'easeOut' as const },
-		}
-	}
-	return {
-		initial: { y: 12 },
-		animate: { y: 0 },
-		exit: { y: -10 },
-		transition: { duration: 0.2, ease: 'easeOut' as const },
-	}
-}
 
 export default function ClientLayout() {
 	const location = useLocation()
@@ -120,8 +47,6 @@ export default function ClientLayout() {
 	const [cartCount, setCartCount] = useState(0)
 	const [cartReady, setCartReady] = useState(false)
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-	const pageMotion = useMemo(() => routeTransition(location.pathname), [location.pathname])
-	const pageControls = useAnimationControls()
 
 	function handleLogout() {
 		clearAuthTokens()
@@ -212,14 +137,6 @@ export default function ClientLayout() {
 		}
 	}, [logged])
 
-	useEffect(() => {
-		pageControls.set(pageMotion.initial)
-		void pageControls.start({
-			...pageMotion.animate,
-			transition: pageMotion.transition,
-		})
-	}, [location.pathname, pageControls])
-
 	return (
 		<MotionConfig reducedMotion="user">
 		<div className="min-h-screen bg-white font-sans text-gray-900">
@@ -230,11 +147,10 @@ export default function ClientLayout() {
 					</Link>
 
 					<ul className="hidden items-center gap-7 md:flex">
-						{NAV_LINKS.map(({ to, label, reloadDocument }) => (
+						{NAV_LINKS.map(({ to, label }) => (
 							<li key={to}>
 								<Link
 									to={to}
-									reloadDocument={reloadDocument}
 									className="text-sm text-gray-400 transition-colors duration-150 hover:text-gray-900"
 								>
 									{label}
@@ -317,11 +233,10 @@ export default function ClientLayout() {
 				{mobileMenuOpen ? (
 					<div id="mobile-nav-menu" className="border-t border-gray-100 bg-white px-6 py-4 md:hidden">
 						<ul className="space-y-3">
-							{NAV_LINKS.map(({ to, label, reloadDocument }) => (
+							{NAV_LINKS.map(({ to, label }) => (
 								<li key={`mobile-${to}`}>
 									<Link
 										to={to}
-										reloadDocument={reloadDocument}
 										className="block text-sm text-gray-600 transition-colors duration-150 hover:text-gray-900"
 									>
 										{label}
@@ -383,7 +298,12 @@ export default function ClientLayout() {
 
 			<main className="pt-16">
 				<div className="overflow-x-hidden">
-					<motion.div animate={pageControls}>
+					<motion.div
+						key={location.pathname}
+						initial={{ opacity: 0, y: 10 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.2, ease: 'easeOut' }}
+					>
 						<Outlet />
 					</motion.div>
 				</div>

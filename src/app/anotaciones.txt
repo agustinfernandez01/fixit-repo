@@ -16,9 +16,10 @@ Contraseña: ClienteDemo2026!
 
 que hacer:
 
-- Acciones en tabla telefonos usados
-- Formulario marketplace : select en modelo de celular , " " en color, check box en contiene caja y cargador
-- Probar flujo de marketplace
+- estetica de market, vender, reparaciones, canje
+- skeleton market
+- dockerizar
+- deployar
 
 
 | Modelo    | Pantalla  | Batería | Zoom            | Cargador  |
@@ -80,3 +81,9 @@ IPhone 16 Pro Max
 IPhone 17
 IPhone 17 Pro
 IPhone 17 Pro Max
+
+
+usados:
+
+capacidad - hacer select
+bateria - ntervalos 

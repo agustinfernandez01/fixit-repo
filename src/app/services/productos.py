@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import UPLOAD_DIR
 from app.models.accesorios import Accesorios
-from app.models.equipos import Equipos, ModeloAtributo, ModeloAtributoOpcion, EquipoConfiguracion
+from app.models.equipos import Equipos, ModeloAtributo, ModeloAtributoOpcion, EquipoConfiguracion, EquipoUsadoDetalle
 from app.models.productos import Productos
 from app.schemas.productos import ProductoBase, ProductoCreate, ProductoPatch
 
@@ -556,6 +556,13 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         base["id_origen"] = equipo.id
         base["tipo_equipo"] = equipo.tipo_equipo
         base["foto_url"] = _foto_principal_producto(producto) or _foto_url_si_existe(equipo.foto_url)
+        detalle_usado = None
+        if es_usado:
+            detalle_usado = (
+                db.query(EquipoUsadoDetalle)
+                .filter(EquipoUsadoDetalle.id_equipo == equipo.id)
+                .first()
+            )
         base["detalle_equipo"] = {
             "id_equipo": equipo.id,
             "id_modelo": equipo.id_modelo,
@@ -565,6 +572,13 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
             "tipo_equipo": equipo.tipo_equipo,
             "estado_comercial": equipo.estado_comercial,
             "foto_url": _foto_url_si_existe(equipo.foto_url),
+            "bateria_porcentaje": detalle_usado.bateria_porcentaje if detalle_usado else None,
+            "estado_estetico": detalle_usado.estado_estetico if detalle_usado else None,
+            "estado_funcional": detalle_usado.estado_funcional if detalle_usado else None,
+            "detalle_pantalla": detalle_usado.detalle_pantalla if detalle_usado else None,
+            "detalle_carcasa": detalle_usado.detalle_carcasa if detalle_usado else None,
+            "incluye_caja": detalle_usado.incluye_caja if detalle_usado else None,
+            "incluye_cargador": detalle_usado.incluye_cargador if detalle_usado else None,
         }
         if not _es_reparacion(producto.nombre, producto.descripcion) and not es_usado:
             familia_key = _clave_familia_catalogo(producto, equipo)

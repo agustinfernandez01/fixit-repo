@@ -100,6 +100,13 @@ export type ProductoEquipoDetalle = {
   tipo_equipo?: string | null
   estado_comercial?: string | null
   foto_url?: string | null
+  bateria_porcentaje?: number | null
+  estado_estetico?: string | null
+  estado_funcional?: string | null
+  detalle_pantalla?: string | null
+  detalle_carcasa?: string | null
+  incluye_caja?: boolean | null
+  incluye_cargador?: boolean | null
 }
 
 export type ProductoAccesorioDetalle = {

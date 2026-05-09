@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { mediaUrl } from '../../services/api'
-import { marketplaceApi } from '../../services/marketplaceApi'
+import {
+  usePublicaciones,
+  useIntereses,
+  useCambiarEstadoPublicacion,
+  useEliminarPublicacion,
+} from '../../hooks/queries'
 import type { InteresPublicacion, Publicacion } from '../../types/marketplace'
 
 type EstadoFiltro = 'todos' | 'pendiente_revision' | 'publicada' | 'vendida' | 'rechazada' | 'dada_baja'
@@ -27,34 +32,17 @@ function fmtPrecio(v: string | number | null | undefined) {
 }
 
 export function PublicacionesPage() {
-  const [rows, setRows] = useState<Publicacion[]>([])
-  const [intereses, setIntereses] = useState<InteresPublicacion[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [busyId, setBusyId] = useState<number | null>(null)
   const [filtro, setFiltro] = useState<EstadoFiltro>('pendiente_revision')
   const [previewImages, setPreviewImages] = useState<string[]>([])
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setError(null)
-    setLoading(true)
-    try {
-      const [pubs, ints] = await Promise.all([
-        marketplaceApi.publicaciones.list(0, 100, null),
-        marketplaceApi.intereses.list(0, 100),
-      ])
-      setRows(pubs)
-      setIntereses(ints)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar marketplace admin')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const { data: rows = [], isLoading: loadingPubs, error: pubsError } = usePublicaciones()
+  const { data: intereses = [], isLoading: loadingInts } = useIntereses()
+  const cambiarEstado = useCambiarEstadoPublicacion()
+  const eliminarPub = useEliminarPublicacion()
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  const loading = loadingPubs || loadingInts
+  const error = actionError ?? (pubsError ? (pubsError instanceof Error ? pubsError.message : 'Error') : null)
 
   const rowsFiltradas = useMemo(() => {
     if (filtro === 'todos') return rows
@@ -69,48 +57,33 @@ export function PublicacionesPage() {
     }
   }
 
-  async function cambiarEstado(idPublicacion: number, estado: 'publicada' | 'rechazada' | 'dada_baja' | 'vendida') {
-    setBusyId(idPublicacion)
-    setError(null)
-    try {
-      await marketplaceApi.publicaciones.patch(idPublicacion, {
-        estado,
-      })
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo actualizar estado')
-    } finally {
-      setBusyId(null)
-    }
-  }
-
   function closePreview() {
     setPreviewImages([])
   }
 
-  async function darDeBaja(idPublicacion: number) {
-    const motivo = window.prompt('Motivo de baja de la publicación:')
-    if (motivo == null) return
-    const cleaned = motivo.trim()
-    if (!cleaned) {
-      setError('Debes indicar un motivo para dar de baja la publicación.')
-      return
-    }
-    await cambiarEstado(idPublicacion, 'dada_baja')
+  function handleCambiarEstado(idPublicacion: number, estado: 'publicada' | 'rechazada' | 'dada_baja' | 'vendida') {
+    setActionError(null)
+    cambiarEstado.mutate({ id: idPublicacion, estado }, {
+      onError: (e) => setActionError(e instanceof Error ? e.message : 'No se pudo actualizar estado'),
+    })
   }
 
-  async function eliminarPublicacion(idPublicacion: number) {
-    if (!window.confirm(`¿Eliminar definitivamente la publicación #${idPublicacion}? Esta acción no se puede deshacer.`)) return
-    setBusyId(idPublicacion)
-    setError(null)
-    try {
-      await marketplaceApi.publicaciones.delete(idPublicacion)
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo eliminar la publicación')
-    } finally {
-      setBusyId(null)
+  function handleDarDeBaja(idPublicacion: number) {
+    const motivo = window.prompt('Motivo de baja de la publicación:')
+    if (motivo == null) return
+    if (!motivo.trim()) {
+      setActionError('Debés indicar un motivo para dar de baja la publicación.')
+      return
     }
+    handleCambiarEstado(idPublicacion, 'dada_baja')
+  }
+
+  function handleEliminar(idPublicacion: number) {
+    if (!window.confirm(`¿Eliminar definitivamente la publicación #${idPublicacion}? Esta acción no se puede deshacer.`)) return
+    setActionError(null)
+    eliminarPub.mutate(idPublicacion, {
+      onError: (e) => setActionError(e instanceof Error ? e.message : 'No se pudo eliminar la publicación'),
+    })
   }
 
   return (
@@ -163,6 +136,7 @@ export function PublicacionesPage() {
                 {rowsFiltradas.map((p) => {
                   const interes = resumenInteres(p.id_publicacion)
                   const estadoActual = (p.estado ?? '').toLowerCase()
+                  const isBusy = cambiarEstado.isPending || eliminarPub.isPending
                   const canApproveReject = estadoActual === 'pendiente_revision'
                   const canBaja = estadoActual === 'publicada'
                   const canVendida = estadoActual === 'publicada'
@@ -250,16 +224,16 @@ export function PublicacionesPage() {
                             <button
                               type="button"
                               className="btn btn-primary btn-sm"
-                              disabled={busyId === p.id_publicacion}
-                              onClick={() => void cambiarEstado(p.id_publicacion, 'publicada')}
+                              disabled={isBusy}
+                              onClick={() => handleCambiarEstado(p.id_publicacion, 'publicada')}
                             >
-                              {busyId === p.id_publicacion ? 'Guardando…' : 'Aprobar'}
+                              {isBusy ? 'Guardando…' : 'Aprobar'}
                             </button>{' '}
                             <button
                               type="button"
                               className="btn btn-danger btn-sm"
-                              disabled={busyId === p.id_publicacion}
-                              onClick={() => void cambiarEstado(p.id_publicacion, 'rechazada')}
+                              disabled={isBusy}
+                              onClick={() => handleCambiarEstado(p.id_publicacion, 'rechazada')}
                             >
                               Rechazar
                             </button>
@@ -269,8 +243,8 @@ export function PublicacionesPage() {
                           <button
                             type="button"
                             className="btn btn-primary btn-sm"
-                            disabled={busyId === p.id_publicacion}
-                            onClick={() => void cambiarEstado(p.id_publicacion, 'vendida')}
+                            disabled={isBusy}
+                            onClick={() => handleCambiarEstado(p.id_publicacion, 'vendida')}
                           >
                             Marcar vendida
                           </button>
@@ -279,8 +253,8 @@ export function PublicacionesPage() {
                           <button
                             type="button"
                             className="btn btn-danger btn-sm"
-                            disabled={busyId === p.id_publicacion}
-                            onClick={() => void darDeBaja(p.id_publicacion)}
+                            disabled={isBusy}
+                            onClick={() => handleDarDeBaja(p.id_publicacion)}
                           >
                             Dar de baja
                           </button>
@@ -299,8 +273,8 @@ export function PublicacionesPage() {
                           <button
                             type="button"
                             className="btn btn-danger btn-sm"
-                            disabled={busyId === p.id_publicacion}
-                            onClick={() => void eliminarPublicacion(p.id_publicacion)}
+                            disabled={isBusy}
+                            onClick={() => handleEliminar(p.id_publicacion)}
                           >
                             Eliminar
                           </button>

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { marketplaceApi } from '../../services/marketplaceApi'
+import { usePublicaciones } from '../../hooks/queries'
 import type { Publicacion } from '../../types/marketplace'
 import { ProductShowcaseCard } from '../../components/ProductShowcaseCard'
 
@@ -23,32 +22,13 @@ function familyLabelFromPublicacion(p: Publicacion): string {
 }
 
 export default function MarketplacePublicacionesPage() {
-  const [items, setItems] = useState<Publicacion[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isLoading: loading, error: queryError } = usePublicaciones()
 
-  const load = useCallback(async () => {
-    setError(null)
-    setLoading(true)
-    try {
-      // Compatibilidad: algunas publicaciones legacy pueden estar como "aprobada".
-      const data = await marketplaceApi.publicaciones.list(0, 100, null)
-      setItems(
-        data.filter((p) => {
-          const estado = (p.estado ?? '').toLowerCase().trim()
-          return estado === 'publicada' || estado === 'aprobada'
-        }),
-      )
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar el marketplace')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const items: Publicacion[] = (data ?? []).filter((p) => {
+    const estado = (p.estado ?? '').toLowerCase().trim()
+    return estado === 'publicada' || estado === 'aprobada'
+  })
+  const error = queryError ? (queryError instanceof Error ? queryError.message : 'No se pudo cargar el marketplace') : null
 
   return (
     <div className="bg-white">

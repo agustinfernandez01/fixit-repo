@@ -1,7 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { EquipoConModelo, EquipoUsadoDetalle, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
 import { mediaUrl } from '../../services/api'
+import {
+  qk,
+  useModelos,
+  useEquipos,
+  useEquiposUsadosDetalle,
+  useToggleActivoEquipo,
+  useEliminarEquipoUsado,
+  useEliminarFotoEquipo,
+  useDolarBlue,
+} from '../../hooks/queries'
 
 const TIPOS_EQUIPO = [
   { value: 'iphone', label: 'iPhone' },
@@ -10,7 +21,7 @@ const TIPOS_EQUIPO = [
   { value: 'airpods', label: 'AirPods' },
 ]
 
-const BATERIA_OPTIONS = [64, 128, 256, 512]
+const CAPACIDAD_OPTIONS = [64, 128, 256, 512] as const
 const ESTADO_ESTATICA_OPTIONS = ['Excelente', 'Muy bueno', 'Bueno', 'Detalle leve']
 const ESTADO_FUNCIONAL_OPTIONS = ['Excelente', 'Muy bueno', 'Bueno', 'Con detalle']
 const DETALLE_PANTALLA_OPTIONS = ['Sin detalle', 'Rayón leve', 'Rayón visible', 'Detalle importante']
@@ -42,11 +53,8 @@ function formatUsdInput(value: number): string {
 }
 
 export function EquiposUsadosDetallePage() {
-  const [rows, setRows] = useState<EquipoUsadoDetalle[]>([])
-  const [equipos, setEquipos] = useState<EquipoConModelo[]>([])
-  const [modelos, setModelos] = useState<ModeloEquipo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const [actionError, setActionError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [editDetalle, setEditDetalle] = useState<EquipoUsadoDetalle | null>(null)
@@ -61,9 +69,9 @@ export function EquiposUsadosDetallePage() {
     incluye_caja: false,
     incluye_cargador: false,
   })
-  const [dolarRate, setDolarRate] = useState<number | null>(null)
-  const [loadingDolar, setLoadingDolar] = useState(true)
-  const [dolarUpdatedAt, setDolarUpdatedAt] = useState<string | null>(null)
+  const { data: dolarData, isLoading: loadingDolar } = useDolarBlue()
+  const dolarRate = dolarData?.venta ?? null
+  const dolarUpdatedAt = dolarData?.fechaActualizacion ?? null
   const [fotoFile, setFotoFile] = useState<File | null>(null)
   const [fotoPreview, setFotoPreview] = useState<string | null>(null)
   const [editFotoFile, setEditFotoFile] = useState<File | null>(null)
@@ -83,6 +91,19 @@ export function EquiposUsadosDetallePage() {
     incluye_caja: false,
     incluye_cargador: false,
   })
+
+  const { data: rows = [], isLoading: loadingRows, error: rowsError } = useEquiposUsadosDetalle()
+  const { data: equiposData = [], isLoading: loadingEquipos } = useEquipos()
+  const { data: modelosData = [], isLoading: loadingModelos } = useModelos()
+  const toggleActivo = useToggleActivoEquipo()
+  const eliminarEquipo = useEliminarEquipoUsado()
+  const eliminarFoto = useEliminarFotoEquipo()
+
+  const loading = loadingRows || loadingEquipos || loadingModelos
+  const error = actionError ?? (rowsError ? (rowsError instanceof Error ? rowsError.message : 'Error al cargar') : null)
+
+  const equipos = equiposData
+  const modelos = modelosData.filter((m) => m.activo)
 
   const eqMap = useMemo(
     () =>
@@ -113,58 +134,6 @@ export function EquiposUsadosDetallePage() {
     [modelos, form.id_modelo],
   )
 
-  const load = useCallback(async () => {
-    setError(null)
-    setLoading(true)
-    try {
-      const [det, eq, mo] = await Promise.all([
-        inventarioApi.equiposUsadosDetalle.list(0, 100),
-        inventarioApi.equipos.list(0, 100),
-        inventarioApi.modelos.list(0, 100),
-      ])
-      setRows(det)
-      setEquipos(eq)
-      setModelos(mo.filter((m) => m.activo))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cargar')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  useEffect(() => {
-    let alive = true
-    async function loadDolarRate() {
-      setLoadingDolar(true)
-      try {
-        const res = await fetch('https://dolarapi.com/v1/dolares/blue')
-        if (!res.ok) throw new Error('No se pudo obtener dolar blue')
-        const data = (await res.json()) as { venta?: number; fechaActualizacion?: string }
-        if (!alive) return
-        if (typeof data.venta === 'number' && data.venta > 0) {
-          setDolarRate(data.venta)
-          setDolarUpdatedAt(data.fechaActualizacion ?? null)
-        } else {
-          setDolarRate(1100)
-          setDolarUpdatedAt(null)
-        }
-      } catch {
-        if (!alive) return
-        setDolarRate(1100)
-        setDolarUpdatedAt(null)
-      } finally {
-        if (alive) setLoadingDolar(false)
-      }
-    }
-    void loadDolarRate()
-    return () => {
-      alive = false
-    }
-  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -251,9 +220,10 @@ export function EquiposUsadosDetallePage() {
         incluye_cargador: false,
       })
       setFotoFile(null)
-      await load()
+      await queryClient.invalidateQueries({ queryKey: qk.inventario.equipos })
+      await queryClient.invalidateQueries({ queryKey: qk.inventario.equiposUsados })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear equipo usado')
+      setActionError(err instanceof Error ? err.message : 'Error al crear equipo usado')
     } finally {
       setSaving(false)
     }
@@ -287,7 +257,7 @@ export function EquiposUsadosDetallePage() {
     e.preventDefault()
     if (!editDetalle) return
     setBusyId(editDetalle.id_detalle_usado)
-    setError(null)
+    setActionError(null)
     try {
       const precioArs = editForm.precio_ars === '' ? null : parseNumberEsAr(String(editForm.precio_ars))
       const precioUsd =
@@ -316,59 +286,40 @@ export function EquiposUsadosDetallePage() {
       setEditDetalle(null)
       setEditFotoFile(null)
       setEditFotoPreview(null)
-      await load()
+      await queryClient.invalidateQueries({ queryKey: qk.inventario.equipos })
+      await queryClient.invalidateQueries({ queryKey: qk.inventario.equiposUsados })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar cambios')
+      setActionError(err instanceof Error ? err.message : 'Error al guardar cambios')
     } finally {
       setBusyId(null)
     }
   }
 
-  async function handleToggleActivo(r: EquipoUsadoDetalle) {
+  function handleToggleActivo(r: EquipoUsadoDetalle) {
     const equipo = equiposById.get(r.id_equipo)
     if (!equipo) return
-    setBusyId(r.id_detalle_usado)
-    setError(null)
-    try {
-      await inventarioApi.equipos.patch(r.id_equipo, { activo: !equipo.activo })
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cambiar estado')
-    } finally {
-      setBusyId(null)
-    }
+    setActionError(null)
+    toggleActivo.mutate({ id: r.id_equipo, activo: !equipo.activo }, {
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al cambiar estado'),
+    })
   }
 
-  async function handleDeleteFoto(r: EquipoUsadoDetalle) {
+  function handleDeleteFoto(r: EquipoUsadoDetalle) {
     if (!window.confirm('¿Eliminar la foto del equipo?')) return
-    setBusyId(r.id_detalle_usado)
-    setError(null)
-    try {
-      await inventarioApi.equipos.deleteFoto(r.id_equipo)
-      setEditFotoFile(null)
-      setEditFotoPreview(null)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al eliminar foto')
-    } finally {
-      setBusyId(null)
-    }
+    setActionError(null)
+    eliminarFoto.mutate(r.id_equipo, {
+      onSuccess: () => { setEditFotoFile(null); setEditFotoPreview(null) },
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al eliminar foto'),
+    })
   }
 
-  async function handleDelete(r: EquipoUsadoDetalle) {
+  function handleDelete(r: EquipoUsadoDetalle) {
     if (!window.confirm(`¿Eliminar definitivamente el equipo #${r.id_equipo}? Esta acción no se puede deshacer.`)) return
-    setBusyId(r.id_detalle_usado)
-    setError(null)
-    try {
-      await inventarioApi.equiposUsadosDetalle.delete(r.id_detalle_usado)
-      await inventarioApi.equipos.delete(r.id_equipo)
-      if (editDetalle?.id_detalle_usado === r.id_detalle_usado) setEditDetalle(null)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al eliminar')
-    } finally {
-      setBusyId(null)
-    }
+    setActionError(null)
+    if (editDetalle?.id_detalle_usado === r.id_detalle_usado) setEditDetalle(null)
+    eliminarEquipo.mutate({ idDetalle: r.id_detalle_usado, idEquipo: r.id_equipo }, {
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al eliminar'),
+    })
   }
 
   return (
@@ -377,6 +328,7 @@ export function EquiposUsadosDetallePage() {
       <p className="lead">Alta rápida de equipos usados y su detalle en un único formulario.</p>
 
       {error ? <div className="msg-error">{error}</div> : null}
+
 
       <div className="panel">
         <h2>Nuevo equipo usado</h2>
@@ -411,15 +363,16 @@ export function EquiposUsadosDetallePage() {
 
             <label>
               Capacidad (GB)
-              <input
-                type="number"
-                min={1}
-                step={1}
+              <select
                 value={form.capacidad_gb}
                 onChange={(e) => setForm((f) => ({ ...f, capacidad_gb: e.target.value }))}
-                placeholder="Ej: 128"
                 required
-              />
+              >
+                <option value="">Seleccionar…</option>
+                {CAPACIDAD_OPTIONS.map((v) => (
+                  <option key={v} value={v}>{v} GB</option>
+                ))}
+              </select>
             </label>
 
             <label>
@@ -487,19 +440,17 @@ export function EquiposUsadosDetallePage() {
             </div>
 
             <label>
-              Batería
-              <select
+              Batería (%)
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
                 value={form.bateria_porcentaje}
                 onChange={(e) => setForm((f) => ({ ...f, bateria_porcentaje: e.target.value }))}
+                placeholder="Ej: 87"
                 required
-              >
-                <option value="">Seleccionar…</option>
-                {BATERIA_OPTIONS.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
 
             <label>
@@ -623,16 +574,16 @@ export function EquiposUsadosDetallePage() {
                 />
               </label>
               <label>
-                Batería
-                <select
+                Batería (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
                   value={editForm.bateria_porcentaje}
                   onChange={(e) => setEditForm((f) => ({ ...f, bateria_porcentaje: e.target.value }))}
-                >
-                  <option value="">Seleccionar…</option>
-                  {BATERIA_OPTIONS.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
+                  placeholder="Ej: 87"
+                />
               </label>
               <label>
                 Estado estético
