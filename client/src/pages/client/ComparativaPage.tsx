@@ -30,6 +30,7 @@ type ModelSpec = {
   pantalla: string
   hz: string
   bateria: string
+  almacenamiento: string
   zoom?: string
   chip?: string
   cargador: string
@@ -38,33 +39,52 @@ type ModelSpec = {
 type SpecRow = { key: keyof ModelSpec; label: string }
 
 const IPHONE_MODELS: ModelSpec[] = [
-  { id: 'ip13',       name: 'iPhone 13',         image: ip13,    pantalla: '6.1"', hz: '60 Hz',  zoom: '0.5x – 2x',    bateria: 'Buena',         cargador: 'Lightning' },
-  { id: 'ip13pro',    name: 'iPhone 13 Pro',      image: ip13Pro, pantalla: '6.1"', hz: '120 Hz', zoom: '3x',            bateria: 'Muy buena',      cargador: 'Lightning' },
-  { id: 'ip13promax', name: 'iPhone 13 Pro Max',  image: ip13Pro, pantalla: '6.7"', hz: '120 Hz', zoom: '3x',            bateria: '🔥 Excelente',   cargador: 'Lightning' },
-  { id: 'ip14',       name: 'iPhone 14',          image: ip14,    pantalla: '6.1"', hz: '60 Hz',  zoom: '0.5x – 2x',    bateria: 'Mejor',          cargador: 'Lightning' },
-  { id: 'ip14pro',    name: 'iPhone 14 Pro',      image: ip14Pro, pantalla: '6.1"', hz: '120 Hz', zoom: '3x',            bateria: 'Muy buena',      cargador: 'Lightning' },
-  { id: 'ip14promax', name: 'iPhone 14 Pro Max',  image: ip14Pro, pantalla: '6.7"', hz: '120 Hz', zoom: '3x',            bateria: '🔥 Excelente',   cargador: 'Lightning' },
-  { id: 'ip15',       name: 'iPhone 15',          image: ip15,    pantalla: '6.1"', hz: '60 Hz',  zoom: '0.5x – 2x',    bateria: 'Igual',          cargador: 'USB-C' },
-  { id: 'ip15pro',    name: 'iPhone 15 Pro',      image: ip15Pro, pantalla: '6.1"', hz: '120 Hz', zoom: '3x',            bateria: 'Muy buena',      cargador: 'USB-C' },
-  { id: 'ip15promax', name: 'iPhone 15 Pro Max',  image: ip15Pro, pantalla: '6.7"', hz: '120 Hz', zoom: '5x',            bateria: '🔥 Excelente',   cargador: 'USB-C' },
-  { id: 'ip16',       name: 'iPhone 16',          image: ip16,    pantalla: '6.1"', hz: '60 Hz',  zoom: '0.5x – 2x',    bateria: 'Mejor',          cargador: 'USB-C' },
-  { id: 'ip16pro',    name: 'iPhone 16 Pro',      image: ip16Pro, pantalla: '6.3"', hz: '120 Hz', zoom: '5x',            bateria: 'Mejorada',       cargador: 'USB-C' },
-  { id: 'ip16promax', name: 'iPhone 16 Pro Max',  image: ip16Pro, pantalla: '6.9"', hz: '120 Hz', zoom: '5x',            bateria: '🔥 Top',         cargador: 'USB-C' },
-  { id: 'ip17',       name: 'iPhone 17',          image: ip17,    pantalla: '6.3"', hz: '60 Hz',  zoom: '2x',            bateria: 'Muy buena',      cargador: 'USB-C' },
-  { id: 'ip17pro',    name: 'iPhone 17 Pro',      image: ip17Pro, pantalla: '6.3"', hz: '120 Hz', zoom: '🔥 hasta 8x',   bateria: 'Muy buena',      cargador: 'USB-C' },
-  { id: 'ip17promax', name: 'iPhone 17 Pro Max',  image: ip17Pro, pantalla: '6.9"', hz: '120 Hz', zoom: '🔥🔥 hasta 8x', bateria: '🔥 Top',         cargador: 'USB-C' },
+  // ── Línea 13 ──
+  { id: 'ip13',       name: 'iPhone 13',        image: ip13,    pantalla: '6.1"', hz: '60 Hz',  zoom: '2x',           almacenamiento: '128 / 256 / 512 GB',  bateria: 'Buena',        cargador: 'Lightning' },
+  { id: 'ip13pro',    name: 'iPhone 13 Pro',     image: ip13Pro, pantalla: '6.1"', hz: '120 Hz', zoom: '3x',           almacenamiento: '128 GB – 1 TB',  bateria: 'Muy buena',    cargador: 'Lightning' },
+  { id: 'ip13promax', name: 'iPhone 13 Pro Max', image: ip13Pro, pantalla: '6.7"', hz: '120 Hz', zoom: '3x',           almacenamiento: '128 GB – 1 TB',  bateria: '🔥 Excelente', cargador: 'Lightning' },
+  // ── Línea 14 ──
+  { id: 'ip14',       name: 'iPhone 14',         image: ip14,    pantalla: '6.1"', hz: '60 Hz',  zoom: '2x',           almacenamiento: '128 / 256 / 512 GB',  bateria: 'Mejor',        cargador: 'Lightning' },
+  { id: 'ip14pro',    name: 'iPhone 14 Pro',      image: ip14Pro, pantalla: '6.1"', hz: '120 Hz', zoom: '3x',           almacenamiento: '128 GB – 1 TB',  bateria: 'Muy buena',    cargador: 'Lightning' },
+  { id: 'ip14promax', name: 'iPhone 14 Pro Max',  image: ip14Pro, pantalla: '6.7"', hz: '120 Hz', zoom: '3x',           almacenamiento: '128 GB – 1 TB',  bateria: '🔥 Excelente', cargador: 'Lightning' },
+  // ── Línea 15 ──
+  { id: 'ip15',       name: 'iPhone 15',          image: ip15,    pantalla: '6.1"', hz: '60 Hz',  zoom: '2x',           almacenamiento: '128 / 256 / 512 GB',  bateria: 'Igual',        cargador: 'USB-C' },
+  { id: 'ip15pro',    name: 'iPhone 15 Pro',      image: ip15Pro, pantalla: '6.1"', hz: '120 Hz', zoom: '3x',           almacenamiento: '128 GB – 1 TB',  bateria: 'Muy buena',    cargador: 'USB-C' },
+  { id: 'ip15promax', name: 'iPhone 15 Pro Max',  image: ip15Pro, pantalla: '6.7"', hz: '120 Hz', zoom: '5x',           almacenamiento: '256 GB – 1 TB',  bateria: '🔥 Excelente', cargador: 'USB-C' },
+  // ── Línea 16 ──
+  { id: 'ip16',       name: 'iPhone 16',          image: ip16,    pantalla: '6.1"', hz: '60 Hz',  zoom: '2x',           almacenamiento: '128 / 256 / 512 GB',  bateria: 'Mejor',        cargador: 'USB-C' },
+  { id: 'ip16pro',    name: 'iPhone 16 Pro',      image: ip16Pro, pantalla: '6.3"', hz: '120 Hz', zoom: '5x',           almacenamiento: '128 GB – 1 TB',  bateria: 'Mejorada',     cargador: 'USB-C' },
+  { id: 'ip16promax', name: 'iPhone 16 Pro Max',  image: ip16Pro, pantalla: '6.9"', hz: '120 Hz', zoom: '5x',           almacenamiento: '256 GB – 1 TB',  bateria: '🔥 Top',       cargador: 'USB-C' },
+  // ── Línea 17 ──
+  { id: 'ip17',       name: 'iPhone 17',          image: ip17,    pantalla: '6.3"', hz: '60 Hz',  zoom: '2x',           almacenamiento: '128 / 256 / 512 GB',  bateria: 'Muy buena',    cargador: 'USB-C' },
+  { id: 'ip17pro',    name: 'iPhone 17 Pro',      image: ip17Pro, pantalla: '6.3"', hz: '120 Hz', zoom: '🔥 hasta 8x',  almacenamiento: '256 GB – 1 TB',  bateria: 'Muy buena',    cargador: 'USB-C' },
+  { id: 'ip17promax', name: 'iPhone 17 Pro Max',  image: ip17Pro, pantalla: '6.9"', hz: '120 Hz', zoom: '🔥🔥 hasta 8x',almacenamiento: '256 GB – 1 TB',  bateria: '🔥 Top',       cargador: 'USB-C' },
 ]
 
 const IPAD_MODELS: ModelSpec[] = [
-  { id: 'ipad',    name: 'iPad',      image: ipadImg, pantalla: '10.9"',      hz: '60 Hz',  chip: 'A14 Bionic',      bateria: 'Buena',         cargador: 'USB-C' },
-  { id: 'ipadair', name: 'iPad Air',  image: ipadImg, pantalla: '11" / 13"',  hz: '60 Hz',  chip: 'M2 / M3 / M4',   bateria: 'Muy buena 🔥',  cargador: 'USB-C' },
-  { id: 'ipadpro', name: 'iPad Pro',  image: ipadImg, pantalla: '11" / 13"',  hz: '120 Hz', chip: 'M4',              bateria: '🔥🔥 Top',      cargador: 'USB-C' },
+  // ── iPad (base) ──
+  { id: 'ipad9',       name: 'iPad 9ª gen',       image: ipadImg, pantalla: '10.2"',      hz: '60 Hz',  chip: 'A13 Bionic', almacenamiento: '64 / 256 GB',   bateria: 'Buena',    cargador: 'Lightning' },
+  { id: 'ipad10',      name: 'iPad 10ª gen',      image: ipadImg, pantalla: '10.9"',      hz: '60 Hz',  chip: 'A14 Bionic', almacenamiento: '64 / 256 GB',   bateria: 'Buena',    cargador: 'USB-C'     },
+  // ── iPad mini ──
+  { id: 'ipadmini6',   name: 'iPad mini 6ª gen',  image: ipadImg, pantalla: '8.3"',       hz: '60 Hz',  chip: 'A15 Bionic', almacenamiento: '64 / 256 GB',   bateria: 'Buena',    cargador: 'USB-C'     },
+  { id: 'ipadmini7',   name: 'iPad mini 7ª gen',  image: ipadImg, pantalla: '8.3"',       hz: '60 Hz',  chip: 'A17 Pro',    almacenamiento: '128 / 256 / 512 GB', bateria: 'Muy buena', cargador: 'USB-C' },
+  // ── iPad Air ──
+  { id: 'ipadairm1',   name: 'iPad Air M1',       image: ipadImg, pantalla: '10.9"',      hz: '60 Hz',  chip: 'M1',         almacenamiento: '64 / 256 GB',   bateria: 'Muy buena',cargador: 'USB-C'     },
+  { id: 'ipadairm2',   name: 'iPad Air M2',       image: ipadImg, pantalla: '11" / 13"',  hz: '60 Hz',  chip: 'M2',         almacenamiento: '128 GB – 1 TB',  bateria: 'Muy buena',    cargador: 'USB-C'      },
+  { id: 'ipadairm3',   name: 'iPad Air M3',       image: ipadImg, pantalla: '11" / 13"',  hz: '60 Hz',  chip: 'M3',         almacenamiento: '128 GB – 1 TB',  bateria: 'Muy buena 🔥', cargador: 'USB-C'      },
+  // ── iPad Pro ──
+  { id: 'ipadprom1',   name: 'iPad Pro M1',       image: ipadImg, pantalla: '11" / 12.9"',hz: '120 Hz', chip: 'M1',         almacenamiento: '128 GB – 2 TB',  bateria: '🔥 Top',       cargador: 'USB-C / TB3'},
+  { id: 'ipadprom2',   name: 'iPad Pro M2',       image: ipadImg, pantalla: '11" / 12.9"',hz: '120 Hz', chip: 'M2',         almacenamiento: '128 GB – 2 TB',  bateria: '🔥 Top',       cargador: 'USB-C / TB3'},
+  { id: 'ipadprom4',   name: 'iPad Pro M4',       image: ipadImg, pantalla: '11" / 13"',  hz: '120 Hz', chip: 'M4',         almacenamiento: '256 GB – 2 TB',  bateria: '🔥🔥 Top',     cargador: 'USB-C / TB4'},
 ]
 
 const MACBOOK_MODELS: ModelSpec[] = [
-  { id: 'macbookair', name: 'MacBook Air', image: macAir, pantalla: '13.6" / 15.3"', hz: '60 Hz',  chip: 'M1 / M2 / M3 / M4',          bateria: 'Muy buena 🔥', cargador: 'USB-C' },
-  { id: 'macbookpro', name: 'MacBook Pro', image: macPro, pantalla: '14.2" / 16.2"', hz: '120 Hz', chip: 'M1 Pro – M4 Pro / Max',       bateria: '🔥🔥 Top',     cargador: 'USB-C' },
-  { id: 'macbookneo', name: 'MacBook Neo', image: macAir, pantalla: '13" aprox.',    hz: '60 Hz',  chip: 'M2 / M3',                     bateria: 'Buena',        cargador: 'USB-C' },
+  { id: 'macbookairm1', name: 'MacBook Air M1', image: macAir, pantalla: '13.3"',         hz: '60 Hz',  chip: 'M1',          almacenamiento: '256 GB – 2 TB', bateria: 'Muy buena',    cargador: 'USB-C' },
+  { id: 'macbookairm2', name: 'MacBook Air M2', image: macAir, pantalla: '13.6"',         hz: '60 Hz',  chip: 'M2',          almacenamiento: '256 GB – 2 TB', bateria: 'Muy buena 🔥', cargador: 'USB-C' },
+  { id: 'macbookairm3', name: 'MacBook Air M3', image: macAir, pantalla: '13.6" / 15.3"', hz: '60 Hz',  chip: 'M3',          almacenamiento: '256 GB – 2 TB', bateria: '🔥 Excelente', cargador: 'USB-C' },
+  { id: 'macbookairm4', name: 'MacBook Air M4', image: macAir, pantalla: '13.6" / 15.3"', hz: '60 Hz',  chip: 'M4',          almacenamiento: '256 GB – 2 TB', bateria: '🔥 Excelente', cargador: 'USB-C' },
+  { id: 'macbookpro14', name: 'MacBook Pro 14"',image: macPro, pantalla: '14.2"',         hz: '120 Hz', chip: 'M3 / M4 Pro', almacenamiento: '512 GB – 4 TB', bateria: '🔥 Top',       cargador: 'USB-C' },
+  { id: 'macbookpro16', name: 'MacBook Pro 16"',image: macPro, pantalla: '16.2"',         hz: '120 Hz', chip: 'M3 / M4 Max', almacenamiento: '512 GB – 8 TB', bateria: '🔥🔥 Top',     cargador: 'USB-C' },
 ]
 
 const MODELS_MAP: Record<Category, ModelSpec[]> = {
@@ -74,19 +94,21 @@ const MODELS_MAP: Record<Category, ModelSpec[]> = {
 }
 
 const IPHONE_SPECS: SpecRow[] = [
-  { key: 'pantalla', label: 'Pantalla' },
-  { key: 'hz',       label: 'Hz' },
-  { key: 'zoom',     label: 'Zoom óptico' },
-  { key: 'bateria',  label: 'Batería' },
-  { key: 'cargador', label: 'Conector' },
+  { key: 'pantalla',       label: 'Pantalla' },
+  { key: 'hz',             label: 'Refresco' },
+  { key: 'almacenamiento', label: 'Almacenamiento' },
+  { key: 'zoom',           label: 'Zoom óptico' },
+  { key: 'bateria',        label: 'Batería' },
+  { key: 'cargador',       label: 'Conector' },
 ]
 
 const OTHER_SPECS: SpecRow[] = [
-  { key: 'pantalla', label: 'Pantalla' },
-  { key: 'hz',       label: 'Hz' },
-  { key: 'chip',     label: 'Chip' },
-  { key: 'bateria',  label: 'Batería' },
-  { key: 'cargador', label: 'Conector' },
+  { key: 'pantalla',       label: 'Pantalla' },
+  { key: 'hz',             label: 'Refresco' },
+  { key: 'chip',           label: 'Chip' },
+  { key: 'almacenamiento', label: 'Almacenamiento' },
+  { key: 'bateria',        label: 'Batería' },
+  { key: 'cargador',       label: 'Conector' },
 ]
 
 const CATEGORY_LABELS: Record<Category, string> = {
