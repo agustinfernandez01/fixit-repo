@@ -1,0 +1,17 @@
+# Dependencias
+node_modules/
+src/app/venv/
+src/venv/
+
+# Variables de entorno
+.env
+.env.*
+src/.env
+src/.env.*
+
+# Build
+client/dist/
+
+# Otros
+.git/
+.claude/

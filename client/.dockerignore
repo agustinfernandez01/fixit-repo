@@ -1,0 +1,8 @@
+# Dependencias - Docker las instala solo
+node_modules/
+# Build anterior - se genera dentro del contenedor
+dist/
+# Variables de entorno
+.env
+.env.*
+.env.local

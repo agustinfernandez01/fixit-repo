@@ -1,0 +1,13 @@
+# Entorno virtual - Docker instala sus propias dependencias
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+# Variables de entorno - se pasan por docker-compose, no se copian
+.env
+.env.*
+# Archivos de desarrollo
+.pytest_cache/
+*.egg-info/
+.coverage

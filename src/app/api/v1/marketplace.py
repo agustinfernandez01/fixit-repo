@@ -102,13 +102,15 @@ def _build_marketplace_whatsapp_url(
     )
     comprador_contacto = comprador.telefono if comprador and comprador.telefono else (comprador.email if comprador else "sin contacto")
     precio = str(publicacion.precio_publicado) if publicacion.precio_publicado is not None else None
+    linea_precio = f"Precio publicado: ${precio}.\n" if precio else ""
+    linea_mensaje = f"Mensaje: {mensaje_interes.strip()}\n" if mensaje_interes and mensaje_interes.strip() else ""
     mensaje = (
         f"Hola! Estoy interesado en {equipo}.\n"
         f"Publicación: {titulo} (#{publicacion.id_publicacion})\n"
         f"Mi nombre es {comprador_nombre}.\n"
         f"Mi contacto: {comprador_contacto}\n"
-        f"{f'Precio publicado: ${precio}.\n' if precio else ''}"
-        f"{f'Mensaje: {mensaje_interes.strip()}\n' if mensaje_interes and mensaje_interes.strip() else ''}"
+        f"{linea_precio}"
+        f"{linea_mensaje}"
         f"Cuando puedas, coordinamos."
     )
     return f"https://wa.me/{phone}?text={quote(mensaje)}"
