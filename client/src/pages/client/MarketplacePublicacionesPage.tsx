@@ -35,8 +35,8 @@ export default function MarketplacePublicacionesPage() {
       <section className="mx-auto max-w-6xl px-6 pb-16 pt-10">
         <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-1.5 text-[11px] tracking-widest text-gray-300 uppercase">Fix It · marketplace</p>
-            <h1 className="text-3xl font-black tracking-tight text-gray-900">Equipos publicados por clientes</h1>
+            <p className="mb-1.5 text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">Fix It · marketplace</p>
+            <h1 className="text-4xl font-semibold tracking-[-0.03em] text-neutral-900">Equipos publicados por clientes</h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-400">
               Catálogo de equipos publicados por otros clientes. Entra al detalle para ver fotos, especificaciones y
               registrar tu interés.

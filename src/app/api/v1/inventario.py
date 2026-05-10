@@ -85,6 +85,9 @@ def _equipo_configuracion_payload(eq: Equipo) -> list[dict]:
 
 
 def _equipo_response_payload(eq: Equipo) -> dict:
+    producto = getattr(eq, "producto", None)
+    precio_ars = float(producto.precio) if producto and producto.precio is not None else None
+    precio_usd = float(producto.precio_usd) if producto and producto.precio_usd is not None else None
     return {
         "id": int(eq.id),
         "id_modelo": int(eq.id_modelo),
@@ -96,6 +99,8 @@ def _equipo_response_payload(eq: Equipo) -> dict:
         "id_producto": eq.id_producto,
         "foto_url": eq.foto_url,
         "fecha_ingreso": eq.fecha_ingreso,
+        "precio_ars": precio_ars,
+        "precio_usd": precio_usd,
         "configuracion": _equipo_configuracion_payload(eq),
     }
 
@@ -453,6 +458,7 @@ def listar_equipos(
             db.query(Equipo)
             .options(
                 joinedload(Equipo.modelo),
+                joinedload(Equipo.producto),
                 joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
                 joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
             )
@@ -465,7 +471,13 @@ def listar_equipos(
         if not _is_missing_variaciones_table(exc):
             raise
         variaciones_disponibles = False
-        rows = db.query(Equipo).options(joinedload(Equipo.modelo)).offset(skip).limit(limit).all()
+        rows = (
+            db.query(Equipo)
+            .options(joinedload(Equipo.modelo), joinedload(Equipo.producto))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
     for row in rows:
         row.foto_url = _foto_url_si_existe(row.foto_url)
     return [
@@ -490,6 +502,9 @@ def crear_equipo_usado(payload: EquipoCreate, db: Session = Depends(get_db)):
 def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forzado: str):
     data = payload.model_dump()
     data["estado_comercial"] = estado_forzado
+    # La columna imei tiene NOT NULL en la BD; convertir None a cadena vacía.
+    if data.get("imei") is None:
+        data["imei"] = ""
     validar_atributos_requeridos = estado_forzado != "usado"
     opciones_ids = [int(x) for x in (data.pop("opciones_configuracion_ids", []) or []) if int(x) > 0]
     capacidad_gb_input = data.pop("capacidad_gb", None)

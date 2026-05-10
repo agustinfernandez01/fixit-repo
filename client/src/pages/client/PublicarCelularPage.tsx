@@ -131,10 +131,10 @@ export default function PublicarCelularPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold tracking-widest text-gray-300 uppercase">
-                    Marketplace
+                  <p className="text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">
+                    Fix It · vender
                   </p>
-                  <h1 className="mt-1 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">
+                  <h1 className="mt-1 text-4xl font-semibold tracking-[-0.03em] text-neutral-900 sm:text-4xl">
                     Publicá tu celular
                   </h1>
                 </div>

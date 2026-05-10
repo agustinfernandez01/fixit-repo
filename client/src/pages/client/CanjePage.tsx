@@ -18,6 +18,7 @@ import type { ProductoCompra } from '../../types/carrito'
 type ProductConditionFilter = 'todos' | 'nuevo' | 'usado'
 
 type CanjeForm = {
+  nombre_modelo: string
   id_modelo_canje: string
   bateria_intervalo: string
   estado_estetico: string
@@ -26,6 +27,7 @@ type CanjeForm = {
 }
 
 const emptyForm: CanjeForm = {
+  nombre_modelo: '',
   id_modelo_canje: '',
   bateria_intervalo: '',
   estado_estetico: '',
@@ -81,10 +83,7 @@ export default function CanjePage() {
   const currentUserId = getCurrentUserId()
 
   const productosCanjeables = useMemo(
-    () =>
-      productos.filter(
-        (p) => p.activo && (p.tipo_producto === 'equipo' || p.tipo_producto == null) && !isRepairProduct(p),
-      ),
+    () => productos.filter((p) => p.activo && p.tipo_producto === 'equipo' && !isRepairProduct(p)),
     [productos],
   )
 
@@ -95,6 +94,26 @@ export default function CanjePage() {
         .sort((a, b) => compareIphoneModelNames(modelLabel(a), modelLabel(b))),
     [modelos],
   )
+
+  // Nombres únicos de modelo para el primer select
+  const nombresModelo = useMemo(() => {
+    const seen = new Set<string>()
+    return modelosActivos
+      .map((m) => m.nombre_modelo)
+      .filter((name) => {
+        if (seen.has(name)) return false
+        seen.add(name)
+        return true
+      })
+  }, [modelosActivos])
+
+  // Capacidades disponibles para el modelo seleccionado
+  const capacidadesDisponibles = useMemo(() => {
+    if (!form.nombre_modelo) return []
+    return modelosActivos
+      .filter((m) => m.nombre_modelo === form.nombre_modelo)
+      .sort((a, b) => (a.capacidad_gb ?? 0) - (b.capacidad_gb ?? 0))
+  }, [modelosActivos, form.nombre_modelo])
 
   const productosFiltrados = useMemo(() => {
     if (conditionFilter === 'todos') return productosCanjeables
@@ -178,6 +197,12 @@ export default function CanjePage() {
     }
   }, [])
 
+  // Al cambiar el nombre del modelo: resetea capacidad y batería
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, id_modelo_canje: '', bateria_intervalo: '' }))
+  }, [form.nombre_modelo])
+
+  // Al cambiar la capacidad (id_modelo_canje): resetea batería
   useEffect(() => {
     setForm((prev) => ({ ...prev, bateria_intervalo: '' }))
   }, [form.id_modelo_canje])
@@ -197,15 +222,20 @@ export default function CanjePage() {
       return
     }
 
+    if (!form.nombre_modelo) {
+      setError('Seleccioná el modelo de tu equipo.')
+      return
+    }
+
     const idModelo = Number(form.id_modelo_canje)
     if (!Number.isInteger(idModelo) || idModelo <= 0) {
-      setError('Selecciona un modelo de equipo del listado.')
+      setError('Seleccioná la capacidad de tu equipo.')
       return
     }
 
     const selectedModelo = modelosActivos.find((m) => m.id_modelo_canje === idModelo)
     if (!selectedModelo) {
-      setError('Selecciona un modelo valido para cotizar el canje.')
+      setError('Seleccioná un modelo válido para cotizar el canje.')
       return
     }
 
@@ -315,8 +345,8 @@ export default function CanjePage() {
     <div className="bg-white">
       <section className="mx-auto max-w-6xl px-6 pb-16 pt-10">
         <div className="rounded-3xl border border-gray-100 bg-gradient-to-r from-gray-900 to-gray-700 px-6 py-8 text-white sm:px-8">
-          <p className="text-[11px] tracking-widest text-gray-300 uppercase">Fix It · canje</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Calcula tu canje en minutos</h1>
+          <p className="text-[10px] font-medium tracking-[0.22em] text-gray-300 uppercase">Fix It · canje</p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-[-0.03em]">Calcula tu canje en minutos</h1>
           <p className="mt-3 max-w-2xl text-sm text-gray-100/90">
             Carga tu equipo, elegi el producto que queres y te mostramos la diferencia exacta a pagar.
           </p>
@@ -349,18 +379,41 @@ export default function CanjePage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-gray-500">Modelo y capacidad</span>
+                <label>
+                  <span className="mb-1 block text-xs font-medium text-gray-500">Modelo</span>
                   <select
-                    value={form.id_modelo_canje}
-                    onChange={(ev) => setForm((prev) => ({ ...prev, id_modelo_canje: ev.target.value }))}
+                    value={form.nombre_modelo}
+                    onChange={(ev) => setForm((prev) => ({ ...prev, nombre_modelo: ev.target.value }))}
                     className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400"
+                    disabled={loadingConfigCanje}
                     required
                   >
                     <option value="">Seleccionar...</option>
-                    {modelosActivos.map((m) => (
+                    {nombresModelo.map((nombre) => (
+                      <option key={nombre} value={nombre}>
+                        {nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span className="mb-1 block text-xs font-medium text-gray-500">Capacidad</span>
+                  <select
+                    value={form.id_modelo_canje}
+                    onChange={(ev) => setForm((prev) => ({ ...prev, id_modelo_canje: ev.target.value }))}
+                    className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400 disabled:opacity-50"
+                    disabled={!form.nombre_modelo || loadingConfigCanje}
+                    required
+                  >
+                    {!form.nombre_modelo ? (
+                      <option value="">Primero elegí modelo...</option>
+                    ) : (
+                      <option value="">Seleccionar...</option>
+                    )}
+                    {capacidadesDisponibles.map((m) => (
                       <option key={m.id_modelo_canje} value={m.id_modelo_canje}>
-                        {modelLabel(m)}
+                        {m.capacidad_gb != null ? `${m.capacidad_gb} GB` : 'Sin especificar'}
                       </option>
                     ))}
                   </select>
@@ -491,7 +544,7 @@ export default function CanjePage() {
 
               {form.id_modelo_canje && !loadingConfigCanje && intervalosBateria.length === 0 ? (
                 <p className="mt-3 text-xs text-amber-700">
-                  Este modelo no tiene intervalos de bateria configurados para cotizar. Elegi otro modelo.
+                  Esta capacidad no tiene intervalos de batería configurados. Probá con otra capacidad o modelo.
                 </p>
               ) : null}
             </div>

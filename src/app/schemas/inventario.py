@@ -162,6 +162,8 @@ class EquipoUpdate(BaseModel):
 class EquipoResponse(EquipoBase):
     id: int
     fecha_ingreso: Optional[datetime] = None
+    precio_ars: Optional[Decimal] = None
+    precio_usd: Optional[Decimal] = None
     configuracion: list["EquipoConfiguracionResponse"] = []
 
     class Config:

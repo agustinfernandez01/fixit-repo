@@ -342,7 +342,7 @@ export function EquiposPage() {
         inventarioApi.modelos.list(0, 100),
         productosApi.list(),
       ])
-      setRows(eq as EquipoRow[])
+      setRows((eq as EquipoRow[]).filter((r) => (r.estado_comercial ?? '').toLowerCase() === 'nuevo'))
       setModelos(mo.filter((m) => m.activo))
       const index: Record<number, ProductoCompra> = {}
       for (const p of productos) index[p.id] = p
@@ -640,7 +640,7 @@ export function EquiposPage() {
                   <option value="">Seleccionar…</option>
                   {modelos.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.nombre_modelo}{m.capacidad_gb != null ? ` · ${m.capacidad_gb} GB` : ''}
+                      {m.nombre_modelo}
                     </option>
                   ))}
                 </select>
@@ -702,14 +702,16 @@ export function EquiposPage() {
                   placeholder="Opcional"
                 />
               </label>
-              <label>
-                Color {selectedColorLabel ? `(${selectedColorLabel})` : ''}
-                <input
-                  value={form.color}
-                  onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                  placeholder={selectedModeloAtributos.some((a) => a.code.trim().toLowerCase() === 'color') ? 'Desde variación' : 'Ej: Negro'}
-                />
-              </label>
+              {!selectedModeloAtributos.some((a) => a.code.trim().toLowerCase() === 'color') ? (
+                <label>
+                  Color
+                  <input
+                    value={form.color}
+                    onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                    placeholder="Ej: Negro"
+                  />
+                </label>
+              ) : null}
               <label>
                 Tipo
                 <select

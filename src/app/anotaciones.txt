@@ -16,8 +16,7 @@ Contraseña: ClienteDemo2026!
 
 que hacer:
 
-- estetica de market, vender, reparaciones, canje
-- skeleton market
+- centralizar cards marketplace
 - dockerizar
 - deployar
 

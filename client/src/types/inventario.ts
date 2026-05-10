@@ -43,6 +43,8 @@ export type Equipo = {
   estado_comercial: string | null
   activo: boolean
   fecha_ingreso: string | null
+  precio_ars: number | null
+  precio_usd: number | null
   modelo: {
     id: number
     id_modelo?: number

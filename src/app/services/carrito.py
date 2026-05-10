@@ -16,6 +16,7 @@ from app.models.productos import Productos
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
 from app.schemas.carrito import CarritoDetalleBase, CarritoResumen
+from app.services.productos import _es_reparacion
 
 
 AVAILABILITY_CHECK_STATES = {
@@ -267,6 +268,10 @@ def _validar_cantidad_contra_stock_vendible(
     db: Session, id_producto: int, cantidad: int
 ) -> None:
     if cantidad < 1:
+        return
+    # Las reparaciones son servicios: no tienen stock físico y siempre se pueden agregar al carrito.
+    producto = db.query(Productos).filter(Productos.id == id_producto).first()
+    if producto and _es_reparacion(producto.nombre, producto.descripcion):
         return
     if not _hay_equipo_para_producto(db, id_producto) and not _hay_accesorio_para_producto(
         db, id_producto

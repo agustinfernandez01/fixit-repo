@@ -218,7 +218,8 @@ export default function ReparacionesPage() {
 
       <section className="mx-auto max-w-5xl px-6 pt-10 pb-14">
         <div className="mb-10 text-center">
-          <h1 className="text-4xl font-black tracking-tight text-neutral-900 sm:text-5xl">
+          <p className="mb-2 text-[10px] font-medium tracking-[0.22em] text-neutral-400 uppercase">Fix It · reparaciones</p>
+          <h1 className="text-4xl font-semibold tracking-[-0.03em] text-neutral-900 sm:text-5xl">
             Servicio técnico Fix It
           </h1>
         </div>
@@ -490,7 +491,7 @@ export default function ReparacionesPage() {
         </div>
 
         <div className="mt-14 text-center">
-          <h2 className="text-3xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl">Reparaciones más comunes</h2>
+          <h2 className="text-3xl font-semibold tracking-[-0.03em] text-neutral-900 sm:text-4xl">Reparaciones más comunes</h2>
           <p className="mt-2 text-sm text-neutral-500">Seleccioná un servicio para cotizar</p>
         </div>
 

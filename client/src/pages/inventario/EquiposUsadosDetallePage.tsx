@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { EquipoConModelo, EquipoUsadoDetalle, ModeloEquipo } from '../../types/inventario'
+import type { EquipoUsadoDetalle } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
 import { mediaUrl } from '../../services/api'
 import {
@@ -21,7 +21,6 @@ const TIPOS_EQUIPO = [
   { value: 'airpods', label: 'AirPods' },
 ]
 
-const CAPACIDAD_OPTIONS = [64, 128, 256, 512] as const
 const ESTADO_ESTATICA_OPTIONS = ['Excelente', 'Muy bueno', 'Bueno', 'Detalle leve']
 const ESTADO_FUNCIONAL_OPTIONS = ['Excelente', 'Muy bueno', 'Bueno', 'Con detalle']
 const DETALLE_PANTALLA_OPTIONS = ['Sin detalle', 'Rayón leve', 'Rayón visible', 'Detalle importante']
@@ -52,45 +51,41 @@ function formatUsdInput(value: number): string {
   return value.toFixed(2)
 }
 
+const EMPTY_FORM = {
+  nombre_modelo: '',
+  id_modelo: '' as string | number,
+  capacidad_gb: '' as string | number,
+  imei: '',
+  color: '',
+  tipo_equipo: '',
+  precio_ars: '' as string | number,
+  bateria_porcentaje: '' as string | number,
+  estado_estetico: '',
+  estado_funcional: '',
+  detalle_pantalla: '',
+  detalle_carcasa: '',
+  incluye_caja: false,
+  incluye_cargador: false,
+}
+
+
 export function EquiposUsadosDetallePage() {
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
-  const [editDetalle, setEditDetalle] = useState<EquipoUsadoDetalle | null>(null)
-  const [editForm, setEditForm] = useState({
-    color: '',
-    precio_ars: '' as string | number,
-    bateria_porcentaje: '' as string | number,
-    estado_estetico: '',
-    estado_funcional: '',
-    detalle_pantalla: '',
-    detalle_carcasa: '',
-    incluye_caja: false,
-    incluye_cargador: false,
-  })
+
+  // Unified edit state — null means "create mode"
+  const [editingIds, setEditingIds] = useState<{ idEquipo: number; idDetalle: number } | null>(null)
+
   const { data: dolarData, isLoading: loadingDolar } = useDolarBlue()
   const dolarRate = dolarData?.venta ?? null
   const dolarUpdatedAt = dolarData?.fechaActualizacion ?? null
+
   const [fotoFile, setFotoFile] = useState<File | null>(null)
   const [fotoPreview, setFotoPreview] = useState<string | null>(null)
-  const [editFotoFile, setEditFotoFile] = useState<File | null>(null)
-  const [editFotoPreview, setEditFotoPreview] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    id_modelo: '' as string | number,
-    capacidad_gb: '' as string | number,
-    imei: '',
-    color: '',
-    tipo_equipo: '',
-    precio_ars: '' as string | number,
-    bateria_porcentaje: '' as string | number,
-    estado_estetico: '',
-    estado_funcional: '',
-    detalle_pantalla: '',
-    detalle_carcasa: '',
-    incluye_caja: false,
-    incluye_cargador: false,
-  })
+
+  const [form, setForm] = useState(EMPTY_FORM)
 
   const { data: rows = [], isLoading: loadingRows, error: rowsError } = useEquiposUsadosDetalle()
   const { data: equiposData = [], isLoading: loadingEquipos } = useEquipos()
@@ -101,6 +96,8 @@ export function EquiposUsadosDetallePage() {
 
   const loading = loadingRows || loadingEquipos || loadingModelos
   const error = actionError ?? (rowsError ? (rowsError instanceof Error ? rowsError.message : 'Error al cargar') : null)
+
+  const isEditing = editingIds !== null
 
   const equipos = equiposData
   const modelos = modelosData.filter((m) => m.activo)
@@ -134,116 +131,176 @@ export function EquiposUsadosDetallePage() {
     [modelos, form.id_modelo],
   )
 
+  const nombresModelo = useMemo(() => {
+    const seen = new Set<string>()
+    return modelos
+      .map((m) => m.nombre_modelo)
+      .filter((name) => {
+        if (seen.has(name)) return false
+        seen.add(name)
+        return true
+      })
+      .sort()
+  }, [modelos])
+
+  const gbOpciones = useMemo(() => {
+    const gbAttr = selectedModelo?.atributos?.find((a) => {
+      const n = a.code.trim().toLowerCase()
+      return n === 'gb' || n === 'almacenamiento' || n === 'storage'
+    })
+    return (gbAttr?.opciones ?? []).filter((o) => o.activo).sort((a, b) => a.orden - b.orden)
+  }, [selectedModelo])
+
+  const colorOpciones = useMemo(() => {
+    const colorAttr = selectedModelo?.atributos?.find(
+      (a) => a.code.trim().toLowerCase() === 'color',
+    )
+    return (colorAttr?.opciones ?? []).filter((o) => o.activo).sort((a, b) => a.orden - b.orden)
+  }, [selectedModelo])
+
+  function resetForm() {
+    setForm(EMPTY_FORM)
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview)
+    setFotoFile(null)
+    setFotoPreview(null)
+    setEditingIds(null)
+    setActionError(null)
+  }
+
+  function pickFoto(file: File | null) {
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview)
+    setFotoFile(file)
+    setFotoPreview(file ? URL.createObjectURL(file) : null)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
+    setActionError(null)
+
     const idModelo = Number(form.id_modelo)
-    if (!Number.isFinite(idModelo) || idModelo < 1) {
-      setError('Elegí un modelo válido.')
-      return
+
+    if (!isEditing) {
+      if (!Number.isFinite(idModelo) || idModelo < 1) {
+        setActionError('Elegí un modelo válido.')
+        return
+      }
+      if (!form.tipo_equipo.trim()) {
+        setActionError('Elegí un tipo de equipo.')
+        return
+      }
     }
-    if (!form.tipo_equipo.trim()) {
-      setError('Elegí un tipo de equipo.')
-      return
-    }
+
     if (!form.bateria_porcentaje) {
-      setError('Elegí una opción de batería.')
+      setActionError('Elegí una opción de batería.')
       return
     }
+
     const precioArsRaw = String(form.precio_ars ?? '').trim()
     const precioArs = precioArsRaw === '' ? null : parseNumberEsAr(precioArsRaw)
     if (precioArsRaw !== '' && (!Number.isFinite(precioArs) || (precioArs ?? 0) < 0)) {
-      setError('Ingresá un precio ARS válido.')
+      setActionError('Ingresá un precio ARS válido.')
       return
     }
+
     const precioUsd =
       precioArs !== null && Number.isFinite(precioArs) && dolarRate && dolarRate > 0
         ? precioArs / dolarRate
         : null
-    const capacidadRaw = String(form.capacidad_gb ?? '').trim()
-    const capacidadModelo = selectedModelo?.capacidad_gb ?? null
-    const capacidadGb =
-      capacidadRaw !== ''
-        ? Number(capacidadRaw)
-        : capacidadModelo != null
-          ? Number(capacidadModelo)
-          : null
-    if (capacidadGb == null || !Number.isFinite(capacidadGb) || capacidadGb <= 0) {
-      setError('Ingresá la capacidad en GB para el equipo usado.')
+
+    const capacidadGb = form.capacidad_gb !== '' ? Number(form.capacidad_gb) : null
+    if (!isEditing && (capacidadGb == null || !Number.isFinite(capacidadGb) || capacidadGb <= 0)) {
+      setActionError('Seleccioná la capacidad del equipo.')
       return
     }
 
     setSaving(true)
-    try {
-      const createdEquipo = await inventarioApi.equipos.createUsado({
-        id_modelo: idModelo,
-        capacidad_gb: capacidadGb,
-        imei: form.imei.trim() || null,
-        color: form.color.trim() || null,
-        tipo_equipo: form.tipo_equipo.trim().toLowerCase(),
-        precio_ars: precioArs,
-        precio_usd: precioUsd,
-        activo: true,
-      })
-      const idEquipo = createdEquipo.id_equipo ?? createdEquipo.id
-      if (!idEquipo) throw new Error('No se pudo obtener el ID del equipo usado creado.')
 
-      if (fotoFile) {
-        await inventarioApi.equipos.uploadFoto(idEquipo, fotoFile, { setPrincipalTienda: true })
+    try {
+      if (isEditing) {
+        setBusyId(editingIds.idDetalle)
+        await Promise.all([
+          inventarioApi.equipos.patch(editingIds.idEquipo, {
+            color: form.color.trim() || null,
+            precio_ars: precioArs,
+            precio_usd: precioUsd,
+          }),
+          inventarioApi.equiposUsadosDetalle.patch(editingIds.idDetalle, {
+            bateria_porcentaje: form.bateria_porcentaje === '' ? null : Number(form.bateria_porcentaje),
+            estado_estetico: form.estado_estetico || null,
+            estado_funcional: form.estado_funcional || null,
+            detalle_pantalla: form.detalle_pantalla || null,
+            detalle_carcasa: form.detalle_carcasa || null,
+            incluye_caja: form.incluye_caja,
+            incluye_cargador: form.incluye_cargador,
+          }),
+        ])
+        if (fotoFile) {
+          await inventarioApi.equipos.uploadFoto(editingIds.idEquipo, fotoFile, { setPrincipalTienda: true })
+        }
+      } else {
+        const createdEquipo = await inventarioApi.equipos.createUsado({
+          id_modelo: idModelo,
+          capacidad_gb: capacidadGb,
+          imei: form.imei.trim() || null,
+          color: form.color.trim() || null,
+          tipo_equipo: form.tipo_equipo.trim().toLowerCase(),
+          precio_ars: precioArs,
+          precio_usd: precioUsd,
+          activo: true,
+        })
+        const idEquipo = createdEquipo.id_equipo ?? createdEquipo.id
+        if (!idEquipo) throw new Error('No se pudo obtener el ID del equipo usado creado.')
+
+        if (fotoFile) {
+          await inventarioApi.equipos.uploadFoto(idEquipo, fotoFile, { setPrincipalTienda: true })
+        }
+
+        await inventarioApi.equiposUsadosDetalle.create({
+          id_equipo: idEquipo,
+          bateria_porcentaje: Number(form.bateria_porcentaje),
+          estado_estetico: form.estado_estetico || null,
+          estado_funcional: form.estado_funcional || null,
+          detalle_pantalla: form.detalle_pantalla || null,
+          detalle_carcasa: form.detalle_carcasa || null,
+          incluye_caja: form.incluye_caja,
+          incluye_cargador: form.incluye_cargador,
+        })
       }
 
-      await inventarioApi.equiposUsadosDetalle.create({
-        id_equipo: idEquipo,
-        bateria_porcentaje: Number(form.bateria_porcentaje),
-        estado_estetico: form.estado_estetico || null,
-        estado_funcional: form.estado_funcional || null,
-        detalle_pantalla: form.detalle_pantalla || null,
-        detalle_carcasa: form.detalle_carcasa || null,
-        incluye_caja: form.incluye_caja,
-        incluye_cargador: form.incluye_cargador,
-      })
-
-      setForm({
-        id_modelo: '',
-        capacidad_gb: '',
-        imei: '',
-        color: '',
-        tipo_equipo: '',
-        precio_ars: '',
-        bateria_porcentaje: '',
-        estado_estetico: '',
-        estado_funcional: '',
-        detalle_pantalla: '',
-        detalle_carcasa: '',
-        incluye_caja: false,
-        incluye_cargador: false,
-      })
-      setFotoFile(null)
+      resetForm()
       await queryClient.invalidateQueries({ queryKey: qk.inventario.equipos })
       await queryClient.invalidateQueries({ queryKey: qk.inventario.equiposUsados })
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Error al crear equipo usado')
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : isEditing
+            ? 'Error al guardar cambios'
+            : 'Error al crear equipo usado',
+      )
     } finally {
       setSaving(false)
+      setBusyId(null)
     }
-  }
-
-  function pickFoto(file: File | null, setFile: (f: File | null) => void, setPreview: (u: string | null) => void) {
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview)
-    setFile(file)
-    setPreview(file ? URL.createObjectURL(file) : null)
   }
 
   function startEdit(r: EquipoUsadoDetalle) {
     const equipo = equiposById.get(r.id_equipo)
-    setEditDetalle(r)
-    setEditFotoFile(null)
-    setEditFotoPreview(null)
-    setEditForm({
-      color: equipo?.color ?? '',
-      precio_ars: equipo?.precio_ars ?? '',
-      bateria_porcentaje: r.bateria_porcentaje ?? '',
+    if (!equipo) return
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview)
+    setFotoFile(null)
+    setFotoPreview(null)
+    setActionError(null)
+    setEditingIds({ idEquipo: r.id_equipo, idDetalle: r.id_detalle_usado })
+    setForm({
+      nombre_modelo: equipo.modelo?.nombre_modelo ?? '',
+      id_modelo: equipo.id_modelo ?? equipo.modelo?.id ?? '',
+      capacidad_gb: equipo.modelo?.capacidad_gb != null ? String(equipo.modelo.capacidad_gb) : '',
+      imei: equipo.imei ?? '',
+      color: equipo.color ?? '',
+      tipo_equipo: equipo.tipo_equipo ?? '',
+      precio_ars: equipo.precio_ars != null ? String(equipo.precio_ars) : '',
+      bateria_porcentaje: r.bateria_porcentaje != null ? String(r.bateria_porcentaje) : '',
       estado_estetico: r.estado_estetico ?? '',
       estado_funcional: r.estado_funcional ?? '',
       detalle_pantalla: r.detalle_pantalla ?? '',
@@ -251,64 +308,28 @@ export function EquiposUsadosDetallePage() {
       incluye_caja: r.incluye_caja,
       incluye_cargador: r.incluye_cargador,
     })
-  }
-
-  async function handleEditSave(e: React.FormEvent) {
-    e.preventDefault()
-    if (!editDetalle) return
-    setBusyId(editDetalle.id_detalle_usado)
-    setActionError(null)
-    try {
-      const precioArs = editForm.precio_ars === '' ? null : parseNumberEsAr(String(editForm.precio_ars))
-      const precioUsd =
-        precioArs != null && Number.isFinite(precioArs) && dolarRate && dolarRate > 0
-          ? precioArs / dolarRate
-          : null
-      await Promise.all([
-        inventarioApi.equipos.patch(editDetalle.id_equipo, {
-          color: String(editForm.color).trim() || null,
-          precio_ars: precioArs,
-          precio_usd: precioUsd,
-        }),
-        inventarioApi.equiposUsadosDetalle.patch(editDetalle.id_detalle_usado, {
-          bateria_porcentaje: editForm.bateria_porcentaje === '' ? null : Number(editForm.bateria_porcentaje),
-          estado_estetico: editForm.estado_estetico || null,
-          estado_funcional: editForm.estado_funcional || null,
-          detalle_pantalla: editForm.detalle_pantalla || null,
-          detalle_carcasa: editForm.detalle_carcasa || null,
-          incluye_caja: editForm.incluye_caja,
-          incluye_cargador: editForm.incluye_cargador,
-        }),
-      ])
-      if (editFotoFile) {
-        await inventarioApi.equipos.uploadFoto(editDetalle.id_equipo, editFotoFile, { setPrincipalTienda: true })
-      }
-      setEditDetalle(null)
-      setEditFotoFile(null)
-      setEditFotoPreview(null)
-      await queryClient.invalidateQueries({ queryKey: qk.inventario.equipos })
-      await queryClient.invalidateQueries({ queryKey: qk.inventario.equiposUsados })
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Error al guardar cambios')
-    } finally {
-      setBusyId(null)
-    }
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function handleToggleActivo(r: EquipoUsadoDetalle) {
     const equipo = equiposById.get(r.id_equipo)
     if (!equipo) return
     setActionError(null)
-    toggleActivo.mutate({ id: r.id_equipo, activo: !equipo.activo }, {
-      onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al cambiar estado'),
-    })
+    toggleActivo.mutate(
+      { id: r.id_equipo, activo: !equipo.activo },
+      { onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al cambiar estado') },
+    )
   }
 
-  function handleDeleteFoto(r: EquipoUsadoDetalle) {
+  function handleDeleteFoto(idEquipo: number) {
     if (!window.confirm('¿Eliminar la foto del equipo?')) return
     setActionError(null)
-    eliminarFoto.mutate(r.id_equipo, {
-      onSuccess: () => { setEditFotoFile(null); setEditFotoPreview(null) },
+    eliminarFoto.mutate(idEquipo, {
+      onSuccess: () => {
+        if (fotoPreview) URL.revokeObjectURL(fotoPreview)
+        setFotoFile(null)
+        setFotoPreview(null)
+      },
       onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al eliminar foto'),
     })
   }
@@ -316,11 +337,14 @@ export function EquiposUsadosDetallePage() {
   function handleDelete(r: EquipoUsadoDetalle) {
     if (!window.confirm(`¿Eliminar definitivamente el equipo #${r.id_equipo}? Esta acción no se puede deshacer.`)) return
     setActionError(null)
-    if (editDetalle?.id_detalle_usado === r.id_detalle_usado) setEditDetalle(null)
-    eliminarEquipo.mutate({ idDetalle: r.id_detalle_usado, idEquipo: r.id_equipo }, {
-      onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al eliminar'),
-    })
+    if (editingIds?.idDetalle === r.id_detalle_usado) resetForm()
+    eliminarEquipo.mutate(
+      { idDetalle: r.id_detalle_usado, idEquipo: r.id_equipo },
+      { onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al eliminar') },
+    )
   }
+
+  const editingEquipo = editingIds ? equiposById.get(editingIds.idEquipo) : null
 
   return (
     <>
@@ -329,34 +353,43 @@ export function EquiposUsadosDetallePage() {
 
       {error ? <div className="msg-error">{error}</div> : null}
 
-
       <div className="panel">
-        <h2>Nuevo equipo usado</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="form-grid">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+          <h2 style={{ margin: 0 }}>
+            {isEditing ? `Editar equipo #${editingIds.idEquipo}` : 'Nuevo equipo usado'}
+          </h2>
+          {isEditing && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={resetForm}>
+              Cancelar
+            </button>
+          )}
+        </div>
+
+        <form onSubmit={(e) => void handleSubmit(e)}>
+          <div className="form-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+
+            {/* ── Identidad del equipo (deshabilitado en edit) ── */}
             <label>
               Modelo
               <select
-                value={form.id_modelo}
-                onChange={(e) =>
-                  setForm((f) => {
-                    const nextModelId = e.target.value
-                    const nextModel = modelos.find((m) => m.id === Number(nextModelId)) ?? null
-                    return {
-                      ...f,
-                      id_modelo: nextModelId,
-                      capacidad_gb: nextModel?.capacidad_gb != null ? String(nextModel.capacidad_gb) : '',
-                    }
-                  })
-                }
-                required
+                value={form.nombre_modelo}
+                onChange={(e) => {
+                  const nombre = e.target.value
+                  const nextModelo = modelos.find((m) => m.nombre_modelo === nombre) ?? null
+                  setForm((f) => ({
+                    ...f,
+                    nombre_modelo: nombre,
+                    id_modelo: nextModelo?.id ?? '',
+                    capacidad_gb: '',
+                    color: '',
+                  }))
+                }}
+                disabled={isEditing}
+                required={!isEditing}
               >
                 <option value="">Seleccionar…</option>
-                {modelos.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre_modelo}
-                    {m.capacidad_gb != null ? ` · ${m.capacidad_gb} GB` : ''}
-                  </option>
+                {nombresModelo.map((nombre) => (
+                  <option key={nombre} value={nombre}>{nombre}</option>
                 ))}
               </select>
             </label>
@@ -366,39 +399,128 @@ export function EquiposUsadosDetallePage() {
               <select
                 value={form.capacidad_gb}
                 onChange={(e) => setForm((f) => ({ ...f, capacidad_gb: e.target.value }))}
-                required
+                disabled={isEditing || !form.id_modelo}
+                required={!isEditing}
               >
-                <option value="">Seleccionar…</option>
-                {CAPACIDAD_OPTIONS.map((v) => (
-                  <option key={v} value={v}>{v} GB</option>
+                {!form.id_modelo && !isEditing
+                  ? <option value="">Primero elegí modelo…</option>
+                  : <option value="">Seleccionar…</option>
+                }
+                {gbOpciones.map((op) => (
+                  <option key={op.id} value={op.valor}>
+                    {op.label || op.valor} GB
+                  </option>
                 ))}
+                {isEditing && gbOpciones.length === 0 && form.capacidad_gb !== '' && (
+                  <option value={form.capacidad_gb}>{form.capacidad_gb} GB</option>
+                )}
               </select>
             </label>
 
             <label>
               IMEI
-              <input value={form.imei} onChange={(e) => setForm((f) => ({ ...f, imei: e.target.value }))} />
-            </label>
-
-            <label>
-              Foto del equipo
               <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => pickFoto(e.target.files?.[0] ?? null, setFotoFile, setFotoPreview)}
+                value={form.imei}
+                onChange={(e) => setForm((f) => ({ ...f, imei: e.target.value }))}
+                disabled={isEditing}
+                placeholder={isEditing ? undefined : 'Opcional'}
               />
-              {fotoPreview ? (
-                <img
-                  src={fotoPreview}
-                  alt="Vista previa"
-                  style={{ marginTop: '0.5rem', width: 100, height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)', display: 'block' }}
-                />
-              ) : null}
             </label>
 
+            {/* ── Foto (ocupa toda la fila) ── */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <p style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: '0.35rem', color: 'var(--app-muted)' }}>
+                Foto del equipo
+              </p>
+              {isEditing ? (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                  {fotoPreview ? (
+                    <div>
+                      <img
+                        src={fotoPreview}
+                        alt="Nueva foto"
+                        style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)', display: 'block' }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ marginTop: '0.35rem', width: '100%' }}
+                        onClick={() => pickFoto(null)}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : editingEquipo?.foto_url ? (
+                    <div>
+                      <img
+                        src={mediaUrl(editingEquipo.foto_url)}
+                        alt="Foto actual"
+                        style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)', display: 'block' }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        style={{ marginTop: '0.35rem', width: '100%' }}
+                        onClick={() => handleDeleteFoto(editingIds!.idEquipo)}
+                      >
+                        Eliminar foto
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--app-muted)', alignSelf: 'center' }}>Sin foto</span>
+                  )}
+                  <label style={{ margin: 0, alignSelf: 'center', fontSize: '0.78rem', fontWeight: 500, color: 'var(--app-muted)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {editingEquipo?.foto_url && !fotoPreview ? 'Reemplazar foto' : 'Agregar foto'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ width: 'auto' }}
+                      onChange={(e) => pickFoto(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ width: 'auto' }}
+                    onChange={(e) => pickFoto(e.target.files?.[0] ?? null)}
+                  />
+                  {fotoPreview && (
+                    <img
+                      src={fotoPreview}
+                      alt="Vista previa"
+                      style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Atributos ── */}
             <label>
               Color
-              <input value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} />
+              {colorOpciones.length > 0 ? (
+                <select
+                  value={form.color}
+                  onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                  disabled={!form.id_modelo && !isEditing}
+                >
+                  <option value="">Seleccionar…</option>
+                  {colorOpciones.map((op) => (
+                    <option key={op.id} value={op.label || op.valor}>
+                      {op.label || op.valor}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form.color}
+                  onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                  placeholder="Ej: Negro"
+                />
+              )}
             </label>
 
             <label>
@@ -406,17 +528,31 @@ export function EquiposUsadosDetallePage() {
               <select
                 value={form.tipo_equipo}
                 onChange={(e) => setForm((f) => ({ ...f, tipo_equipo: e.target.value }))}
-                required
+                disabled={isEditing}
+                required={!isEditing}
               >
                 <option value="">Seleccionar…</option>
                 {TIPOS_EQUIPO.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
+                  <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             </label>
 
+            <label>
+              Batería (%)
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={form.bateria_porcentaje}
+                onChange={(e) => setForm((f) => ({ ...f, bateria_porcentaje: e.target.value }))}
+                placeholder="Ej: 87"
+                required
+              />
+            </label>
+
+            {/* ── Precios ── */}
             <label>
               Precio (ARS)
               <input
@@ -434,25 +570,19 @@ export function EquiposUsadosDetallePage() {
               <input type="text" value={precioUsdCalculado} readOnly placeholder="Se calcula automáticamente" />
             </label>
 
-            <div className="msg-muted" style={{ alignSelf: 'end' }}>
-              Cotización API: {loadingDolar ? 'cargando...' : dolarRate ? fmtArs(dolarRate) : 'no disponible'}
-              {dolarUpdatedAt ? ` · ${new Date(dolarUpdatedAt).toLocaleString('es-AR')}` : ''}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: '0.45rem' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--app-muted)' }}>
+                Cotización:{' '}
+                <strong style={{ fontWeight: 600 }}>
+                  {loadingDolar ? 'cargando…' : dolarRate ? fmtArs(dolarRate) : 'no disponible'}
+                </strong>
+                {dolarUpdatedAt
+                  ? <><br />{new Date(dolarUpdatedAt).toLocaleString('es-AR')}</>
+                  : null}
+              </span>
             </div>
 
-            <label>
-              Batería (%)
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={1}
-                value={form.bateria_porcentaje}
-                onChange={(e) => setForm((f) => ({ ...f, bateria_porcentaje: e.target.value }))}
-                placeholder="Ej: 87"
-                required
-              />
-            </label>
-
+            {/* ── Condición ── */}
             <label>
               Estado estético
               <select
@@ -462,9 +592,7 @@ export function EquiposUsadosDetallePage() {
               >
                 <option value="">Seleccionar…</option>
                 {ESTADO_ESTATICA_OPTIONS.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
+                  <option key={v} value={v}>{v}</option>
                 ))}
               </select>
             </label>
@@ -478,9 +606,7 @@ export function EquiposUsadosDetallePage() {
               >
                 <option value="">Seleccionar…</option>
                 {ESTADO_FUNCIONAL_OPTIONS.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
+                  <option key={v} value={v}>{v}</option>
                 ))}
               </select>
             </label>
@@ -494,9 +620,7 @@ export function EquiposUsadosDetallePage() {
               >
                 <option value="">Seleccionar…</option>
                 {DETALLE_PANTALLA_OPTIONS.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
+                  <option key={v} value={v}>{v}</option>
                 ))}
               </select>
             </label>
@@ -510,272 +634,170 @@ export function EquiposUsadosDetallePage() {
               >
                 <option value="">Seleccionar…</option>
                 {DETALLE_CARCASA_OPTIONS.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
+                  <option key={v} value={v}>{v}</option>
                 ))}
               </select>
             </label>
 
-            <div className="form-row-check">
-              <input
-                id="viene-caja"
-                type="checkbox"
-                checked={form.incluye_caja}
-                onChange={(e) => setForm((f) => ({ ...f, incluye_caja: e.target.checked }))}
-              />
-              <label htmlFor="viene-caja">Viene con caja</label>
+            {/* ── Accesorios incluidos (fila completa) ── */}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '2rem', flexWrap: 'wrap', paddingBottom: '0.1rem' }}>
+              <div className="form-row-check">
+                <input
+                  id="viene-caja"
+                  type="checkbox"
+                  checked={form.incluye_caja}
+                  onChange={(e) => setForm((f) => ({ ...f, incluye_caja: e.target.checked }))}
+                />
+                <label htmlFor="viene-caja">Viene con caja</label>
+              </div>
+              <div className="form-row-check">
+                <input
+                  id="viene-cargador"
+                  type="checkbox"
+                  checked={form.incluye_cargador}
+                  onChange={(e) => setForm((f) => ({ ...f, incluye_cargador: e.target.checked }))}
+                />
+                <label htmlFor="viene-cargador">Viene con cargador</label>
+              </div>
             </div>
 
-            <div className="form-row-check">
-              <input
-                id="viene-cargador"
-                type="checkbox"
-                checked={form.incluye_cargador}
-                onChange={(e) => setForm((f) => ({ ...f, incluye_cargador: e.target.checked }))}
-              />
-              <label htmlFor="viene-cargador">Viene con cargador</label>
-            </div>
           </div>
 
           <div className="toolbar" style={{ marginTop: '0.75rem' }}>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Creando…' : 'Crear equipo usado'}
+              {saving
+                ? isEditing ? 'Guardando…' : 'Creando…'
+                : isEditing ? 'Guardar cambios' : 'Crear equipo usado'}
             </button>
+            {isEditing && (
+              <button type="button" className="btn btn-ghost" onClick={resetForm} disabled={saving}>
+                Cancelar
+              </button>
+            )}
           </div>
         </form>
       </div>
 
-      {editDetalle ? (
-        <div className="panel">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h2>Editar equipo #{editDetalle.id_equipo}</h2>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditDetalle(null)}>
-              Cancelar
-            </button>
-          </div>
-          <form onSubmit={(e) => void handleEditSave(e)}>
-            <div className="form-grid">
-              <label>
-                Color
-                <input
-                  value={editForm.color}
-                  onChange={(e) => setEditForm((f) => ({ ...f, color: e.target.value }))}
-                />
-              </label>
-              <label>
-                Precio (ARS)
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={editForm.precio_ars}
-                  onChange={(e) => setEditForm((f) => ({ ...f, precio_ars: e.target.value }))}
-                />
-              </label>
-              <label>
-                Batería (%)
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={editForm.bateria_porcentaje}
-                  onChange={(e) => setEditForm((f) => ({ ...f, bateria_porcentaje: e.target.value }))}
-                  placeholder="Ej: 87"
-                />
-              </label>
-              <label>
-                Estado estético
-                <select
-                  value={editForm.estado_estetico}
-                  onChange={(e) => setEditForm((f) => ({ ...f, estado_estetico: e.target.value }))}
-                >
-                  <option value="">Seleccionar…</option>
-                  {ESTADO_ESTATICA_OPTIONS.map((v) => (<option key={v} value={v}>{v}</option>))}
-                </select>
-              </label>
-              <label>
-                Estado funcional
-                <select
-                  value={editForm.estado_funcional}
-                  onChange={(e) => setEditForm((f) => ({ ...f, estado_funcional: e.target.value }))}
-                >
-                  <option value="">Seleccionar…</option>
-                  {ESTADO_FUNCIONAL_OPTIONS.map((v) => (<option key={v} value={v}>{v}</option>))}
-                </select>
-              </label>
-              <label>
-                Detalle pantalla
-                <select
-                  value={editForm.detalle_pantalla}
-                  onChange={(e) => setEditForm((f) => ({ ...f, detalle_pantalla: e.target.value }))}
-                >
-                  <option value="">Seleccionar…</option>
-                  {DETALLE_PANTALLA_OPTIONS.map((v) => (<option key={v} value={v}>{v}</option>))}
-                </select>
-              </label>
-              <label>
-                Detalle carcasa
-                <select
-                  value={editForm.detalle_carcasa}
-                  onChange={(e) => setEditForm((f) => ({ ...f, detalle_carcasa: e.target.value }))}
-                >
-                  <option value="">Seleccionar…</option>
-                  {DETALLE_CARCASA_OPTIONS.map((v) => (<option key={v} value={v}>{v}</option>))}
-                </select>
-              </label>
-              <div className="form-row-check">
-                <input
-                  id="edit-caja"
-                  type="checkbox"
-                  checked={editForm.incluye_caja}
-                  onChange={(e) => setEditForm((f) => ({ ...f, incluye_caja: e.target.checked }))}
-                />
-                <label htmlFor="edit-caja">Viene con caja</label>
-              </div>
-              <div className="form-row-check">
-                <input
-                  id="edit-cargador"
-                  type="checkbox"
-                  checked={editForm.incluye_cargador}
-                  onChange={(e) => setEditForm((f) => ({ ...f, incluye_cargador: e.target.checked }))}
-                />
-                <label htmlFor="edit-cargador">Viene con cargador</label>
-              </div>
-
-              <div style={{ gridColumn: '1 / -1' }}>
-                <p style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: '0.5rem' }}>Foto del equipo</p>
-                {(() => {
-                  const equipo = equiposById.get(editDetalle.id_equipo)
-                  const fotoActual = equipo?.foto_url
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-                      {editFotoPreview ? (
-                        <img
-                          src={editFotoPreview}
-                          alt="Nueva foto"
-                          style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }}
-                        />
-                      ) : fotoActual ? (
-                        <div style={{ position: 'relative', display: 'inline-block' }}>
-                          <img
-                            src={mediaUrl(fotoActual)}
-                            alt="Foto actual"
-                            style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)', display: 'block' }}
-                          />
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-sm"
-                            disabled={busyId === editDetalle.id_detalle_usado}
-                            onClick={() => void handleDeleteFoto(editDetalle)}
-                            style={{ marginTop: '0.35rem', width: '100%' }}
-                          >
-                            Eliminar foto
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="msg-muted" style={{ fontSize: '0.8rem' }}>Sin foto</span>
-                      )}
-                      <label style={{ margin: 0 }}>
-                        {fotoActual && !editFotoPreview ? 'Reemplazar foto' : 'Agregar foto'}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => pickFoto(e.target.files?.[0] ?? null, setEditFotoFile, setEditFotoPreview)}
-                        />
-                        {editFotoPreview ? (
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            style={{ marginTop: '0.35rem' }}
-                            onClick={() => { setEditFotoFile(null); setEditFotoPreview(null) }}
-                          >
-                            Cancelar foto
-                          </button>
-                        ) : null}
-                      </label>
-                    </div>
-                  )
-                })()}
-              </div>
-            </div>
-            <div className="toolbar" style={{ marginTop: '0.75rem' }}>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={busyId === editDetalle.id_detalle_usado}
-              >
-                {busyId === editDetalle.id_detalle_usado ? 'Guardando…' : 'Guardar cambios'}
-              </button>
-            </div>
-          </form>
+      {/* ── Listado ── */}
+      <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '1rem 1.25rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>Listado de usados</h2>
+          <span style={{ fontSize: '0.8rem', color: 'var(--app-muted)' }}>
+            {rows.length > 0 ? `${rows.length} equipo${rows.length !== 1 ? 's' : ''}` : ''}
+          </span>
         </div>
-      ) : null}
-
-      <div className="panel">
-        <h2>Listado de usados</h2>
-        {loading ? (
-          <p className="msg-muted">Cargando…</p>
-        ) : rows.length === 0 ? (
-          <p className="msg-muted">No hay usados cargados.</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="data">
-              <thead>
+        <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Foto</th>
+                <th>Equipo</th>
+                <th>Tipo</th>
+                <th>Batería</th>
+                <th>Condición</th>
+                <th>Precio ARS</th>
+                <th>Estado</th>
+                <th style={{ textAlign: 'right', paddingRight: '1rem' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 5 }, (_, i) => (
+                  <tr key={i} className="skeleton-row">
+                    <td><span className="skeleton" style={{ width: 40, height: 40, borderRadius: 8, display: 'block' }} /></td>
+                    <td><span className="skeleton" style={{ width: 140, height: 14 }} /></td>
+                    <td><span className="skeleton" style={{ width: 60, height: 18, borderRadius: 999 }} /></td>
+                    <td><span className="skeleton" style={{ width: 44, height: 14 }} /></td>
+                    <td><span className="skeleton" style={{ width: 90, height: 14 }} /></td>
+                    <td><span className="skeleton" style={{ width: 80, height: 14 }} /></td>
+                    <td><span className="skeleton" style={{ width: 55, height: 18, borderRadius: 999 }} /></td>
+                    <td />
+                  </tr>
+                ))
+              ) : rows.length === 0 ? (
                 <tr>
-                  <th>ID detalle</th>
-                  <th>Foto</th>
-                  <th>Equipo</th>
-                  <th>Batería</th>
-                  <th>Estético</th>
-                  <th>Funcional</th>
-                  <th>Pantalla</th>
-                  <th>Carcasa</th>
-                  <th>Caja</th>
-                  <th>Cargador</th>
-                  <th>Estado</th>
-                  <th />
+                  <td colSpan={8} style={{ textAlign: 'center', color: 'var(--app-muted)', padding: '2rem 1rem' }}>
+                    No hay equipos usados cargados. Creá el primero con el formulario de arriba.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
+              ) : (
+                rows.map((r) => {
                   const equipo = equiposById.get(r.id_equipo)
+                  const isBeingEdited = editingIds?.idDetalle === r.id_detalle_usado
                   return (
-                    <tr key={r.id_detalle_usado}>
-                      <td>{r.id_detalle_usado}</td>
+                    <tr
+                      key={r.id_detalle_usado}
+                      className={busyId === r.id_detalle_usado ? 'row-busy' : ''}
+                      style={isBeingEdited ? { background: 'var(--app-muted-bg)' } : undefined}
+                    >
+                      {/* Foto */}
                       <td>
                         {equipo?.foto_url ? (
                           <img
                             src={mediaUrl(equipo.foto_url)}
-                            alt={`Equipo ${r.id_equipo}`}
-                            style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }}
+                            alt=""
+                            style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)', display: 'block' }}
                           />
                         ) : (
-                          <span className="msg-muted">—</span>
+                          <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--app-muted-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--app-muted)" strokeWidth="1.5">
+                              <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+                            </svg>
+                          </div>
                         )}
                       </td>
-                      <td>{eqMap.get(r.id_equipo) ?? `${equipo?.modelo?.nombre_modelo ?? 'Equipo'} #${r.id_equipo}`}</td>
-                      <td>{r.bateria_porcentaje ?? '—'}</td>
-                      <td>{r.estado_estetico ?? '—'}</td>
-                      <td>{r.estado_funcional ?? '—'}</td>
-                      <td>{r.detalle_pantalla ?? '—'}</td>
-                      <td>{r.detalle_carcasa ?? '—'}</td>
-                      <td>{r.incluye_caja ? 'Sí' : 'No'}</td>
-                      <td>{r.incluye_cargador ? 'Sí' : 'No'}</td>
+
+                      {/* Equipo */}
+                      <td style={{ fontWeight: 500, color: 'var(--app-text-strong)' }}>
+                        {equipo?.modelo?.nombre_modelo ?? '—'}
+                        {(equipo?.modelo?.capacidad_gb || equipo?.color) ? (
+                          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--app-muted)', fontWeight: 400 }}>
+                            {[equipo?.modelo?.capacidad_gb ? `${equipo.modelo.capacidad_gb} GB` : null, equipo?.color].filter(Boolean).join(' · ')}
+                          </span>
+                        ) : null}
+                      </td>
+
+                      {/* Tipo */}
                       <td>
-                        <span className={equipo?.activo ? '' : 'msg-muted'}>
+                        <span className="badge badge-info" style={{ textTransform: 'capitalize', fontSize: '0.72rem' }}>
+                          {equipo?.tipo_equipo ?? '—'}
+                        </span>
+                      </td>
+
+                      {/* Batería */}
+                      <td style={{ fontSize: '0.85rem' }}>
+                        {r.bateria_porcentaje != null ? `${r.bateria_porcentaje}%` : '—'}
+                      </td>
+
+                      {/* Condición */}
+                      <td style={{ fontSize: '0.82rem', color: 'var(--app-muted)' }}>
+                        {r.estado_estetico ?? '—'}
+                        {r.estado_funcional && r.estado_funcional !== r.estado_estetico ? (
+                          <span style={{ display: 'block', fontSize: '0.75rem' }}>{r.estado_funcional}</span>
+                        ) : null}
+                      </td>
+
+                      {/* Precio */}
+                      <td style={{ fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {equipo?.precio_ars != null ? fmtArs(equipo.precio_ars) : '—'}
+                      </td>
+
+                      {/* Estado */}
+                      <td>
+                        <span className={`badge ${equipo?.activo ? 'badge-on' : 'badge-off'}`}>
                           {equipo?.activo ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+
+                      {/* Acciones */}
+                      <td className="td-actions">
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
                           disabled={busyId === r.id_detalle_usado}
                           onClick={() => startEdit(r)}
                         >
-                          Editar
+                          {isBeingEdited ? 'Editando…' : 'Editar'}
                         </button>{' '}
                         <button
                           type="button"
@@ -796,11 +818,11 @@ export function EquiposUsadosDetallePage() {
                       </td>
                     </tr>
                   )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   )
