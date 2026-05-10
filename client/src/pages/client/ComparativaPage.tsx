@@ -1,25 +1,25 @@
 import { useState, useEffect } from 'react'
 
 // iPhone — Línea 13
-import ip13 from '../../assets/Comparativa/Linea 13/IP13-Negro.jpg'
-import ip13Pro from '../../assets/Comparativa/Linea 13/IP13Pro-Negro.jpg'
+import ip13 from '../../assets/comparativa/Linea 13/IP13-Negro.jpg'
+import ip13Pro from '../../assets/comparativa/Linea 13/IP13Pro-Negro.jpg'
 // iPhone — Línea 14
-import ip14 from '../../assets/Comparativa/Linea 14/IP14-Negro.jpg'
-import ip14Pro from '../../assets/Comparativa/Linea 14/IP14Pro-Blanco.jpg'
+import ip14 from '../../assets/comparativa/Linea 14/IP14-Negro.jpg'
+import ip14Pro from '../../assets/comparativa/Linea 14/IP14Pro-Blanco.jpg'
 // iPhone — Línea 15
-import ip15 from '../../assets/Comparativa/Linea 15/IP15-Negro.jpg'
-import ip15Pro from '../../assets/Comparativa/Linea 15/IP15Pro-Negro.jpg'
+import ip15 from '../../assets/comparativa/Linea 15/IP15-Negro.jpg'
+import ip15Pro from '../../assets/comparativa/Linea 15/IP15Pro-Negro.jpg'
 // iPhone — Línea 16
-import ip16 from '../../assets/Comparativa/Linea 16/IP16-Negro.jpg'
-import ip16Pro from '../../assets/Comparativa/Linea 16/IP16Pro-Negro.jpg'
+import ip16 from '../../assets/comparativa/Linea 16/IP16-Negro.jpg'
+import ip16Pro from '../../assets/comparativa/Linea 16/IP16Pro-Negro.jpg'
 // iPhone — Línea 17
-import ip17 from '../../assets/Comparativa/Linea 17/IP17-negro.jpg'
-import ip17Pro from '../../assets/Comparativa/Linea 17/IP17Pro-Blanco.jpg'
+import ip17 from '../../assets/comparativa/Linea 17/IP17-negro.jpg'
+import ip17Pro from '../../assets/comparativa/Linea 17/IP17Pro-Blanco.jpg'
 // MacBook
-import macAir from '../../assets/Comparativa/Macbook/Air/Silver.jpg'
-import macPro from '../../assets/Comparativa/Macbook/Pro/plata.jpg'
+import macAir from '../../assets/comparativa/Macbook/Air/Silver.jpg'
+import macPro from '../../assets/comparativa/Macbook/Pro/plata.jpg'
 // iPad
-import ipadImg from '../../assets/Comparativa/IPads/IPads.jpg'
+import ipadImg from '../../assets/comparativa/IPads/IPads.jpg'
 
 type Category = 'iphone' | 'ipad' | 'macbook'
 
