@@ -73,13 +73,9 @@ async function tryRefreshAccessToken(): Promise<boolean> {
   setAuthRefreshInProgress(true)
   try {
     const refreshQuery = `?refresh_token=${encodeURIComponent(refresh)}`
-    let res = await fetch(apiUrl(`/api/v1/auth/refresh${refreshQuery}`), {
+    const res = await fetch(apiUrl(`/api/v1/auth/refresh${refreshQuery}`), {
       method: 'POST',
     })
-    if (res.status === 404) {
-      // Fallback during gradual migration from legacy routes.
-      res = await fetch(apiUrl(`/refresh/post${refreshQuery}`), { method: 'POST' })
-    }
     if (!res.ok) {
       clearAuthTokens()
       return false
@@ -173,11 +169,7 @@ export async function loginWithFallback(email: string, password: string): Promis
     })
   }
 
-  let res = await doLogin('/api/v1/auth/login')
-  if (res.status === 404) {
-    res = await doLogin('/login/post')
-  }
-
+  const res = await doLogin('/api/v1/auth/login')
   const text = await res.text()
   if (!res.ok) {
     let detail = res.statusText

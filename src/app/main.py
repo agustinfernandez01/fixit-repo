@@ -8,7 +8,6 @@ from sqlalchemy import text
 
 from app.config import UPLOAD_DIR
 from app.db import engine
-from app.routers import roles, usuarios, login, refresh, logout, equipos, productos
 import app.models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.api.v1 import api_router
 
@@ -66,15 +65,8 @@ def verificar_db_en_startup():
         )
 
 
-# API v1: inventario, marketplace, reparaciones, canje
+# API v1: auth, inventario, productos, carrito, marketplace, reparaciones, canje, accesorios
 app.include_router(api_router, prefix="/api/v1")
-app.include_router(roles.router, prefix="/roles", tags=["Roles"])
-app.include_router(usuarios.router, prefix="/usuarios", tags=["Usuarios"])
-app.include_router(login.router, prefix="/login", tags=["Logueo"])
-app.include_router(refresh.router, prefix="/refresh", tags=["Refresh"])
-app.include_router(logout.router, prefix="/logout", tags=["Logout"])
-app.include_router(equipos.router, prefix="/equipos", tags=["Equipos"])
-app.include_router(productos.router, prefix="/productos", tags=["Productos"])
 
 app.mount(
     "/uploads",
