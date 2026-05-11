@@ -26,13 +26,15 @@ app = FastAPI(
 _raw = os.getenv("ALLOWED_ORIGINS", "*")
 if _raw.strip() == "*":
     allow_origins = ["*"]
+    allow_credentials = False   # wildcard + credentials=True es inválido (HTTP 400)
 else:
     allow_origins = [o.strip() for o in _raw.split(",") if o.strip()]
+    allow_credentials = True    # origen específico → credenciales permitidas
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
