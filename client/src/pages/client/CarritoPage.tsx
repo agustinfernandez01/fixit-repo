@@ -7,14 +7,10 @@ import {
   regenerateCartToken,
   setCartToken,
 } from '../../lib/cart'
-import { apiUrl, mediaUrl } from '../../services/api'
+import { fetchJson, loginWithFallback, mediaUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
 import type { CarritoCheckoutResponse, CarritoResumen } from '../../types/carrito'
 
-type RoleItem = {
-  id: number
-  nombre: string
-}
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -405,18 +401,7 @@ function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
   }
 
   async function login(email: string, password: string) {
-    const res = await fetch(apiUrl('/login/post'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    if (!res.ok) {
-      throw new Error(await parseError(res))
-    }
-    const j = (await res.json()) as {
-      access_token: string
-      refresh_token: string
-    }
+    const j = await loginWithFallback(email, password)
     setAuthTokens(j.access_token, j.refresh_token)
     try {
       const ensured = await carritoApi.ensure(true)
@@ -436,18 +421,6 @@ function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
     }
   }
 
-  async function getClienteRoleId(): Promise<number> {
-    const res = await fetch(apiUrl('/roles/get'))
-    if (!res.ok) {
-      throw new Error(await parseError(res))
-    }
-    const roles = (await res.json()) as RoleItem[]
-    if (!Array.isArray(roles) || roles.length === 0) {
-      throw new Error('No hay roles disponibles para crear la cuenta.')
-    }
-    const cliente = roles.find((r) => (r.nombre ?? '').toLowerCase().includes('cliente'))
-    return (cliente ?? roles[0]).id
-  }
 
   async function submitLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -468,22 +441,16 @@ function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
     setLoading(true)
     setError(null)
     try {
-      const idRolCliente = await getClienteRoleId()
-      const res = await fetch(apiUrl('/usuarios/post'), {
+      await fetchJson('/api/v1/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nombre,
           apellido,
-          telefono: telefono || null,
+          telefono: telefono || '',
           email: registerEmail,
-          password_hash: registerPassword,
-          id_rol: idRolCliente,
+          password: registerPassword,
         }),
       })
-      if (!res.ok) {
-        throw new Error(await parseError(res))
-      }
 
       await login(registerEmail, registerPassword)
       onSuccess()

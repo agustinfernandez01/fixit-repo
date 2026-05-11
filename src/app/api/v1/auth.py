@@ -113,6 +113,14 @@ def logout_v1(refresh_token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/roles", response_model=list[dict])
+def listar_roles_v1(db: Session = Depends(get_db)):
+    """Lista todos los roles disponibles (usado para registro de clientes)."""
+    from app.schemas.roles import RolesResponse
+    roles = db.query(Rol).all()
+    return [{"id": r.id, "nombre": r.nombre} for r in roles]
+
+
 @router.get("/me", response_model=UsuarioPerfilResponse)
 def me_v1(
     db: Session = Depends(get_db),
