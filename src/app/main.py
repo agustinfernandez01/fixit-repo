@@ -1,6 +1,8 @@
 import logging
+import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -16,6 +18,24 @@ app = FastAPI(
     title="Fix It API",
     description="Backend e-commerce celulares. Rutas actuales: mis módulos (inventario equipos, marketplace usados, reparaciones, canje). Auth/catálogo/pedidos los desarrolla el compañero.",
     version="1.0.0",
+)
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# En producción, leemos los orígenes permitidos desde la variable de entorno
+# ALLOWED_ORIGINS (separados por coma). Si no está definida, permitimos todo
+# (útil en desarrollo local con Docker).
+_raw = os.getenv("ALLOWED_ORIGINS", "*")
+if _raw.strip() == "*":
+    allow_origins = ["*"]
+else:
+    allow_origins = [o.strip() for o in _raw.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.on_event("startup")
