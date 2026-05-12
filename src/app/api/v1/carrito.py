@@ -5,8 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps.auth import get_optional_user_id_from_access_token, require_admin_user_id
+from app.deps.mercadopago import get_mercado_pago_client
+from app.integrations.mercadopago import MercadoPagoClient, get_mercadopago_settings
+from app.integrations.mercadopago.client import MercadoPagoAPIError
+from app.integrations.mercadopago.schemas import PreferenceBackUrls
 from app.schemas.carrito import (
     CarritoBase,
+    CarritoCheckoutMercadoPagoRequest,
+    CarritoCheckoutMercadoPagoResponse,
     CarritoCheckoutRequest,
     CarritoCheckoutResponse,
     ConfirmPedidoRequest,
@@ -21,6 +27,7 @@ from app.services.carrito import (
     cancel_pedido_confirmado,
     carrito_resumen,
     checkout_carrito,
+    checkout_carrito_mercadopago,
     clear_carrito,
     confirm_pedido,
     finalizar_entrega_pedido,
@@ -179,6 +186,62 @@ def confirmar_checkout(
         )
     except ValueError as exc:
         raise _http_error_from_value_error(exc)
+
+
+@router.post("/checkout-mercadopago", response_model=CarritoCheckoutMercadoPagoResponse)
+def confirmar_checkout_mercadopago(
+    payload: CarritoCheckoutMercadoPagoRequest,
+    db: Session = Depends(get_db),
+    token: str = Depends(_require_carrito_token),
+    id_usuario: int | None = Depends(get_optional_user_id_from_access_token),
+    client: MercadoPagoClient = Depends(get_mercado_pago_client),
+):
+    """
+    Cierra el carrito, crea pedido/pago pendiente y una preferencia Checkout Pro.
+    El front debe redirigir al usuario a `url_checkout` (sandbox en credenciales de prueba).
+    """
+    back_urls: PreferenceBackUrls | None = None
+    if payload.url_exito and payload.url_fallo and payload.url_pendiente:
+        back_urls = PreferenceBackUrls(
+            success=payload.url_exito,
+            failure=payload.url_fallo,
+            pending=payload.url_pendiente,
+        )
+    settings = get_mercadopago_settings()
+    try:
+        pedido, pago, mp_resp = checkout_carrito_mercadopago(
+            db,
+            token=token,
+            id_usuario=id_usuario,
+            observaciones=payload.observaciones,
+            client=client,
+            notification_url=settings.notification_url,
+            back_urls=back_urls,
+        )
+    except MercadoPagoAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(exc.detail or str(exc))[:2000],
+        ) from exc
+    except ValueError as exc:
+        raise _http_error_from_value_error(exc)
+
+    sandbox = (mp_resp.get("sandbox_init_point") or "").strip() or None
+    init_pt = (mp_resp.get("init_point") or "").strip() or None
+    url_checkout = sandbox or (init_pt or "")
+    pref_id = str(mp_resp.get("id") or "").strip()
+    return CarritoCheckoutMercadoPagoResponse(
+        id_pedido=pedido.id,
+        id_pago=pago.id,
+        estado_pedido=pedido.estado or "pendiente_confirmacion",
+        estado_pago=pago.estado_pago or "pendiente",
+        referencia_externa=pago.referencia_externa,
+        total=pedido.total,
+        preference_id=pref_id,
+        url_checkout=url_checkout,
+        init_point=init_pt,
+        sandbox_init_point=sandbox,
+    )
 
 
 @router.post("/confirmar-pedido/{id_pedido}", response_model=dict)

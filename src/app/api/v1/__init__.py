@@ -1,6 +1,16 @@
 # API v1 - routers por módulo
 from fastapi import APIRouter
-from app.api.v1 import accesorios, auth, canje, carrito, inventario, marketplace, productos, reparaciones
+from app.api.v1 import (
+    accesorios,
+    auth,
+    canje,
+    carrito,
+    inventario,
+    marketplace,
+    mercadopago,
+    productos,
+    reparaciones,
+)
 
 api_router = APIRouter()
 
@@ -12,3 +22,4 @@ api_router.include_router(accesorios.router, prefix="/accesorios", tags=["Acceso
 api_router.include_router(marketplace.router, prefix="/marketplace", tags=["Marketplace usados"])
 api_router.include_router(reparaciones.router, prefix="/reparaciones", tags=["Reparaciones"])
 api_router.include_router(canje.router, prefix="/canje", tags=["Canje"])
+api_router.include_router(mercadopago.router, prefix="/mercadopago", tags=["Mercado Pago"])

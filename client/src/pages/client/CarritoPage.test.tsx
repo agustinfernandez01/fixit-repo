@@ -15,6 +15,14 @@ vi.mock('../../lib/auth', () => ({
 
 vi.mock('../../services/carritoApi', () => ({
   carritoApi: {
+    mercadoPagoEstado: vi.fn(() =>
+      Promise.resolve({
+        mercadopago_configurado: false,
+        clave_publica_presente: false,
+        url_notificacion: null,
+        base_url_publica_configurada: false,
+      }),
+    ),
     ensure: (...args: unknown[]) => mockEnsure(...args),
     summary: (...args: unknown[]) => mockSummary(...args),
     checkout: (...args: unknown[]) => mockCheckout(...args),

@@ -11,6 +11,8 @@ import { fetchJson, loginWithFallback, mediaUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
 import type { CarritoCheckoutResponse, CarritoResumen } from '../../types/carrito'
 
+const MP_METODO = 'mercadopago'
+
 
 function fmtArs(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === '') return '—'
@@ -36,6 +38,7 @@ export default function CarritoPage() {
   const [busyId, setBusyId] = useState<number | null>(null)
   const [checkoutBusy, setCheckoutBusy] = useState(false)
   const [metodoPago, setMetodoPago] = useState('transferencia')
+  const [mpDisponible, setMpDisponible] = useState(false)
   const [checkoutInfo, setCheckoutInfo] = useState<CarritoCheckoutResponse | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
@@ -78,6 +81,17 @@ export default function CarritoPage() {
 
   useEffect(() => {
     void load()
+    void carritoApi
+      .mercadoPagoEstado()
+      .then((s) => {
+        const ok = Boolean(s.mercadopago_configurado)
+        setMpDisponible(ok)
+        if (ok) setMetodoPago(MP_METODO)
+      })
+      .catch(() => {
+        setMpDisponible(false)
+        setMetodoPago((m) => (m === MP_METODO ? 'transferencia' : m))
+      })
     const onCartChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<CartChangedDetail>).detail
       if (detail?.summary) {
@@ -134,6 +148,28 @@ export default function CarritoPage() {
     setError(null)
     try {
       const withAuth = Boolean(getAccessToken())
+      if (metodoPago === MP_METODO) {
+        const origin = window.location.origin
+        const result = await carritoApi.checkoutMercadoPago(
+          {
+            url_exito: `${origin}/carrito?pago=ok`,
+            url_fallo: `${origin}/carrito?pago=error`,
+            url_pendiente: `${origin}/carrito?pago=pendiente`,
+          },
+          withAuth,
+        )
+        setCheckoutInfo(null)
+        if (summary) {
+          setSummary({
+            ...summary,
+            items: [],
+            total_unidades: 0,
+            total_importe: 0,
+          })
+        }
+        window.location.assign(result.url_checkout)
+        return
+      }
       const result = await carritoApi.checkout({ metodo_pago: metodoPago }, withAuth)
       setCheckoutInfo(result)
       if (summary) {
@@ -338,7 +374,7 @@ export default function CarritoPage() {
                 onClick={() => void checkout()}
                 className="mt-6 w-full rounded-full bg-gray-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-700"
               >
-                {checkoutBusy ? 'Procesando compra…' : 'Confirmar compra'}
+                {checkoutBusy ? 'Procesando compra…' : metodoPago === MP_METODO ? 'Ir a pagar' : 'Confirmar compra'}
               </button>
 
               <label className="mt-3 block text-xs font-medium text-gray-500" htmlFor="metodoPago">
@@ -351,12 +387,17 @@ export default function CarritoPage() {
                 disabled={checkoutBusy}
                 className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
               >
-                <option value="transferencia">Transferencia</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="efectivo">Efectivo</option>
+                {mpDisponible ? (
+                  <option value={MP_METODO}>Mercado Pago (tarjetas y más)</option>
+                ) : null}
+                <option value="transferencia">Transferencia (WhatsApp)</option>
+                <option value="tarjeta">Tarjeta (WhatsApp)</option>
+                <option value="efectivo">Efectivo (WhatsApp)</option>
               </select>
               <p className="mt-3 text-xs leading-relaxed text-gray-400">
-                El checkout crea pedido pendiente y te redirige a WhatsApp con el detalle de productos y cantidades.
+                {metodoPago === MP_METODO
+                  ? 'Se crea el pedido y te llevamos al checkout seguro de Mercado Pago para abonar.'
+                  : 'Se crea el pedido y te redirige a WhatsApp con el detalle para coordinar el pago.'}
               </p>
             </aside>
           </div>

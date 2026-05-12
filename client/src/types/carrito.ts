@@ -52,6 +52,34 @@ export type CarritoCheckoutResponse = {
   mensaje: string
 }
 
+export type MercadoPagoEstadoResponse = {
+  mercadopago_configurado: boolean
+  clave_publica_presente: boolean
+  url_notificacion: string | null
+  base_url_publica_configurada: boolean
+}
+
+export type CarritoCheckoutMercadoPagoPayload = {
+  observaciones?: string | null
+  url_exito?: string | null
+  url_fallo?: string | null
+  url_pendiente?: string | null
+}
+
+export type CarritoCheckoutMercadoPagoResponse = {
+  id_pedido: number
+  id_pago: number
+  estado_pedido: string
+  estado_pago: string
+  referencia_externa: string | null
+  total: string | number
+  preference_id: string
+  url_checkout: string
+  init_point?: string | null
+  sandbox_init_point?: string | null
+  mensaje: string
+}
+
 export type VarianteTienda = {
   id_producto: number
   color?: string | null

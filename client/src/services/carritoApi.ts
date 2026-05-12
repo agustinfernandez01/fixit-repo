@@ -3,10 +3,13 @@ import { emitCartChanged, getCartToken, getLastKnownCartCount, setLastKnownCartC
 import { fetchJson } from './api'
 import type {
   Carrito,
+  CarritoCheckoutMercadoPagoPayload,
+  CarritoCheckoutMercadoPagoResponse,
   CarritoCheckoutPayload,
   CarritoCheckoutResponse,
   CarritoDetalle,
   CarritoResumen,
+  MercadoPagoEstadoResponse,
 } from '../types/carrito'
 
 const P = '/api/v1/carrito'
@@ -19,6 +22,10 @@ function cartHeaders(withAuth = false): Record<string, string> {
 }
 
 export const carritoApi = {
+  mercadoPagoEstado: () =>
+    fetchJson<MercadoPagoEstadoResponse>('/api/v1/mercadopago/estado', {
+      method: 'GET',
+    }),
   ensure: (withAuth = false) =>
     fetchJson<Carrito>(P, {
       method: 'POST',
@@ -80,6 +87,18 @@ export const carritoApi = {
   },
   checkout: async (payload: CarritoCheckoutPayload, withAuth = true) => {
     const result = await fetchJson<CarritoCheckoutResponse>(`${P}/checkout`, {
+      method: 'POST',
+      headers: cartHeaders(withAuth),
+      body: JSON.stringify(payload),
+    })
+    emitCartChanged({ totalUnidades: 0 })
+    return result
+  },
+  checkoutMercadoPago: async (
+    payload: CarritoCheckoutMercadoPagoPayload,
+    withAuth = true,
+  ) => {
+    const result = await fetchJson<CarritoCheckoutMercadoPagoResponse>(`${P}/checkout-mercadopago`, {
       method: 'POST',
       headers: cartHeaders(withAuth),
       body: JSON.stringify(payload),

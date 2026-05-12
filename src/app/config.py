@@ -72,3 +72,9 @@ else:
     DB_PASSWORD = os.getenv("DB_PASSWORD", "1452")
     DB_NAME = os.getenv("DB_NAME", "fixitdb")
     DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# Mercado Pago (Checkout Pro / API REST). Ver `app.integrations.mercadopago`.
+MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or "").strip()
+MERCADOPAGO_PUBLIC_KEY = (os.getenv("MERCADOPAGO_PUBLIC_KEY") or "").strip()
+# URL pública del backend (sin barra final): webhooks y, si aplica, back_urls hacia el front.
+APP_PUBLIC_BASE_URL = (os.getenv("APP_PUBLIC_BASE_URL") or "").strip().rstrip("/")

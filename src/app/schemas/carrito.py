@@ -69,6 +69,30 @@ class CarritoCheckoutResponse(BaseModel):
     mensaje: str
 
 
+class CarritoCheckoutMercadoPagoRequest(BaseModel):
+    """Checkout con redirección a Checkout Pro. Las URLs de retorno son opcionales."""
+
+    observaciones: Optional[str] = Field(default=None, max_length=1000)
+    url_exito: Optional[str] = Field(default=None, max_length=512)
+    url_fallo: Optional[str] = Field(default=None, max_length=512)
+    url_pendiente: Optional[str] = Field(default=None, max_length=512)
+
+
+class CarritoCheckoutMercadoPagoResponse(BaseModel):
+    id_pedido: int
+    id_pago: int
+    estado_pedido: str
+    estado_pago: str
+    referencia_externa: Optional[str] = None
+    total: Decimal
+    preference_id: str
+    # url_checkout: sandbox_init_point si MP la envía (prueba), si no init_point
+    url_checkout: str
+    init_point: Optional[str] = None
+    sandbox_init_point: Optional[str] = None
+    mensaje: str = "Pedido generado. Redirigí al cliente a url_checkout para pagar en Mercado Pago."
+
+
 class ConfirmPedidoItemAsignacion(BaseModel):
     id_detalle_pedido: int = Field(ge=1)
     id_equipos: List[int] = Field(min_length=1)

@@ -8,6 +8,12 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import WHATSAPP_CHECKOUT_PHONE
+from app.integrations.mercadopago.client import MercadoPagoAPIError, MercadoPagoClient
+from app.integrations.mercadopago.schemas import (
+    PreferenceBackUrls,
+    PreferenceCreateRequest,
+    PreferenceItem,
+)
 from app.models.accesorios import Accesorios
 from app.models.carrito import Carrito, CarritoDetalle
 from app.models.equipos import Equipo
@@ -730,6 +736,87 @@ def list_pedidos_confirmados_pendientes_entrega_admin(
     return resultado
 
 
+def _checkout_transaccion_core(
+    db: Session,
+    token: str,
+    id_usuario: Optional[int],
+    metodo_pago: str,
+    observaciones: Optional[str] = None,
+) -> tuple[Pedido, Pago, list[CarritoDetalle], Decimal]:
+    """
+    Valida carrito, crea pedido, detalle y pago pendiente, cierra carrito (sin commit).
+    """
+    carrito = _require_carrito_por_token(db, token)
+    items = get_carrito_items(db, carrito.id)
+
+    if not items:
+        raise ValueError("El carrito está vacío")
+    if carrito.id_pedido is not None:
+        raise ValueError("El carrito ya fue procesado")
+
+    effective_user_id = id_usuario if id_usuario is not None else _get_or_create_guest_user_id(db)
+
+    total = Decimal("0")
+
+    for linea in items:
+        producto = (
+            db.query(Productos)
+            .filter(
+                Productos.id == linea.id_producto,
+                Productos.activo.is_(True),
+            )
+            .first()
+        )
+        if not producto:
+            raise ValueError(f"Producto {linea.id_producto} no disponible")
+
+        _validar_cantidad_contra_stock_vendible(db, linea.id_producto, linea.cant)
+
+        total += Decimal(str(linea.subtotal))
+
+    now = datetime.now(timezone.utc)
+    pedido = Pedido(
+        id_usuario=effective_user_id,
+        fecha_pedido=now,
+        estado="pendiente_confirmacion",
+        total=total,
+        observaciones=observaciones,
+    )
+    db.add(pedido)
+    db.flush()
+
+    for linea in items:
+        db.add(
+            DetallePedido(
+                id_pedido=pedido.id,
+                id_producto=linea.id_producto,
+                cantidad=linea.cant,
+                precio_unitario=Decimal(str(linea.precio_unitario)),
+                subtotal=Decimal(str(linea.subtotal)),
+            )
+        )
+
+    referencia_externa = f"LOCAL-{pedido.id}-{int(now.timestamp())}"
+    pago = Pago(
+        id_pedido=pedido.id,
+        monto=total,
+        metodo_pago=metodo_pago,
+        estado_pago="pendiente",
+        fecha_pago=now,
+        referencia_externa=referencia_externa,
+    )
+    db.add(pago)
+
+    carrito.id_usuario = effective_user_id
+    carrito.id_pedido = pedido.id
+    carrito.estado = False
+
+    db.flush()
+    db.refresh(pedido)
+    db.refresh(pago)
+    return pedido, pago, items, total
+
+
 def checkout_carrito(
     db: Session,
     token: str,
@@ -744,70 +831,9 @@ def checkout_carrito(
     - registra pago pendiente (la reserva de stock ocurre al confirmar el pedido desde admin).
     """
     try:
-        carrito = _require_carrito_por_token(db, token)
-        items = get_carrito_items(db, carrito.id)
-
-        if not items:
-            raise ValueError("El carrito está vacío")
-        if carrito.id_pedido is not None:
-            raise ValueError("El carrito ya fue procesado")
-
-        effective_user_id = id_usuario if id_usuario is not None else _get_or_create_guest_user_id(db)
-
-        total = Decimal("0")
-
-        for linea in items:
-            producto = (
-                db.query(Productos)
-                .filter(
-                    Productos.id == linea.id_producto,
-                    Productos.activo.is_(True),
-                )
-                .first()
-            )
-            if not producto:
-                raise ValueError(f"Producto {linea.id_producto} no disponible")
-
-            _validar_cantidad_contra_stock_vendible(db, linea.id_producto, linea.cant)
-
-            total += Decimal(str(linea.subtotal))
-
-        now = datetime.now(timezone.utc)
-        pedido = Pedido(
-            id_usuario=effective_user_id,
-            fecha_pedido=now,
-            estado="pendiente_confirmacion",
-            total=total,
-            observaciones=observaciones,
+        pedido, pago, items, total = _checkout_transaccion_core(
+            db, token, id_usuario, metodo_pago, observaciones
         )
-        db.add(pedido)
-        db.flush()
-
-        for linea in items:
-            db.add(
-                DetallePedido(
-                    id_pedido=pedido.id,
-                    id_producto=linea.id_producto,
-                    cantidad=linea.cant,
-                    precio_unitario=Decimal(str(linea.precio_unitario)),
-                    subtotal=Decimal(str(linea.subtotal)),
-                )
-            )
-
-        referencia_externa = f"LOCAL-{pedido.id}-{int(now.timestamp())}"
-        pago = Pago(
-            id_pedido=pedido.id,
-            monto=total,
-            metodo_pago=metodo_pago,
-            estado_pago="pendiente",
-            fecha_pago=now,
-            referencia_externa=referencia_externa,
-        )
-        db.add(pago)
-
-        carrito.id_usuario = effective_user_id
-        carrito.id_pedido = pedido.id
-        carrito.estado = False
 
         lineas = [
             "Hola! Quiero finalizar esta compra:",
@@ -848,6 +874,87 @@ def checkout_carrito(
     except Exception:
         db.rollback()
         raise ValueError("Ocurrió un error al confirmar la compra")
+
+
+def _titulo_item_mp(linea: CarritoDetalle) -> str:
+    nombre = linea.producto.nombre if linea.producto else f"Producto {linea.id_producto}"
+    return (nombre or "Producto")[:256]
+
+
+def _mp_puede_usar_auto_return(back_urls: Optional[PreferenceBackUrls]) -> bool:
+    """MP exige HTTPS en back_urls si se envía auto_return; http://localhost falla."""
+    if back_urls is None:
+        return False
+    for u in (back_urls.success, back_urls.failure, back_urls.pending):
+        if not (u or "").strip().lower().startswith("https://"):
+            return False
+    return True
+
+
+def checkout_carrito_mercadopago(
+    db: Session,
+    token: str,
+    id_usuario: Optional[int],
+    observaciones: Optional[str],
+    client: MercadoPagoClient,
+    notification_url: Optional[str],
+    back_urls: Optional[PreferenceBackUrls],
+) -> tuple[Pedido, Pago, dict]:
+    """
+    Igual que checkout estándar pero con método mercadopago y preferencia Checkout Pro.
+    Hace commit solo si MP crea la preferencia; si no, rollback del pedido.
+    """
+    try:
+        pedido, pago, items, _total = _checkout_transaccion_core(
+            db, token, id_usuario, "mercadopago", observaciones
+        )
+        if not pago.referencia_externa:
+            db.rollback()
+            raise ValueError("No se pudo generar referencia externa para Mercado Pago")
+
+        pref_items = [
+            PreferenceItem(
+                title=_titulo_item_mp(linea),
+                quantity=int(linea.cant),
+                unit_price=Decimal(str(linea.precio_unitario)),
+                currency_id="ARS",
+            )
+            for linea in items
+        ]
+        req = PreferenceCreateRequest(
+            items=pref_items,
+            external_reference=pago.referencia_externa,
+            notification_url=notification_url,
+            back_urls=back_urls,
+            auto_return="approved" if _mp_puede_usar_auto_return(back_urls) else None,
+        )
+        mp_resp = client.create_preference(req)
+        pref_id = str(mp_resp.get("id") or "").strip()
+        sandbox = (mp_resp.get("sandbox_init_point") or "").strip()
+        init_pt = (mp_resp.get("init_point") or "").strip()
+        url_checkout = sandbox or init_pt
+        if not pref_id or not url_checkout:
+            db.rollback()
+            raise ValueError(
+                "Mercado Pago devolvió una preferencia incompleta (falta id o URL de pago)."
+            )
+        db.commit()
+        db.refresh(pedido)
+        db.refresh(pago)
+        return pedido, pago, mp_resp
+
+    except MercadoPagoAPIError:
+        db.rollback()
+        raise
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("No se pudo confirmar el checkout")
+    except ValueError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise ValueError("Ocurrió un error al confirmar la compra con Mercado Pago")
 
 
 def confirm_pedido(
