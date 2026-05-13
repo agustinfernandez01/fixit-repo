@@ -263,7 +263,9 @@ export function EquiposPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
-  const [fotoFile, setFotoFile] = useState<File | null>(null)
+  const [fotoFiles, setFotoFiles] = useState<File[]>([])
+  const [existingFotos, setExistingFotos] = useState<string[]>([])
+  const [deleteAllFotosPending, setDeleteAllFotosPending] = useState(false)
   const [form, setForm] = useState({
     id_modelo: '' as string | number,
     imei: '',
@@ -281,8 +283,14 @@ export function EquiposPage() {
     setTimeout(() => setSuccessMsg(null), 2800)
   }
 
-  const fotoPreviewUrl = useMemo(() => (fotoFile ? URL.createObjectURL(fotoFile) : ''), [fotoFile])
-  useEffect(() => () => { if (fotoPreviewUrl) URL.revokeObjectURL(fotoPreviewUrl) }, [fotoPreviewUrl])
+  const fotoPreviewUrls = useMemo(
+    () => fotoFiles.map((f) => URL.createObjectURL(f)),
+    [fotoFiles],
+  )
+  useEffect(
+    () => () => { fotoPreviewUrls.forEach((u) => URL.revokeObjectURL(u)) },
+    [fotoPreviewUrls],
+  )
 
   useEffect(() => {
     let alive = true
@@ -404,7 +412,9 @@ export function EquiposPage() {
 
   function openCreate() {
     setEditingId(null)
-    setFotoFile(null)
+    setFotoFiles([])
+    setExistingFotos([])
+    setDeleteAllFotosPending(false)
     setForm({ id_modelo: '', imei: '', color: '', tipo_equipo: '', activo: true, precio_ars: '' })
     setSelectedOpciones({})
     setModalOpen(true)
@@ -417,7 +427,9 @@ export function EquiposPage() {
     const idModelo = e.modelo?.id ?? e.modelo?.id_modelo ?? e.id_modelo ?? ''
     const producto = e.id_producto ? productosById[e.id_producto] : undefined
     setEditingId(idEquipo)
-    setFotoFile(null)
+    setFotoFiles([])
+    setExistingFotos(e.fotos_urls?.length ? e.fotos_urls : e.foto_url ? [e.foto_url] : [])
+    setDeleteAllFotosPending(false)
     setForm({
       id_modelo: idModelo,
       imei: e.imei ?? '',
@@ -438,7 +450,9 @@ export function EquiposPage() {
   function closeModal() {
     setModalOpen(false)
     setEditingId(null)
-    setFotoFile(null)
+    setFotoFiles([])
+    setExistingFotos([])
+    setDeleteAllFotosPending(false)
     setError(null)
   }
 
@@ -471,12 +485,13 @@ export function EquiposPage() {
     try {
       if (editingId != null) {
         await inventarioApi.equipos.patch(editingId, body)
-        if (fotoFile) await inventarioApi.equipos.uploadFoto(editingId, fotoFile, { setPrincipalTienda: true })
+        if (deleteAllFotosPending) await inventarioApi.equipos.deleteFotos(editingId)
+        if (fotoFiles.length > 0) await inventarioApi.equipos.uploadFotos(editingId, fotoFiles)
       } else {
         const created = await inventarioApi.equipos.create(body)
         const createdId = created.id_equipo ?? created.id
-        if (fotoFile && createdId != null) {
-          await inventarioApi.equipos.uploadFoto(createdId, fotoFile, { setPrincipalTienda: true })
+        if (fotoFiles.length > 0 && createdId != null) {
+          await inventarioApi.equipos.uploadFotos(createdId, fotoFiles)
         }
       }
       flashSuccess(editingId != null ? 'Equipo actualizado.' : 'Equipo creado.')
@@ -744,22 +759,51 @@ export function EquiposPage() {
                 </span>
               </label>
 
-              {/* Foto */}
-              <label style={{ gridColumn: '1 / -1' }}>
-                Foto del equipo
+              {/* Fotos */}
+              <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>Fotos del equipo (máx. 4)</span>
+
+                {/* Fotos existentes (solo en edición) */}
+                {editingId != null && !deleteAllFotosPending && existingFotos.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    {existingFotos.map((url) => (
+                      <img key={url} src={url} alt="Foto actual" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)' }} />
+                    ))}
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      style={{ alignSelf: 'center' }}
+                      onClick={() => { setDeleteAllFotosPending(true); setExistingFotos([]) }}
+                    >
+                      Eliminar todas
+                    </button>
+                  </div>
+                )}
+
+                {/* Nuevas fotos seleccionadas */}
+                {fotoPreviewUrls.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {fotoPreviewUrls.map((url, i) => (
+                      <img key={i} src={url} alt={`Nueva ${i + 1}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }} />
+                    ))}
+                  </div>
+                )}
+
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => setFotoFile(e.target.files?.[0] ?? null)}
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []).slice(0, 4 - (deleteAllFotosPending ? 0 : existingFotos.length))
+                    setFotoFiles(files)
+                  }}
                 />
-                {fotoPreviewUrl ? (
-                  <img
-                    src={fotoPreviewUrl}
-                    alt="Vista previa"
-                    style={{ marginTop: '0.5rem', width: 100, height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)' }}
-                  />
-                ) : null}
-              </label>
+                <span style={{ fontSize: '0.75rem', color: 'var(--app-muted)' }}>
+                  {existingFotos.length > 0 && !deleteAllFotosPending
+                    ? `${existingFotos.length} foto${existingFotos.length > 1 ? 's' : ''} actual${existingFotos.length > 1 ? 'es' : ''}. Podés agregar hasta ${4 - existingFotos.length} más.`
+                    : 'Seleccioná hasta 4 fotos.'}
+                </span>
+              </div>
 
               <div className="form-row-check" style={{ gridColumn: '1 / -1' }}>
                 <input

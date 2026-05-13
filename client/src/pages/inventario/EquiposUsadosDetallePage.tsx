@@ -82,8 +82,10 @@ export function EquiposUsadosDetallePage() {
   const dolarRate = dolarData?.venta ?? null
   const dolarUpdatedAt = dolarData?.fechaActualizacion ?? null
 
-  const [fotoFile, setFotoFile] = useState<File | null>(null)
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null)
+  const [fotoFiles, setFotoFiles] = useState<File[]>([])
+  const [fotoPreviews, setFotoPreviews] = useState<string[]>([])
+  const [existingFotos, setExistingFotos] = useState<string[]>([])
+  const [deleteAllFotosPending, setDeleteAllFotosPending] = useState(false)
 
   const [form, setForm] = useState(EMPTY_FORM)
 
@@ -160,17 +162,19 @@ export function EquiposUsadosDetallePage() {
 
   function resetForm() {
     setForm(EMPTY_FORM)
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview)
-    setFotoFile(null)
-    setFotoPreview(null)
+    fotoPreviews.forEach((u) => URL.revokeObjectURL(u))
+    setFotoFiles([])
+    setFotoPreviews([])
+    setExistingFotos([])
+    setDeleteAllFotosPending(false)
     setEditingIds(null)
     setActionError(null)
   }
 
-  function pickFoto(file: File | null) {
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview)
-    setFotoFile(file)
-    setFotoPreview(file ? URL.createObjectURL(file) : null)
+  function pickFotos(files: File[]) {
+    fotoPreviews.forEach((u) => URL.revokeObjectURL(u))
+    setFotoFiles(files)
+    setFotoPreviews(files.map((f) => URL.createObjectURL(f)))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -234,9 +238,8 @@ export function EquiposUsadosDetallePage() {
             incluye_cargador: form.incluye_cargador,
           }),
         ])
-        if (fotoFile) {
-          await inventarioApi.equipos.uploadFoto(editingIds.idEquipo, fotoFile, { setPrincipalTienda: true })
-        }
+        if (deleteAllFotosPending) await inventarioApi.equipos.deleteFotos(editingIds.idEquipo)
+        if (fotoFiles.length > 0) await inventarioApi.equipos.uploadFotos(editingIds.idEquipo, fotoFiles)
       } else {
         const createdEquipo = await inventarioApi.equipos.createUsado({
           id_modelo: idModelo,
@@ -251,8 +254,8 @@ export function EquiposUsadosDetallePage() {
         const idEquipo = createdEquipo.id_equipo ?? createdEquipo.id
         if (!idEquipo) throw new Error('No se pudo obtener el ID del equipo usado creado.')
 
-        if (fotoFile) {
-          await inventarioApi.equipos.uploadFoto(idEquipo, fotoFile, { setPrincipalTienda: true })
+        if (fotoFiles.length > 0) {
+          await inventarioApi.equipos.uploadFotos(idEquipo, fotoFiles)
         }
 
         await inventarioApi.equiposUsadosDetalle.create({
@@ -287,9 +290,11 @@ export function EquiposUsadosDetallePage() {
   function startEdit(r: EquipoUsadoDetalle) {
     const equipo = equiposById.get(r.id_equipo)
     if (!equipo) return
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview)
-    setFotoFile(null)
-    setFotoPreview(null)
+    fotoPreviews.forEach((u) => URL.revokeObjectURL(u))
+    setFotoFiles([])
+    setFotoPreviews([])
+    setExistingFotos(equipo.fotos_urls?.length ? equipo.fotos_urls : equipo.foto_url ? [equipo.foto_url] : [])
+    setDeleteAllFotosPending(false)
     setActionError(null)
     setEditingIds({ idEquipo: r.id_equipo, idDetalle: r.id_detalle_usado })
     setForm({
@@ -427,75 +432,54 @@ export function EquiposUsadosDetallePage() {
               />
             </label>
 
-            {/* ── Foto (ocupa toda la fila) ── */}
-            <div style={{ gridColumn: '1 / -1' }}>
-              <p style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: '0.35rem', color: 'var(--app-muted)' }}>
-                Foto del equipo
+            {/* ── Fotos (ocupa toda la fila) ── */}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <p style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 0, color: 'var(--app-muted)' }}>
+                Fotos del equipo (máx. 4)
               </p>
-              {isEditing ? (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-                  {fotoPreview ? (
-                    <div>
-                      <img
-                        src={fotoPreview}
-                        alt="Nueva foto"
-                        style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)', display: 'block' }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ marginTop: '0.35rem', width: '100%' }}
-                        onClick={() => pickFoto(null)}
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : editingEquipo?.foto_url ? (
-                    <div>
-                      <img
-                        src={mediaUrl(editingEquipo.foto_url)}
-                        alt="Foto actual"
-                        style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)', display: 'block' }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-danger btn-sm"
-                        style={{ marginTop: '0.35rem', width: '100%' }}
-                        onClick={() => handleDeleteFoto(editingIds!.idEquipo)}
-                      >
-                        Eliminar foto
-                      </button>
-                    </div>
-                  ) : (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--app-muted)', alignSelf: 'center' }}>Sin foto</span>
-                  )}
-                  <label style={{ margin: 0, alignSelf: 'center', fontSize: '0.78rem', fontWeight: 500, color: 'var(--app-muted)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    {editingEquipo?.foto_url && !fotoPreview ? 'Reemplazar foto' : 'Agregar foto'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ width: 'auto' }}
-                      onChange={(e) => pickFoto(e.target.files?.[0] ?? null)}
-                    />
-                  </label>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={{ width: 'auto' }}
-                    onChange={(e) => pickFoto(e.target.files?.[0] ?? null)}
-                  />
-                  {fotoPreview && (
-                    <img
-                      src={fotoPreview}
-                      alt="Vista previa"
-                      style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }}
-                    />
-                  )}
+
+              {/* Fotos existentes */}
+              {isEditing && !deleteAllFotosPending && existingFotos.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {existingFotos.map((url) => (
+                    <img key={url} src={url} alt="Foto actual" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }} />
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => { setDeleteAllFotosPending(true); setExistingFotos([]) }}
+                  >
+                    Eliminar todas
+                  </button>
                 </div>
               )}
+
+              {/* Previews de nuevas fotos seleccionadas */}
+              {fotoPreviews.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {fotoPreviews.map((url, i) => (
+                    <img key={i} src={url} alt={`Nueva ${i + 1}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }} />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ width: 'auto' }}
+                  onChange={(e) => {
+                    const max = 4 - (deleteAllFotosPending ? 0 : existingFotos.length)
+                    pickFotos(Array.from(e.target.files ?? []).slice(0, max))
+                  }}
+                />
+                {isEditing && existingFotos.length > 0 && !deleteAllFotosPending && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--app-muted)' }}>
+                    Podés agregar hasta {4 - existingFotos.length} foto{4 - existingFotos.length !== 1 ? 's' : ''} más
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* ── Atributos ── */}

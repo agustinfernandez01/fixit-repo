@@ -102,12 +102,26 @@ export const inventarioApi = {
       }
       return text ? (JSON.parse(text) as Equipo) : (undefined as unknown as Equipo)
     },
+    uploadFotos: async (id: number, files: File[]) => {
+      const fd = new FormData()
+      for (const f of files) fd.append('fotos', f)
+      const res = await fetch(apiUrl(`${P}/equipos/${id}/fotos`), { method: 'POST', body: fd })
+      const text = await res.text()
+      if (!res.ok) {
+        let detail = res.statusText
+        try { const j = JSON.parse(text) as { detail?: string }; if (typeof j.detail === 'string') detail = j.detail } catch { if (text) detail = text }
+        throw new Error(detail || `HTTP ${res.status}`)
+      }
+      return text ? (JSON.parse(text) as Equipo) : (undefined as unknown as Equipo)
+    },
     setFotoPrincipalTienda: (id: number) =>
       fetchJson<Equipo>(`${P}/equipos/${id}/foto-principal`, {
         method: 'POST',
       }),
     deleteFoto: (id: number) =>
       fetchJson<void>(`${P}/equipos/${id}/foto`, { method: 'DELETE' }),
+    deleteFotos: (id: number) =>
+      fetchJson<void>(`${P}/equipos/${id}/fotos`, { method: 'DELETE' }),
     delete: (id: number) =>
       fetchJson<void>(`${P}/equipos/${id}`, { method: 'DELETE' }),
   },

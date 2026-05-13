@@ -52,6 +52,7 @@ export type Equipo = {
     capacidad_gb: number | null
   }
   foto_url: string | null
+  fotos_urls?: string[]
   configuracion?: {
     id: number
     id_equipo: number

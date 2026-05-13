@@ -9,6 +9,7 @@ export type Accesorio = {
   /** Unidades disponibles (viene de `productos.stock`). */
   stock: number
   foto_url?: string | null
+  fotos_urls?: string[]
 }
 
 export type AccesorioCreatePayload = {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { accesoriosApi } from '../../services/accesoriosApi'
 import type { Accesorio } from '../../types/accesorios'
 
@@ -25,6 +25,12 @@ export function AccesoriosPage() {
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
+  const [fotoFiles, setFotoFiles] = useState<File[]>([])
+  const [existingFotos, setExistingFotos] = useState<string[]>([])
+  const [deleteAllFotosPending, setDeleteAllFotosPending] = useState(false)
+
+  const fotoPreviews = useMemo(() => fotoFiles.map((f) => URL.createObjectURL(f)), [fotoFiles])
+  useEffect(() => () => { fotoPreviews.forEach((u) => URL.revokeObjectURL(u)) }, [fotoPreviews])
 
   const load = useCallback(async () => {
     setError(null)
@@ -50,6 +56,9 @@ export function AccesoriosPage() {
 
   function startEdit(row: Accesorio) {
     setEditingId(row.id)
+    setFotoFiles([])
+    setExistingFotos(row.fotos_urls?.length ? row.fotos_urls : row.foto_url ? [row.foto_url] : [])
+    setDeleteAllFotosPending(false)
     setForm({
       tipo: row.tipo,
       nombre: row.nombre,
@@ -63,6 +72,9 @@ export function AccesoriosPage() {
 
   function cancelEdit() {
     setEditingId(null)
+    setFotoFiles([])
+    setExistingFotos([])
+    setDeleteAllFotosPending(false)
     setForm(emptyForm)
   }
 
@@ -86,13 +98,15 @@ export function AccesoriosPage() {
           estado: form.estado,
           stock: stockNum,
         })
+        if (deleteAllFotosPending) await accesoriosApi.deleteFotos(editingId)
+        if (fotoFiles.length > 0) await accesoriosApi.uploadFotos(editingId, fotoFiles)
       } else {
         const precio = Number(form.precio)
         if (!Number.isFinite(precio) || precio < 0) {
           setError('Ingresá un precio válido.')
           return
         }
-        await accesoriosApi.create({
+        const created = await accesoriosApi.create({
           tipo: form.tipo.trim().toLowerCase(),
           nombre: form.nombre.trim(),
           color: form.color.trim(),
@@ -101,6 +115,7 @@ export function AccesoriosPage() {
           estado: form.estado,
           stock: stockNum,
         })
+        if (fotoFiles.length > 0) await accesoriosApi.uploadFotos(created.id, fotoFiles)
       }
       cancelEdit()
       await load()
@@ -198,6 +213,51 @@ export function AccesoriosPage() {
                 required
               />
             </label>
+            {/* Fotos */}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <span style={{ fontWeight: 500, fontSize: '0.88rem' }}>Fotos del accesorio (máx. 2)</span>
+
+              {/* Fotos existentes en edición */}
+              {editingId != null && !deleteAllFotosPending && existingFotos.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {existingFotos.map((url) => (
+                    <img key={url} src={url} alt="Foto actual" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)' }} />
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => { setDeleteAllFotosPending(true); setExistingFotos([]) }}
+                  >
+                    Eliminar todas
+                  </button>
+                </div>
+              )}
+
+              {/* Previews de nuevas fotos */}
+              {fotoPreviews.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {fotoPreviews.map((url, i) => (
+                    <img key={i} src={url} alt={`Nueva ${i + 1}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }} />
+                  ))}
+                </div>
+              )}
+
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  const max = 2 - (deleteAllFotosPending ? 0 : existingFotos.length)
+                  setFotoFiles(Array.from(e.target.files ?? []).slice(0, Math.max(max, 0)))
+                }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--app-muted)' }}>
+                {editingId != null && existingFotos.length > 0 && !deleteAllFotosPending
+                  ? `Tenés ${existingFotos.length} foto${existingFotos.length > 1 ? 's' : ''}. Podés agregar ${2 - existingFotos.length} más o eliminar todas.`
+                  : 'Seleccioná hasta 2 fotos.'}
+              </span>
+            </div>
+
             <div className="form-row-check">
               <input
                 id="activo-accesorio"

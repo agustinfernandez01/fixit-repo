@@ -1104,13 +1104,26 @@ def eliminar_foto_equipo(id_equipo: int, db: Session = Depends(get_db)):
     obj = db.query(Equipo).filter(Equipo.id == id_equipo).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
-    if obj.foto_url:
-        abs_path = UPLOAD_DIR.parent / obj.foto_url.lstrip("/")
-        try:
-            abs_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+    if obj.foto_url and obj.foto_url.startswith("http"):
+        from app.services.storage import key_from_url, delete_file as _delete_file
+        _delete_file(key_from_url(obj.foto_url))
     obj.foto_url = None
+    db.commit()
+    return None
+
+
+@router.delete("/equipos/{id_equipo}/fotos", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_todas_fotos_equipo(id_equipo: int, db: Session = Depends(get_db)):
+    """Elimina todas las fotos del equipo de R2 y limpia foto_url en DB."""
+    obj = db.query(Equipo).filter(Equipo.id == id_equipo).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    for url in list_files(f"equipos/{id_equipo}/"):
+        from app.services.storage import key_from_url, delete_file as _delete_file
+        _delete_file(key_from_url(url))
+    obj.foto_url = None
+    if obj.producto is not None:
+        obj.producto.foto_principal_url = None
     db.commit()
     return None
 

@@ -105,6 +105,19 @@ async def subir_foto_accesorio(
     return data_resp
 
 
+@router.delete("/{id_accesorio}/fotos", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_todas_fotos_accesorio(id_accesorio: int, db: Session = Depends(get_db)):
+    """Elimina todas las fotos del accesorio de R2 y limpia foto_url en DB."""
+    obj = db.query(Accesorios).filter(Accesorios.id == id_accesorio).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Accesorio no encontrado")
+    for url in list_files(f"accesorios/{id_accesorio}/"):
+        delete_file(key_from_url(url))
+    obj.foto_url = None
+    db.commit()
+    return None
+
+
 @router.post("/{id_accesorio}/fotos", response_model=AccesoriosResponse)
 async def subir_fotos_accesorio(
     id_accesorio: int,
