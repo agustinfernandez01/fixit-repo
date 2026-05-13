@@ -416,7 +416,7 @@ export function EquiposPage() {
       id_modelo: idModelo,
       imei: e.imei ?? '',
       color: e.color ?? '',
-      tipo_equipo: e.tipo_equipo ?? '',
+      tipo_equipo: (e.tipo_equipo ?? '').trim().toLowerCase(),
       activo: e.activo ?? true,
       precio_ars: producto?.precio ?? '',
     })
@@ -701,11 +701,11 @@ export function EquiposPage() {
                 </label>
               ) : null}
               <label>
-                Tipo
+                Tipo de equipo
                 <select
                   value={form.tipo_equipo}
                   onChange={(e) => setForm((f) => ({ ...f, tipo_equipo: e.target.value }))}
-                  required
+                  required={editingId == null}
                 >
                   <option value="">Seleccionar…</option>
                   {tipoEquipoOptions.map((o) => (
