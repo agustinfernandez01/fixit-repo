@@ -3,6 +3,16 @@ uvicorn app.main:app --reload
 
 ---------------------------
 
+- Nombre del bucket0 : fixit-uploads
+
+- Account ID (hex en el endpoint) : 1688ecf8aec530d82585145cfcb4e984
+
+- S3 API (como lo muestra Cloudflare) : https://1688ecf8aec530d82585145cfcb4e984.r2.cloudflarestorage.com/fixit-uploads
+
+- Endpoint para SDK (host sin path de bucket; el bucket va aparte) : https://1688ecf8aec530d82585145cfcb4e984.r2.cloudflarestorage.com
+
+---------------------------
+
 Usar DB local:
 
 DATABASE_URL: postgresql+psycopg2://fixit:fixit123@db:5432/fixitdb
