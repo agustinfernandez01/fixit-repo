@@ -78,6 +78,7 @@ class AccesoriosCreate(BaseModel):
 
 class AccesoriosResponse(Accesorios):
     stock: int = Field(default=0, ge=0)
+    fotos_urls: list[str] = []
 
 
 class AccesoriosPatch(BaseModel):

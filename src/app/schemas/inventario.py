@@ -165,6 +165,7 @@ class EquipoResponse(EquipoBase):
     precio_ars: Optional[Decimal] = None
     precio_usd: Optional[Decimal] = None
     configuracion: list["EquipoConfiguracionResponse"] = []
+    fotos_urls: list[str] = []
 
     class Config:
         from_attributes = True

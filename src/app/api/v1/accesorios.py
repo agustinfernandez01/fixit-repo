@@ -1,9 +1,13 @@
 """Módulo accesorios: alta y mantenimiento de accesorios del catálogo."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, HTTPException, status, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models.accesorios import Accesorios
 from app.schemas.accesorios import AccesoriosCreate, AccesoriosPatch, AccesoriosResponse
 from app.services.accesorios import (
     create_accesorios,
@@ -12,6 +16,7 @@ from app.services.accesorios import (
     get_accesorios_list,
     patch_accesorios,
 )
+from app.services.storage import delete_file, key_from_url, list_files, upload_file
 
 router = APIRouter()
 
@@ -65,3 +70,81 @@ def borrar_accesorio(id_accesorio: int, db: Session = Depends(get_db)):
     if not obj:
         raise HTTPException(status_code=404, detail="Accesorio no encontrado")
     return None
+
+
+@router.post("/{id_accesorio}/foto", response_model=AccesoriosResponse)
+async def subir_foto_accesorio(
+    id_accesorio: int,
+    foto: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Sube una foto para el accesorio. Reemplaza la foto principal actual."""
+    obj = db.query(Accesorios).filter(Accesorios.id == id_accesorio).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Accesorio no encontrado")
+
+    if not foto.content_type or not foto.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen.")
+
+    ext = Path(foto.filename or "").suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+
+    content = await foto.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="La imagen supera 10 MB.")
+
+    key = f"accesorios/{id_accesorio}/{uuid4().hex}{ext}"
+    obj.foto_url = upload_file(content, key, foto.content_type or "image/jpeg")
+    db.commit()
+    db.refresh(obj)
+    data_resp = AccesoriosResponse.model_validate(obj).model_dump()
+    data_resp["fotos_urls"] = list_files(f"accesorios/{id_accesorio}/")
+    return data_resp
+
+
+@router.post("/{id_accesorio}/fotos", response_model=AccesoriosResponse)
+async def subir_fotos_accesorio(
+    id_accesorio: int,
+    fotos: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """Sube hasta 2 fotos para el accesorio. Reemplaza las existentes."""
+    obj = db.query(Accesorios).filter(Accesorios.id == id_accesorio).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Accesorio no encontrado")
+
+    if not fotos:
+        raise HTTPException(status_code=400, detail="Debes cargar al menos una imagen.")
+    if len(fotos) > 2:
+        raise HTTPException(status_code=400, detail="Puedes cargar un máximo de 2 fotos.")
+
+    for url in list_files(f"accesorios/{id_accesorio}/"):
+        delete_file(key_from_url(url))
+
+    urls: list[str] = []
+    for foto in fotos:
+        if not foto.content_type or not foto.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="Todos los archivos deben ser imágenes.")
+
+        ext = Path(foto.filename or "").suffix.lower()
+        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+            ext = ".jpg"
+
+        content = await foto.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uno de los archivos está vacío.")
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Cada imagen debe pesar hasta 10 MB.")
+
+        key = f"accesorios/{id_accesorio}/{uuid4().hex}{ext}"
+        urls.append(upload_file(content, key, foto.content_type or "image/jpeg"))
+
+    obj.foto_url = urls[0]
+    db.commit()
+    db.refresh(obj)
+    data_resp = AccesoriosResponse.model_validate(obj).model_dump()
+    data_resp["fotos_urls"] = list_files(f"accesorios/{id_accesorio}/")
+    return data_resp

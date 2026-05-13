@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from app.config import UPLOAD_DIR
+from app.services.storage import upload_file, delete_file, list_files, key_from_url
 from app.deps.auth import require_admin_user_id
 from app.db import get_db, engine
 from app.models import ModeloCanje, EquipoOfrecidoCanje, SolicitudCanje, CotizacionCanje, Productos
@@ -83,19 +83,7 @@ def _ensure_equipos_ofrecidos_columns() -> None:
 
 
 def _listar_fotos_equipo_ofrecido(id_equipo_ofrecido: int) -> list[str]:
-    rel_dir = Path("canje_equipos") / str(id_equipo_ofrecido)
-    abs_dir = UPLOAD_DIR / rel_dir
-    if not abs_dir.exists():
-        return []
-
-    fotos: list[str] = []
-    for p in sorted(abs_dir.iterdir()):
-        if not p.is_file():
-            continue
-        if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
-            continue
-        fotos.append(f"/uploads/{rel_dir.as_posix()}/{p.name}")
-    return fotos
+    return list_files(f"canje_equipos/{id_equipo_ofrecido}/")
 
 
 async def _guardar_fotos_equipo_ofrecido(
@@ -110,14 +98,9 @@ async def _guardar_fotos_equipo_ofrecido(
     if len(fotos) > 4:
         raise HTTPException(status_code=400, detail="Puedes cargar un máximo de 4 fotos.")
 
-    rel_dir = Path("canje_equipos") / str(obj.id_equipo_ofrecido)
-    abs_dir = UPLOAD_DIR / rel_dir
-    abs_dir.mkdir(parents=True, exist_ok=True)
-
     if reemplazar:
-        for p in abs_dir.iterdir():
-            if p.is_file():
-                p.unlink(missing_ok=True)
+        for url in _listar_fotos_equipo_ofrecido(obj.id_equipo_ofrecido):
+            delete_file(key_from_url(url))
 
     urls: list[str] = []
     for foto in fotos:
@@ -134,10 +117,8 @@ async def _guardar_fotos_equipo_ofrecido(
         if len(content) > 10 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="Cada imagen debe pesar hasta 10 MB.")
 
-        filename = f"{uuid4().hex}{ext}"
-        abs_path = abs_dir / filename
-        abs_path.write_bytes(content)
-        urls.append(f"/uploads/{rel_dir.as_posix()}/{filename}")
+        key = f"canje_equipos/{obj.id_equipo_ofrecido}/{uuid4().hex}{ext}"
+        urls.append(upload_file(content, key, foto.content_type or "image/jpeg"))
 
     return urls[0] if urls else None
 
@@ -421,22 +402,14 @@ async def subir_foto_modelo_canje(
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         ext = ".jpg"
 
-    rel_dir = Path("canje_modelos") / str(id_modelo_canje)
-    abs_dir = UPLOAD_DIR / rel_dir
-    abs_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = f"{uuid4().hex}{ext}"
-    abs_path = abs_dir / filename
-
     content = await foto.read()
     if not content:
         raise HTTPException(status_code=400, detail="El archivo está vacío.")
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="La imagen supera 10 MB.")
 
-    abs_path.write_bytes(content)
-
-    obj.foto_url = f"/uploads/{rel_dir.as_posix()}/{filename}"
+    key = f"canje_modelos/{id_modelo_canje}/{uuid4().hex}{ext}"
+    obj.foto_url = upload_file(content, key, foto.content_type or "image/jpeg")
     db.commit()
     db.refresh(obj)
     return obj
@@ -651,13 +624,8 @@ def borrar_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_db
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo ofrecido no encontrado")
 
-    rel_dir = Path("canje_equipos") / str(id_equipo_ofrecido)
-    abs_dir = UPLOAD_DIR / rel_dir
-    if abs_dir.exists():
-        for p in abs_dir.iterdir():
-            if p.is_file():
-                p.unlink(missing_ok=True)
-        abs_dir.rmdir()
+    for url in _listar_fotos_equipo_ofrecido(id_equipo_ofrecido):
+        delete_file(key_from_url(url))
 
     db.delete(obj)
     db.commit()

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.config import UPLOAD_DIR
+from app.config import UPLOAD_DIR  # mantenido para servir imágenes legacy de /uploads
 from app.db import engine
 import app.models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.api.v1 import api_router
@@ -45,7 +45,7 @@ def verificar_db_en_startup():
     Verifica conectividad a la DB en startup.
     El esquema se gestiona EXCLUSIVAMENTE con Alembic (sin create_all ni parches runtime).
     """
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)  # necesario para el mount legacy de /uploads
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))

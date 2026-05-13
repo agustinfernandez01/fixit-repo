@@ -78,3 +78,10 @@ MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or "").strip()
 MERCADOPAGO_PUBLIC_KEY = (os.getenv("MERCADOPAGO_PUBLIC_KEY") or "").strip()
 # URL pública del backend (sin barra final): webhooks y, si aplica, back_urls hacia el front.
 APP_PUBLIC_BASE_URL = (os.getenv("APP_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+
+# Cloudflare R2 (almacenamiento de imágenes, compatible con S3).
+R2_ENDPOINT_URL = (os.getenv("R2_ENDPOINT_URL") or "").strip()
+R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
+R2_SECRET_ACCESS_KEY = (os.getenv("R2_SECRET_ACCESS_KEY") or "").strip()
+R2_BUCKET_NAME = (os.getenv("R2_BUCKET_NAME") or "").strip()
+R2_PUBLIC_URL = (os.getenv("R2_PUBLIC_URL") or "").strip().rstrip("/")

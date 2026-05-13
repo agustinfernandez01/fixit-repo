@@ -8,7 +8,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.config import UPLOAD_DIR, WHATSAPP_CHECKOUT_PHONE
+from app.config import WHATSAPP_CHECKOUT_PHONE
+from app.services.storage import upload_file
 from app.deps.auth import get_optional_user_id_from_access_token, require_admin_user_id
 from app.db import get_db
 from app.models import InteresPublicacion, Publicacion, RevisionPublicacion, Usuario
@@ -118,7 +119,7 @@ def _build_marketplace_whatsapp_url(
 
 @router.post("/upload-foto")
 async def subir_foto_marketplace(file: UploadFile = File(...)):
-    """Sube una imagen y devuelve la URL pública bajo /uploads/…"""
+    """Sube una imagen a Cloudflare R2 y devuelve la URL pública."""
     ct = file.content_type or ""
     if ct not in _FOTO_CT:
         raise HTTPException(
@@ -131,11 +132,9 @@ async def subir_foto_marketplace(file: UploadFile = File(...)):
             status_code=400,
             detail="La imagen no puede superar 5 MB.",
         )
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    name = f"{uuid.uuid4().hex}{_FOTO_CT[ct]}"
-    path = UPLOAD_DIR / name
-    path.write_bytes(raw)
-    return {"url": f"/uploads/{name}"}
+    key = f"marketplace/{uuid.uuid4().hex}{_FOTO_CT[ct]}"
+    url = upload_file(raw, key, ct)
+    return {"url": url}
 
 
 @router.get("/publicaciones", response_model=list[PublicacionResponse])

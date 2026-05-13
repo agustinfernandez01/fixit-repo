@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
 
-from app.config import UPLOAD_DIR
+from app.services.storage import upload_file, list_files
 from app.db import get_db
 from app.models import (
     ModeloEquipo,
@@ -84,7 +84,7 @@ def _equipo_configuracion_payload(eq: Equipo) -> list[dict]:
     return out
 
 
-def _equipo_response_payload(eq: Equipo) -> dict:
+def _equipo_response_payload(eq: Equipo, fotos_urls: list[str] | None = None) -> dict:
     producto = getattr(eq, "producto", None)
     precio_ars = float(producto.precio) if producto and producto.precio is not None else None
     precio_usd = float(producto.precio_usd) if producto and producto.precio_usd is not None else None
@@ -98,6 +98,7 @@ def _equipo_response_payload(eq: Equipo) -> dict:
         "activo": bool(eq.activo),
         "id_producto": eq.id_producto,
         "foto_url": eq.foto_url,
+        "fotos_urls": fotos_urls if fotos_urls is not None else [],
         "fecha_ingreso": eq.fecha_ingreso,
         "precio_ars": precio_ars,
         "precio_usd": precio_usd,
@@ -985,15 +986,7 @@ async def subir_foto_equipo(
 
     ext = Path(foto.filename or "").suffix.lower()
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        # Si no viene extensión o viene rara, intentamos default a .jpg
         ext = ".jpg"
-
-    rel_dir = Path("equipos") / str(id_equipo)
-    abs_dir = UPLOAD_DIR / rel_dir
-    abs_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = f"{uuid4().hex}{ext}"
-    abs_path = abs_dir / filename
 
     content = await foto.read()
     if not content:
@@ -1001,13 +994,14 @@ async def subir_foto_equipo(
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="La imagen supera 10 MB.")
 
-    abs_path.write_bytes(content)
+    key = f"equipos/{id_equipo}/{uuid4().hex}{ext}"
+    url = upload_file(content, key, foto.content_type or "image/jpeg")
 
-    obj.foto_url = f"/uploads/{rel_dir.as_posix()}/{filename}"
+    obj.foto_url = url
     if obj.producto is not None:
         foto_principal_actual = getattr(obj.producto, "foto_principal_url", None)
         if set_principal_tienda or not foto_principal_actual:
-            obj.producto.foto_principal_url = obj.foto_url
+            obj.producto.foto_principal_url = url
     db.commit()
     obj = (
         db.query(Equipo)
@@ -1020,7 +1014,61 @@ async def subir_foto_equipo(
         .first()
     )
     assert obj is not None
-    return _equipo_response_payload(obj)
+    fotos = list_files(f"equipos/{id_equipo}/")
+    return _equipo_response_payload(obj, fotos_urls=fotos)
+
+
+@router.post("/equipos/{id_equipo}/fotos", response_model=EquipoResponse)
+async def subir_fotos_equipo(
+    id_equipo: int,
+    fotos: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """Sube hasta 4 fotos para un equipo. La primera se usa como foto principal."""
+    obj = db.query(Equipo).filter(Equipo.id == id_equipo).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+
+    if not fotos:
+        raise HTTPException(status_code=400, detail="Debes cargar al menos una imagen.")
+    if len(fotos) > 4:
+        raise HTTPException(status_code=400, detail="Puedes cargar un máximo de 4 fotos.")
+
+    urls: list[str] = []
+    for foto in fotos:
+        if not foto.content_type or not foto.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="Todos los archivos deben ser imágenes.")
+
+        ext = Path(foto.filename or "").suffix.lower()
+        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+            ext = ".jpg"
+
+        content = await foto.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uno de los archivos está vacío.")
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Cada imagen debe pesar hasta 10 MB.")
+
+        key = f"equipos/{id_equipo}/{uuid4().hex}{ext}"
+        urls.append(upload_file(content, key, foto.content_type or "image/jpeg"))
+
+    obj.foto_url = urls[0]
+    if obj.producto is not None:
+        obj.producto.foto_principal_url = urls[0]
+    db.commit()
+    obj = (
+        db.query(Equipo)
+        .options(
+            joinedload(Equipo.modelo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+        )
+        .filter(Equipo.id == id_equipo)
+        .first()
+    )
+    assert obj is not None
+    fotos_urls = list_files(f"equipos/{id_equipo}/")
+    return _equipo_response_payload(obj, fotos_urls=fotos_urls)
 
 
 @router.post("/equipos/{id_equipo}/foto-principal", response_model=EquipoResponse)
