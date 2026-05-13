@@ -16,6 +16,7 @@ export type ModeloAtributoOpcion = {
   valor: string
   label: string
   color_hex?: string | null
+  foto_url?: string | null
   orden: number
   activo: boolean
 }

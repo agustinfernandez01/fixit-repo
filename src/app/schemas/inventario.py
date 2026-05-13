@@ -295,6 +295,7 @@ class ModeloAtributoOpcionBase(BaseModel):
     valor: str
     label: str
     color_hex: Optional[str] = None
+    foto_url: Optional[str] = None
     orden: int = 0
     activo: bool = True
 

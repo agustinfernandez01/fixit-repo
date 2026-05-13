@@ -59,6 +59,18 @@ export const inventarioApi = {
       }),
     deleteOpcion: (idOpcion: number) =>
       fetchJson<void>(`${P}/modelos/opciones/${idOpcion}`, { method: 'DELETE' }),
+    uploadOpcionFoto: async (idOpcion: number, file: File) => {
+      const fd = new FormData()
+      fd.append('foto', file)
+      const res = await fetch(apiUrl(`${P}/modelos/opciones/${idOpcion}/foto`), { method: 'POST', body: fd })
+      const text = await res.text()
+      if (!res.ok) {
+        let detail = res.statusText
+        try { const j = JSON.parse(text) as { detail?: string }; if (typeof j.detail === 'string') detail = j.detail } catch { if (text) detail = text }
+        throw new Error(detail || `HTTP ${res.status}`)
+      }
+      return JSON.parse(text) as import('../types/inventario').ModeloAtributoOpcion
+    },
   },
 
   equipos: {

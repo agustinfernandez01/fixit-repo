@@ -463,8 +463,42 @@ export function ModelosPage() {
                         <span className="msg-muted" style={{ fontSize: '0.8rem' }}>Sin opciones aún</span>
                       ) : (
                         (attr.opciones ?? []).map((o) => (
-                          <span key={o.id} className="attr-chip">
-                            {o.label || o.valor}
+                          <span key={o.id} className="attr-chip" style={{ alignItems: 'flex-start', gap: '0.35rem', padding: '0.3rem 0.5rem' }}>
+                            <span style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'center' }}>
+                              <span>{o.label || o.valor}</span>
+                              {attr.code === 'color' && (
+                                <>
+                                  {o.foto_url ? (
+                                    <img
+                                      src={o.foto_url}
+                                      alt={o.label}
+                                      style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--app-border)' }}
+                                    />
+                                  ) : (
+                                    <span style={{ fontSize: '0.68rem', color: 'var(--app-muted)' }}>Sin foto</span>
+                                  )}
+                                  <label style={{ fontSize: '0.68rem', color: 'var(--app-muted)', cursor: 'pointer', margin: 0 }}>
+                                    {o.foto_url ? 'Cambiar' : 'Subir foto'}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      style={{ display: 'none' }}
+                                      disabled={attrBusy}
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0]
+                                        if (!file) return
+                                        try {
+                                          await inventarioApi.modelos.uploadOpcionFoto(o.id, file)
+                                          await reloadAttrs(editingId)
+                                        } catch (err) {
+                                          setError(err instanceof Error ? err.message : 'Error al subir foto')
+                                        }
+                                      }}
+                                    />
+                                  </label>
+                                </>
+                              )}
+                            </span>
                             <button
                               type="button"
                               className="attr-chip-del"

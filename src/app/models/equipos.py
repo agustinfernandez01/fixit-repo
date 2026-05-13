@@ -105,6 +105,7 @@ class ModeloAtributoOpcion(Base):
     valor = Column(String(100), nullable=False)
     label = Column(String(100), nullable=False)
     color_hex = Column(String(20), nullable=True)
+    foto_url = Column(String(255), nullable=True)
     orden = Column(Integer, nullable=False, default=0)
     activo = Column(Boolean, nullable=False, default=True)
 

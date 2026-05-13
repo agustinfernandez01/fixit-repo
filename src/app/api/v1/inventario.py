@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
 
-from app.services.storage import upload_file, list_files
+from app.services.storage import upload_file, list_files, delete_file, key_from_url
 from app.db import get_db
 from app.models import (
     ModeloEquipo,
@@ -52,6 +52,21 @@ from app.schemas.inventario import (
 )
 
 router = APIRouter()
+
+
+def _ensure_opcion_foto_url_column() -> None:
+    """Agrega foto_url a modelo_atributo_opcion si todavía no existe (migración lazy)."""
+    from app.db import engine
+    from sqlalchemy import text as _text
+    with engine.connect() as conn:
+        try:
+            conn.execute(_text("SELECT foto_url FROM modelo_atributo_opcion LIMIT 1"))
+        except Exception:
+            try:
+                conn.execute(_text("ALTER TABLE modelo_atributo_opcion ADD COLUMN foto_url VARCHAR(255) NULL"))
+                conn.commit()
+            except Exception:
+                pass
 
 
 def _is_missing_variaciones_table(exc: Exception) -> bool:
@@ -428,6 +443,41 @@ def actualizar_modelo_atributo_opcion(
         raise HTTPException(status_code=404, detail="Opción no encontrada")
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(obj, k, v)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@router.post("/modelos/opciones/{id_opcion}/foto", response_model=ModeloAtributoOpcionResponse)
+async def subir_foto_opcion(
+    id_opcion: int,
+    foto: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Sube o reemplaza la imagen de una opción de color de modelo."""
+    _ensure_opcion_foto_url_column()
+    obj = db.query(ModeloAtributoOpcion).filter(ModeloAtributoOpcion.id == id_opcion).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Opción no encontrada")
+
+    if not foto.content_type or not foto.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen.")
+
+    ext = Path(foto.filename or "").suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+
+    content = await foto.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="La imagen supera 10 MB.")
+
+    if obj.foto_url and obj.foto_url.startswith("http"):
+        delete_file(key_from_url(obj.foto_url))
+
+    key = f"modelos/opciones/{id_opcion}/{uuid4().hex}{ext}"
+    obj.foto_url = upload_file(content, key, foto.content_type or "image/jpeg")
     db.commit()
     db.refresh(obj)
     return obj
