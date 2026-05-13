@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { carritoApi } from '../../services/carritoApi'
 import { productosApi } from '../../services/productosApi'
@@ -209,6 +209,30 @@ function paletteByCategory(category: CatalogCategory): {
   }
 }
 
+const COLOR_NAME_HEX: Record<string, string> = {
+  negro: '#1d1d1f', black: '#1d1d1f',
+  blanco: '#f5f5f7', white: '#f5f5f7',
+  rosa: '#f2a7bb', pink: '#f2a7bb',
+  rojo: '#c41230', red: '#c41230',
+  azul: '#0071e3', blue: '#0071e3',
+  verde: '#30a46c', green: '#30a46c',
+  dorado: '#e8c97c', gold: '#e8c97c', oro: '#e8c97c',
+  plata: '#b0b0bb', silver: '#b0b0bb',
+  grafito: '#535353', graphite: '#535353',
+  titanio: '#9a8f85', titanium: '#9a8f85',
+  amarillo: '#f5e642', yellow: '#f5e642',
+  naranja: '#f57842', orange: '#f57842',
+  violeta: '#9060e0', purple: '#9060e0', lila: '#b87fd4',
+  celeste: '#6ac4e8', cyan: '#6ac4e8',
+  gris: '#8e8e93', gray: '#8e8e93', grey: '#8e8e93',
+}
+
+function colorToHex(name: string | null | undefined): string {
+  if (!name) return '#d1d1d6'
+  const key = name.trim().toLowerCase()
+  return COLOR_NAME_HEX[key] ?? '#d1d1d6'
+}
+
 function ProductMockup() {
   return (
     <div className="relative mx-auto flex h-44 w-24 flex-col items-center rounded-[1.9rem] border border-[1.5px] border-gray-200 bg-white pb-2.5 pt-2.5 shadow-sm">
@@ -263,12 +287,31 @@ function ProductCard({
   onAdd: (id: number) => void
 }) {
   const p = paletteByCategory(item.category)
-  const imageSrc = mediaUrl(item.foto_url)
-  const hasUsd = item.precio_usd !== null && item.precio_usd !== undefined && item.precio_usd !== ''
-  const variasVariantes = (item.variantes_tienda?.length ?? 0) > 1
-  const idCarrito = idProductoParaAgregarAlCarrito(item)
+  const variants = item.variantes_tienda ?? []
+  const variantsWithFoto = variants.filter((v) => v.foto_url)
+  const [hoveredVariant, setHoveredVariant] = useState<typeof variants[0] | null>(null)
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const displayFoto = hoveredVariant?.foto_url ?? item.foto_url
+  const imageSrc = mediaUrl(displayFoto)
+  const displayPrecio = hoveredVariant?.precio ?? item.precio
+  const displayPrecioUsd = hoveredVariant?.precio_usd ?? item.precio_usd
+  const hasUsd = displayPrecioUsd !== null && displayPrecioUsd !== undefined && displayPrecioUsd !== ''
+  const variasVariantes = variants.length > 1
+  const idCarrito = hoveredVariant
+    ? hoveredVariant.id_producto
+    : idProductoParaAgregarAlCarrito(item)
   const stockLabel =
     item.stock != null && item.stock > 0 ? `${item.stock} en stock` : null
+
+  function handleSwatchEnter(v: typeof variants[0]) {
+    if (leaveTimer.current) clearTimeout(leaveTimer.current)
+    setHoveredVariant(v)
+  }
+  function handleSwatchLeave() {
+    leaveTimer.current = setTimeout(() => setHoveredVariant(null), 120)
+  }
+
   return (
     <article className="flex flex-col items-center text-center">
       <div
@@ -277,6 +320,7 @@ function ProductCard({
         <div className="relative flex h-[280px] w-full items-center justify-center sm:h-[320px] md:h-[340px]">
           {imageSrc ? (
             <img
+              key={imageSrc}
               src={imageSrc}
               alt={item.nombre}
               className="max-h-full w-auto max-w-[min(100%,280px)] object-contain object-center mix-blend-multiply sm:max-w-[300px] md:max-w-[320px]"
@@ -291,10 +335,27 @@ function ProductCard({
         </div>
       </div>
 
-      <div className="mt-3 flex justify-center gap-2.5 sm:mt-4" aria-hidden>
-        {p.swatches.map((sw, i) => (
-          <span key={`${item.id}-sw-${i}`} className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`} />
-        ))}
+      <div className="mt-3 flex justify-center gap-2 sm:mt-4" aria-label="Colores disponibles">
+        {variantsWithFoto.length > 1
+          ? variantsWithFoto.map((v) => (
+              <button
+                key={v.id_producto}
+                type="button"
+                title={v.color ?? ''}
+                onMouseEnter={() => handleSwatchEnter(v)}
+                onMouseLeave={handleSwatchLeave}
+                onClick={() => setHoveredVariant(hoveredVariant?.id_producto === v.id_producto ? null : v)}
+                style={{ backgroundColor: colorToHex(v.color) }}
+                className={`h-3 w-3 rounded-full transition-transform ${
+                  hoveredVariant?.id_producto === v.id_producto
+                    ? 'scale-125 ring-2 ring-offset-1 ring-black/20'
+                    : 'ring-1 ring-black/[0.08] hover:scale-110'
+                }`}
+              />
+            ))
+          : p.swatches.map((sw, i) => (
+              <span key={`${item.id}-sw-${i}`} className={`h-2.5 w-2.5 rounded-full ring-1 ring-black/[0.08] ${sw}`} />
+            ))}
       </div>
 
       <p className="mt-3 text-[11px] font-semibold tracking-[0.02em] text-neutral-500 uppercase">{p.tag}</p>
@@ -312,16 +373,16 @@ function ProductCard({
       ) : null}
 
       <div className="mx-auto mt-3 flex max-w-[22rem] flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
-        {variasVariantes ? (
+        {variasVariantes && !hoveredVariant ? (
           <span className="text-xs font-medium text-neutral-500">Desde</span>
         ) : null}
         {hasUsd ? (
           <span className="inline-flex items-center rounded-full bg-[#0071e3]/10 px-3 py-1 text-[13px] font-semibold text-[#0071e3]">
-            USD {fmtUsd(item.precio_usd).replace('$', '').trim()}
+            USD {fmtUsd(displayPrecioUsd).replace('$', '').trim()}
           </span>
         ) : null}
         <span className={`${hasUsd ? 'text-xs text-neutral-500' : 'text-xs text-neutral-700 sm:text-[13px]'}`}>
-          {hasUsd ? `ARS ${fmtArs(item.precio).replace('$', '').trim()}` : fmtArs(item.precio)}
+          {hasUsd ? `ARS ${fmtArs(displayPrecio).replace('$', '').trim()}` : fmtArs(displayPrecio)}
         </span>
       </div>
 
