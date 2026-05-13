@@ -98,10 +98,22 @@ def _equipo_configuracion_payload(eq: Equipo) -> list[dict]:
     return out
 
 
+def _foto_url_desde_color(eq: Equipo) -> str | None:
+    """Para equipos nuevos: deriva foto_url de la opción de color seleccionada si no tiene foto propia."""
+    for cfg in getattr(eq, "configuraciones", []) or []:
+        atributo = getattr(cfg, "atributo", None)
+        if atributo and getattr(atributo, "code", "").strip().lower() == "color":
+            opcion = getattr(cfg, "opcion", None)
+            if opcion:
+                return getattr(opcion, "foto_url", None)
+    return None
+
+
 def _equipo_response_payload(eq: Equipo, fotos_urls: list[str] | None = None) -> dict:
     producto = getattr(eq, "producto", None)
     precio_ars = float(producto.precio) if producto and producto.precio is not None else None
     precio_usd = float(producto.precio_usd) if producto and producto.precio_usd is not None else None
+    foto_url = eq.foto_url or _foto_url_desde_color(eq)
     return {
         "id": int(eq.id),
         "id_modelo": int(eq.id_modelo),
@@ -111,7 +123,7 @@ def _equipo_response_payload(eq: Equipo, fotos_urls: list[str] | None = None) ->
         "estado_comercial": eq.estado_comercial,
         "activo": bool(eq.activo),
         "id_producto": eq.id_producto,
-        "foto_url": eq.foto_url,
+        "foto_url": foto_url,
         "fotos_urls": fotos_urls if fotos_urls is not None else [],
         "fecha_ingreso": eq.fecha_ingreso,
         "precio_ars": precio_ars,
@@ -148,6 +160,7 @@ def _atributo_response_payload(attr: ModeloAtributo) -> dict:
                 "valor": op.valor,
                 "label": op.label,
                 "color_hex": op.color_hex,
+                "foto_url": getattr(op, "foto_url", None),
                 "orden": int(op.orden or 0),
                 "activo": bool(op.activo),
             }
