@@ -82,6 +82,19 @@ def _es_linea_usado_por_estado_o_nombre(
     return False
 
 
+def _foto_equipo_efectiva(e: Equipos) -> str | None:
+    """Foto del equipo: usa foto_url propia; si no, busca la foto de la opción de color."""
+    if e.foto_url:
+        return _foto_url_si_existe(e.foto_url)
+    for cfg in getattr(e, "configuraciones", []) or []:
+        atributo = getattr(cfg, "atributo", None)
+        if atributo and getattr(atributo, "code", "").strip().lower() == "color":
+            opcion = getattr(cfg, "opcion", None)
+            if opcion:
+                return getattr(opcion, "foto_url", None)
+    return None
+
+
 def _variante_tienda_dict(p: Productos, e: Equipos) -> dict:
     m = e.modelo
     color = (e.color or (m.color if m else None) or "").strip() or None
@@ -91,7 +104,7 @@ def _variante_tienda_dict(p: Productos, e: Equipos) -> dict:
         "color": color,
         "precio": float(p.precio) if p.precio is not None else 0.0,
         "precio_usd": float(p.precio_usd) if getattr(p, "precio_usd", None) is not None else None,
-        "foto_url": _foto_url_si_existe(e.foto_url),
+        "foto_url": _foto_equipo_efectiva(e),
         "nombre_corto": titulo_tienda_sin_etiqueta_nuevo(p.nombre),
         "stock": 1,
         "disponible": True,
@@ -142,9 +155,9 @@ def _coleccion_variantes_mismo_modelo_nuevos(db: Session, id_modelo: int) -> lis
     out = list(agg.values())
     for item in out:
         item["disponible"] = int(item.get("stock", 0)) > 0
-        item["foto_url"] = _foto_canonica_variante(
+        item["foto_url"] = item.get("foto_url") or _foto_canonica_variante(
             db, int(item["id_producto"]), item.get("color")
-        ) or item.get("foto_url")
+        )
     out.sort(key=lambda v: ((v.get("color") or ""), v["id_producto"]))
     return out
 
@@ -191,9 +204,9 @@ def _coleccion_variantes_misma_familia_nuevos(db: Session, familia_key: str) -> 
     out = list(agg.values())
     for item in out:
         item["disponible"] = int(item.get("stock", 0)) > 0
-        item["foto_url"] = _foto_canonica_variante(
+        item["foto_url"] = item.get("foto_url") or _foto_canonica_variante(
             db, int(item["id_producto"]), item.get("color")
-        ) or item.get("foto_url")
+        )
     out.sort(
         key=lambda v: (
             (v.get("atributos", {}).get("almacenamiento") or ""),
@@ -571,7 +584,7 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
             "color": getattr(equipo, "color", None),
             "tipo_equipo": equipo.tipo_equipo,
             "estado_comercial": equipo.estado_comercial,
-            "foto_url": _foto_url_si_existe(equipo.foto_url),
+            "foto_url": _foto_equipo_efectiva(equipo),
             "bateria_porcentaje": detalle_usado.bateria_porcentaje if detalle_usado else None,
             "estado_estetico": detalle_usado.estado_estetico if detalle_usado else None,
             "estado_funcional": detalle_usado.estado_funcional if detalle_usado else None,
