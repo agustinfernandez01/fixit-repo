@@ -671,7 +671,14 @@ def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forza
 
     obj = Equipo(**data)
     db.add(obj)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        detail = "No se pudo guardar el equipo."
+        if "imei" in str(exc.orig).lower():
+            detail = "El IMEI ingresado ya existe en el sistema. Usá un IMEI distinto o dejalo vacío."
+        raise HTTPException(status_code=400, detail=detail)
     if opciones_ids:
         try:
             opciones = (
