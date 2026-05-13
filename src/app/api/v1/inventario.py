@@ -58,15 +58,14 @@ def _ensure_opcion_foto_url_column() -> None:
     """Agrega foto_url a modelo_atributo_opcion si todavía no existe (migración lazy)."""
     from app.db import engine
     from sqlalchemy import text as _text
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
     with engine.connect() as conn:
-        try:
-            conn.execute(_text("SELECT foto_url FROM modelo_atributo_opcion LIMIT 1"))
-        except Exception:
-            try:
-                conn.execute(_text("ALTER TABLE modelo_atributo_opcion ADD COLUMN foto_url VARCHAR(255) NULL"))
-                conn.commit()
-            except Exception:
-                pass
+        conn.execute(_text(
+            "ALTER TABLE modelo_atributo_opcion ADD COLUMN IF NOT EXISTS foto_url VARCHAR(255) NULL"
+        ))
+        conn.commit()
+        _log.info("_ensure_opcion_foto_url_column: OK")
 
 
 def _is_missing_variaciones_table(exc: Exception) -> bool:
