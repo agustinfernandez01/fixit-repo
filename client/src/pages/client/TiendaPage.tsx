@@ -292,7 +292,8 @@ function ProductCard({
   const [hoveredVariant, setHoveredVariant] = useState<typeof variants[0] | null>(null)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const displayFoto = hoveredVariant?.foto_url ?? item.foto_url
+  const defaultFoto = variantsWithFoto[0]?.foto_url ?? item.foto_url
+  const displayFoto = hoveredVariant?.foto_url ?? defaultFoto
   const imageSrc = mediaUrl(displayFoto)
   const displayPrecio = hoveredVariant?.precio ?? item.precio
   const displayPrecioUsd = hoveredVariant?.precio_usd ?? item.precio_usd
