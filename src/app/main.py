@@ -46,6 +46,8 @@ def verificar_db_en_startup():
     El esquema se gestiona EXCLUSIVAMENTE con Alembic (sin create_all ni parches runtime).
     """
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)  # necesario para el mount legacy de /uploads
+    from app.api.v1.inventario import _ensure_opcion_foto_url_column
+    _ensure_opcion_foto_url_column()
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
