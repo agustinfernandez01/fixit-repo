@@ -493,12 +493,14 @@ export default function ProductoDetallePage() {
                     <dt className="text-neutral-400">Modelo</dt>
                     <dd className="mt-0.5 font-medium text-neutral-900">{producto.detalle_equipo.nombre_modelo ?? '-'}</dd>
                   </div>
-                  <div>
-                    <dt className="text-neutral-400">Capacidad</dt>
-                    <dd className="mt-0.5 font-medium text-neutral-900">
-                      {producto.detalle_equipo.capacidad_gb != null ? `${producto.detalle_equipo.capacidad_gb} GB` : '-'}
-                    </dd>
-                  </div>
+                  {(producto.detalle_equipo.estado_comercial ?? '').toLowerCase().trim() === 'usado' ? (
+                    <div>
+                      <dt className="text-neutral-400">Capacidad</dt>
+                      <dd className="mt-0.5 font-medium text-neutral-900">
+                        {producto.detalle_equipo.capacidad_gb != null ? `${producto.detalle_equipo.capacidad_gb} GB` : '-'}
+                      </dd>
+                    </div>
+                  ) : null}
                   <div>
                     <dt className="text-neutral-400">Color</dt>
                     <dd className="mt-0.5 font-medium text-neutral-900">

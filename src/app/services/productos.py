@@ -83,15 +83,25 @@ def _es_linea_usado_por_estado_o_nombre(
 
 
 def _foto_equipo_efectiva(e: Equipos) -> str | None:
-    """Foto del equipo: usa foto_url propia; si no, busca la foto de la opción de color."""
+    """Foto del equipo: usa foto_url propia; si no, busca la foto de cualquier opción configurada (color primero)."""
     if e.foto_url:
         return _foto_url_si_existe(e.foto_url)
+    # Primera pasada: preferir la opción de color
     for cfg in getattr(e, "configuraciones", []) or []:
         atributo = getattr(cfg, "atributo", None)
         if atributo and getattr(atributo, "code", "").strip().lower() == "color":
             opcion = getattr(cfg, "opcion", None)
             if opcion:
-                return getattr(opcion, "foto_url", None)
+                foto = getattr(opcion, "foto_url", None)
+                if foto:
+                    return foto
+    # Segunda pasada: cualquier opción con foto (para equipos sin atributo color, ej. MacBook)
+    for cfg in getattr(e, "configuraciones", []) or []:
+        opcion = getattr(cfg, "opcion", None)
+        if opcion:
+            foto = getattr(opcion, "foto_url", None)
+            if foto:
+                return foto
     return None
 
 
@@ -568,7 +578,7 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         base["tipo_producto"] = "equipo"
         base["id_origen"] = equipo.id
         base["tipo_equipo"] = equipo.tipo_equipo
-        base["foto_url"] = _foto_principal_producto(producto) or _foto_url_si_existe(equipo.foto_url)
+        base["foto_url"] = _foto_principal_producto(producto) or _foto_equipo_efectiva(equipo)
         detalle_usado = None
         if es_usado:
             detalle_usado = (
