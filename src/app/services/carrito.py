@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import List, Optional, Tuple
 from urllib.parse import quote
 
-from sqlalchemy import String, cast, func
+from sqlalchemy import String, and_, cast, func
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
@@ -16,7 +16,7 @@ from app.integrations.mercadopago.schemas import (
 )
 from app.models.accesorios import Accesorios
 from app.models.carrito import Carrito, CarritoDetalle
-from app.models.equipos import Equipo
+from app.models.equipos import Equipo, EquipoConfiguracion, ModeloAtributo, ModeloAtributoOpcion
 from app.models.pedido import DetallePedido, Pago, Pedido
 from app.models.productos import Productos
 from app.models.roles import Rol
@@ -133,6 +133,34 @@ def get_carrito_items(db: Session, id_carrito: int) -> List[CarritoDetalle]:
         for id_equipo, id_producto, foto_url in equipos_rows
     }
 
+    # Fallback 1: foto_principal_url del producto (para equipos sin foto directa)
+    productos_rows = (
+        db.query(Productos.id, Productos.foto_principal_url)
+        .filter(Productos.id.in_(product_ids))
+        .all()
+    )
+    foto_principal_por_producto = {pid: url for pid, url in productos_rows if url}
+
+    # Fallback 2: foto de la opción de color del equipo (caso más común en equipos nuevos)
+    color_rows = (
+        db.query(Equipo.id_producto, ModeloAtributoOpcion.foto_url)
+        .join(EquipoConfiguracion, EquipoConfiguracion.id_equipo == Equipo.id)
+        .join(
+            ModeloAtributo,
+            and_(
+                ModeloAtributo.id == EquipoConfiguracion.id_atributo,
+                ModeloAtributo.code == "color",
+            ),
+        )
+        .join(ModeloAtributoOpcion, ModeloAtributoOpcion.id == EquipoConfiguracion.id_opcion)
+        .filter(
+            Equipo.id_producto.in_(product_ids),
+            ModeloAtributoOpcion.foto_url.isnot(None),
+        )
+        .all()
+    )
+    foto_color_por_producto = {pid: url for pid, url in color_rows if url}
+
     try:
         accesorios_rows = (
             db.query(Accesorios.id, Accesorios.id_producto, Accesorios.foto_url)
@@ -171,7 +199,12 @@ def get_carrito_items(db: Session, id_carrito: int) -> List[CarritoDetalle]:
         if detalle.id_producto in equipo_por_producto:
             detalle.producto.tipo_producto = "equipo"
             detalle.producto.id_origen = equipo_por_producto[detalle.id_producto]["id_equipo"]
-            detalle.producto.foto_url = equipo_por_producto[detalle.id_producto]["foto_url"]
+            foto = (
+                equipo_por_producto[detalle.id_producto]["foto_url"]
+                or foto_principal_por_producto.get(detalle.id_producto)
+                or foto_color_por_producto.get(detalle.id_producto)
+            )
+            detalle.producto.foto_url = foto
         elif detalle.id_producto in accesorio_por_producto:
             detalle.producto.tipo_producto = "accesorio"
             detalle.producto.id_origen = accesorio_por_producto[detalle.id_producto]["id_accesorio"]

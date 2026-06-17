@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clearAuthTokens, getAccessToken } from '../../lib/auth'
 import { fetchJson } from '../../services/api'
 
@@ -443,7 +443,18 @@ export default function PedidosPage() {
       <section className="mx-auto max-w-6xl px-6 pb-16 pt-10">
         <div className="mb-8">
           <p className="mb-1.5 text-[11px] tracking-widest text-gray-300 uppercase">Fix It · Admin</p>
-          <h1 className="text-3xl font-black tracking-tight text-gray-900">Pedidos</h1>
+          <div className="mb-3 flex items-center justify-between">
+            <h1 className="text-3xl font-black tracking-tight text-gray-900">Pedidos</h1>
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-600 transition hover:border-gray-400 hover:text-gray-900"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                <path d="M19 12H5M5 12l7 7M5 12l7-7" />
+              </svg>
+              Volver al panel
+            </Link>
+          </div>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-400">
             <strong>Pendientes:</strong> confirmá la compra y se reserva el stock.{' '}
             <strong>Cerrar entrega:</strong> cuando el equipo salió o se entregó, finalizá para marcar vendido en
