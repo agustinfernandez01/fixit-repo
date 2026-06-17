@@ -48,6 +48,8 @@ def verificar_db_en_startup():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)  # necesario para el mount legacy de /uploads
     from app.api.v1.inventario import _ensure_opcion_foto_url_column
     _ensure_opcion_foto_url_column()
+    from app.api.v1.marketplace import _ensure_publicaciones_columns
+    _ensure_publicaciones_columns()
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import UPLOAD_DIR
 from app.services.storage import upload_file, list_files, delete_file, key_from_url
 from app.db import get_db
 from app.models import (
@@ -61,10 +62,15 @@ def _ensure_opcion_foto_url_column() -> None:
     import logging as _logging
     _log = _logging.getLogger(__name__)
     with engine.connect() as conn:
-        conn.execute(_text(
-            "ALTER TABLE modelo_atributo_opcion ADD COLUMN IF NOT EXISTS foto_url VARCHAR(255) NULL"
-        ))
-        conn.commit()
+        row = conn.execute(_text(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = 'modelo_atributo_opcion' AND COLUMN_NAME = 'foto_url'"
+        )).scalar()
+        if not row:
+            conn.execute(_text(
+                "ALTER TABLE modelo_atributo_opcion ADD COLUMN foto_url VARCHAR(255) NULL"
+            ))
+            conn.commit()
         _log.info("_ensure_opcion_foto_url_column: OK")
 
 

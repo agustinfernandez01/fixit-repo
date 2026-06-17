@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ModeloAtributo, ModeloEquipo } from '../../types/inventario'
 import { inventarioApi } from '../../services/inventarioApi'
+import {
+  APPLE_CATALOG,
+  composeName,
+  fmtStorage,
+  type CatalogFamily,
+  type CatalogSeries,
+  type CatalogVersion,
+} from '../../data/appleCatalog'
 
-const VARIATION_PRESETS = [
-  { code: 'color', label: 'Color', tipo_ui: 'swatch' },
-  { code: 'almacenamiento', label: 'GB / Almacenamiento', tipo_ui: 'chip' },
-]
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const emptyForm = { nombre_modelo: '', descripcion: '', activo: true }
-
-type FormState = typeof emptyForm
-
-// ——— Skeleton row ———
 function SkeletonRow() {
   return (
     <tr className="skeleton-row">
@@ -24,7 +24,6 @@ function SkeletonRow() {
   )
 }
 
-// ——— Modal wrapper ———
 function Modal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   const overlayRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -45,29 +44,301 @@ function Modal({ onClose, children }: { onClose: () => void; children: React.Rea
   )
 }
 
+// ─── Creación con menús Apple ─────────────────────────────────────────────────
+
+type CreateState = {
+  family: CatalogFamily | null
+  series: CatalogSeries | null
+  version: CatalogVersion | null
+  selectedStorages: Set<number>
+  selectedColors: Set<string>
+}
+
+const emptyCreate: CreateState = {
+  family: null,
+  series: null,
+  version: null,
+  selectedStorages: new Set(),
+  selectedColors: new Set(),
+}
+
+function CreateForm({
+  existingNames,
+  onCreated,
+  onOpenExisting,
+}: {
+  existingNames: Map<string, number> // nombre_modelo → id
+  onCreated: (id: number) => void
+  onOpenExisting: (id: number) => void
+}) {
+  const [state, setState] = useState<CreateState>(emptyCreate)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const { family, series, version, selectedStorages, selectedColors } = state
+
+  const composedName = family && series && version
+    ? composeName(family.label, series.prefix, version.suffix)
+    : null
+
+  const existingId = composedName ? (existingNames.get(composedName) ?? null) : null
+
+  function setFamily(f: CatalogFamily | null) {
+    setState({ ...emptyCreate, family: f })
+  }
+
+  function setSeries(s: CatalogSeries | null) {
+    setState((prev) => ({ ...emptyCreate, family: prev.family, series: s }))
+  }
+
+  function setVersion(v: CatalogVersion | null) {
+    if (!v) {
+      setState((prev) => ({ ...prev, version: null, selectedStorages: new Set(), selectedColors: new Set() }))
+      return
+    }
+    // Pre-select all storages and colors from catalog
+    setState((prev) => ({
+      ...prev,
+      version: v,
+      selectedStorages: new Set(v.storages),
+      selectedColors: new Set(v.colors),
+    }))
+  }
+
+  function toggleStorage(gb: number) {
+    setState((prev) => {
+      const next = new Set(prev.selectedStorages)
+      next.has(gb) ? next.delete(gb) : next.add(gb)
+      return { ...prev, selectedStorages: next }
+    })
+  }
+
+  function toggleColor(c: string) {
+    setState((prev) => {
+      const next = new Set(prev.selectedColors)
+      next.has(c) ? next.delete(c) : next.add(c)
+      return { ...prev, selectedColors: next }
+    })
+  }
+
+  async function handleCreate() {
+    if (!composedName) return
+    setError(null)
+    setSaving(true)
+    try {
+      const modelo = await inventarioApi.modelos.create({
+        nombre_modelo: composedName,
+        capacidad_gb: null,
+        descripcion: null,
+        activo: true,
+      })
+
+      const storagesArr = [...selectedStorages].sort((a, b) => a - b)
+      const colorsArr = [...selectedColors]
+
+      if (storagesArr.length > 0) {
+        const attr = await inventarioApi.modelos.createAtributo(modelo.id, {
+          code: 'almacenamiento', label: 'GB / Almacenamiento', tipo_ui: 'chip',
+          requerido: true, orden: 0, activo: true,
+        })
+        for (let i = 0; i < storagesArr.length; i++) {
+          const gb = storagesArr[i]
+          await inventarioApi.modelos.createOpcion(attr.id, {
+            valor: fmtStorage(gb), label: fmtStorage(gb), orden: i, activo: true,
+          })
+        }
+      }
+
+      if (colorsArr.length > 0) {
+        const attr = await inventarioApi.modelos.createAtributo(modelo.id, {
+          code: 'color', label: 'Color', tipo_ui: 'swatch',
+          requerido: true, orden: 1, activo: true,
+        })
+        for (let i = 0; i < colorsArr.length; i++) {
+          await inventarioApi.modelos.createOpcion(attr.id, {
+            valor: colorsArr[i], label: colorsArr[i], orden: i, activo: true,
+          })
+        }
+      }
+
+      onCreated(modelo.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al crear modelo')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const canCreate = !!composedName && !existingId && (selectedStorages.size > 0 || selectedColors.size > 0)
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: '0.75rem', fontWeight: 700, color: 'var(--app-muted)',
+    textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.45rem', display: 'block',
+  }
+  const chipBtn = (active: boolean): React.CSSProperties => ({
+    padding: '0.3rem 0.8rem', borderRadius: 8, cursor: 'pointer', fontWeight: 500,
+    fontSize: '0.85rem', transition: 'all 0.1s',
+    border: `2px solid ${active ? 'var(--app-ink)' : 'var(--app-border)'}`,
+    background: active ? 'var(--app-ink)' : 'transparent',
+    color: active ? '#fff' : 'var(--app-text)',
+  })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+      {error ? <div className="msg-error">{error}</div> : null}
+
+      {/* Fila 1: Tipo */}
+      <div>
+        <span style={labelStyle}>Tipo de dispositivo</span>
+        <div style={{ display: 'flex', gap: '0.45rem' }}>
+          {APPLE_CATALOG.map((f) => (
+            <button key={f.label} type="button" onClick={() => setFamily(f)}
+              style={{
+                padding: '0.45rem 1.1rem', borderRadius: 10, cursor: 'pointer',
+                fontWeight: 500, fontSize: '0.9rem', transition: 'all 0.12s',
+                border: `2px solid ${family?.label === f.label ? 'var(--app-ink)' : 'var(--app-border)'}`,
+                background: family?.label === f.label ? 'var(--app-ink)' : 'transparent',
+                color: family?.label === f.label ? '#fff' : 'var(--app-text)',
+              }}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Fila 2: Modelo + Versión en la misma línea */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div>
+          <span style={labelStyle}>Modelo</span>
+          <select
+            className="form-select"
+            value={series?.label ?? ''}
+            disabled={!family}
+            onChange={(e) => {
+              const found = family!.series.find((s) => s.label === e.target.value) ?? null
+              setSeries(found)
+            }}
+          >
+            <option value="">{family ? '— Elegí el modelo —' : '— Primero elegí el tipo —'}</option>
+            {(family?.series ?? []).map((s) => (
+              <option key={s.label} value={s.label}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <span style={labelStyle}>Versión</span>
+          <select
+            className="form-select"
+            value={version?.label ?? ''}
+            disabled={!series}
+            onChange={(e) => {
+              const found = series!.versions.find((v) => v.label === e.target.value) ?? null
+              setVersion(found)
+            }}
+          >
+            <option value="">{series ? '— Elegí la versión —' : '— Primero elegí el modelo —'}</option>
+            {(series?.versions ?? []).map((v) => (
+              <option key={v.label} value={v.label}>{v.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Fila 3: Almacenamiento */}
+      <div>
+        <span style={labelStyle}>Almacenamiento</span>
+        {version ? (
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+            {version.storages.map((gb) => (
+              <button key={gb} type="button" onClick={() => toggleStorage(gb)}
+                style={chipBtn(selectedStorages.has(gb))}>
+                {fmtStorage(gb)}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="msg-muted" style={{ fontSize: '0.83rem', margin: 0 }}>
+            Seleccioná un modelo y versión para ver las opciones.
+          </p>
+        )}
+      </div>
+
+      {/* Fila 4: Colores */}
+      <div>
+        <span style={labelStyle}>Colores</span>
+        {version ? (
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+            {version.colors.map((c) => (
+              <button key={c} type="button" onClick={() => toggleColor(c)}
+                style={chipBtn(selectedColors.has(c))}>
+                {c}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="msg-muted" style={{ fontSize: '0.83rem', margin: 0 }}>
+            Seleccioná un modelo y versión para ver los colores.
+          </p>
+        )}
+      </div>
+
+      {/* Fila 5: Preview + acción */}
+      <div style={{
+        marginTop: '0.25rem', padding: '0.85rem 1rem', borderRadius: 10,
+        background: !composedName ? 'var(--app-muted-bg)' : existingId ? '#fff7ed' : '#f0fdf4',
+        border: `1px solid ${!composedName ? 'var(--app-border)' : existingId ? '#fed7aa' : '#bbf7d0'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '0.75rem', flexWrap: 'wrap',
+      }}>
+        <div>
+          <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 700,
+            color: !composedName ? 'var(--app-muted)' : existingId ? '#92400e' : '#166534',
+            textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {!composedName ? 'Completá los campos' : existingId ? '⚠ Ya existe' : '✓ Listo para crear'}
+          </p>
+          <p style={{ margin: '0.15rem 0 0', fontSize: '1rem', fontWeight: 700, color: 'var(--app-text-strong)' }}>
+            {composedName ?? '—'}
+          </p>
+        </div>
+        {existingId ? (
+          <button type="button" className="btn btn-ghost btn-sm"
+            style={{ borderColor: '#fed7aa' }}
+            onClick={() => onOpenExisting(existingId)}>
+            Abrir variaciones →
+          </button>
+        ) : (
+          <button type="button" className="btn btn-primary"
+            disabled={!canCreate || saving}
+            onClick={() => void handleCreate()}>
+            {saving
+              ? <><span className="spin" style={{ marginRight: 6 }} />Creando…</>
+              : 'Crear modelo'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
 export function ModelosPage() {
   const [rows, setRows] = useState<ModeloEquipo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
-  // Modal
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState<FormState>(emptyForm)
-  const [saving, setSaving] = useState(false)
 
-  // Attributes (managed after model is saved)
   const [attrsByModel, setAttrsByModel] = useState<Record<number, ModeloAtributo[]>>({})
   const [newOptionByAttr, setNewOptionByAttr] = useState<Record<number, string>>({})
   const [attrBusy, setAttrBusy] = useState(false)
-
-  // Per-row busy state for delete
   const [busyIds, setBusyIds] = useState<Set<number>>(new Set())
 
   function flashSuccess(msg: string) {
     setSuccessMsg(msg)
-    setTimeout(() => setSuccessMsg(null), 2800)
+    setTimeout(() => setSuccessMsg(null), 3000)
   }
 
   const load = useCallback(async () => {
@@ -88,16 +359,16 @@ export function ModelosPage() {
 
   useEffect(() => { void load() }, [load])
 
+  const existingNames = new Map(rows.map((r) => [r.nombre_modelo, r.id]))
+
   function openCreate() {
     setEditingId(null)
-    setForm(emptyForm)
     setModalOpen(true)
     setError(null)
   }
 
-  function openEdit(m: ModeloEquipo) {
-    setEditingId(m.id)
-    setForm({ nombre_modelo: m.nombre_modelo, descripcion: m.descripcion ?? '', activo: m.activo })
+  function openEdit(id: number) {
+    setEditingId(id)
     setModalOpen(true)
     setError(null)
   }
@@ -105,53 +376,12 @@ export function ModelosPage() {
   function closeModal() {
     setModalOpen(false)
     setEditingId(null)
-    setForm(emptyForm)
     setError(null)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    const body = {
-      nombre_modelo: form.nombre_modelo.trim(),
-      capacidad_gb: null,
-      descripcion: form.descripcion.trim() || null,
-      activo: form.activo,
-    }
-    if (!body.nombre_modelo) { setError('El nombre del modelo es obligatorio.'); return }
-    setSaving(true)
-    try {
-      const saved =
-        editingId != null
-          ? await inventarioApi.modelos.patch(editingId, body)
-          : await inventarioApi.modelos.create(body)
-
-      // Optimistic update in list
-      setRows((prev) => {
-        if (editingId != null) {
-          return prev.map((r) => (r.id === editingId ? { ...r, ...saved } : r))
-        }
-        return [...prev, { ...saved, atributos: [] }]
-      })
-
-      // Open editing mode for the new model so user can add variations
-      setEditingId(saved.id)
-      setForm({ nombre_modelo: saved.nombre_modelo, descripcion: saved.descripcion ?? '', activo: saved.activo })
-
-      flashSuccess(editingId != null ? 'Modelo actualizado.' : 'Modelo creado. Ahora podés agregar variaciones.')
-      // Refresh attrs
-      await reloadAttrs(saved.id)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar')
-    } finally {
-      setSaving(false)
-    }
   }
 
   async function handleDelete(id: number) {
     if (!window.confirm('¿Eliminar este modelo? Esta acción no se puede deshacer.')) return
     setError(null)
-    // Optimistic remove
     const backup = rows.find((r) => r.id === id)
     setRows((prev) => prev.filter((r) => r.id !== id))
     setBusyIds((prev) => new Set(prev).add(id))
@@ -160,7 +390,6 @@ export function ModelosPage() {
       if (editingId === id) closeModal()
       flashSuccess('Modelo eliminado.')
     } catch (e) {
-      // Restore on error
       if (backup) setRows((prev) => [...prev, backup].sort((a, b) => a.id - b.id))
       setError(e instanceof Error ? e.message : 'Error al eliminar')
     } finally {
@@ -176,28 +405,15 @@ export function ModelosPage() {
     } catch { /* silent */ }
   }
 
-  async function addPresetAtributo(modelId: number, preset: { code: string; label: string; tipo_ui: string }) {
-    setError(null)
-    if ((attrsByModel[modelId] ?? []).some((a) => a.code.trim().toLowerCase() === preset.code)) {
-      setError(`Ya existe la variación "${preset.label}" en este modelo.`)
-      return
-    }
-    setAttrBusy(true)
-    try {
-      await inventarioApi.modelos.createAtributo(modelId, {
-        code: preset.code, label: preset.label, tipo_ui: preset.tipo_ui, requerido: true, orden: 0, activo: true,
-      })
-      await reloadAttrs(modelId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo agregar la variación')
-    } finally {
-      setAttrBusy(false)
-    }
+  async function handleCreated(id: number) {
+    await load()
+    await reloadAttrs(id)
+    setEditingId(id)
+    flashSuccess('Modelo creado con variaciones. Podés agregar fotos a cada color.')
   }
 
   async function deleteAtributo(modelId: number, attr: ModeloAtributo) {
     if (!window.confirm(`¿Eliminar la variación "${attr.label}" y todas sus opciones?`)) return
-    setError(null)
     setAttrBusy(true)
     try {
       await inventarioApi.modelos.deleteAtributo(attr.id)
@@ -238,11 +454,8 @@ export function ModelosPage() {
     }
   }
 
+  const editingModel = editingId != null ? rows.find((r) => r.id === editingId) : null
   const editingAttrs = editingId != null ? (attrsByModel[editingId] ?? []) : []
-  const colorExists = editingAttrs.some((a) => a.code.trim().toLowerCase() === 'color')
-  const gbExists = editingAttrs.some((a) =>
-    a.code.trim().toLowerCase() === 'almacenamiento' || a.code.trim().toLowerCase() === 'gb',
-  )
 
   return (
     <>
@@ -250,7 +463,7 @@ export function ModelosPage() {
         <div>
           <h1 className="inv-content h1" style={{ marginBottom: '0.25rem' }}>Modelos de equipo</h1>
           <p className="msg-muted" style={{ marginTop: 0 }}>
-            Catálogo de modelos base con sus variaciones de color y almacenamiento.
+            Catálogo de modelos Apple con sus variaciones de color y almacenamiento.
           </p>
         </div>
         <button type="button" className="btn btn-primary" style={{ flexShrink: 0, marginTop: '0.1rem' }} onClick={openCreate}>
@@ -319,7 +532,7 @@ export function ModelosPage() {
                         )}
                       </td>
                       <td className="td-actions">
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(m)}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(m.id)}>
                           Editar
                         </button>{' '}
                         <button
@@ -345,7 +558,9 @@ export function ModelosPage() {
         <Modal onClose={closeModal}>
           <div className="modal-header">
             <h2 className="modal-title">
-              {editingId != null ? `Editar modelo #${editingId}` : 'Nuevo modelo'}
+              {editingId != null
+                ? `Variaciones · ${editingModel?.nombre_modelo ?? `#${editingId}`}`
+                : 'Nuevo modelo Apple'}
             </h2>
             <button type="button" className="modal-close" onClick={closeModal} aria-label="Cerrar">×</button>
           </div>
@@ -357,88 +572,26 @@ export function ModelosPage() {
             </div>
           ) : null}
 
-          <form onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <label style={{ gridColumn: '1 / -1' }}>
-                Nombre del modelo
-                <input
-                  value={form.nombre_modelo}
-                  onChange={(e) => setForm((f) => ({ ...f, nombre_modelo: e.target.value }))}
-                  placeholder="Ej: iPhone 15 Pro, MacBook Air M3"
-                  required
-                  autoFocus
-                />
-              </label>
-              <label style={{ gridColumn: '1 / -1' }}>
-                Descripción (opcional)
-                <textarea
-                  value={form.descripcion}
-                  onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
-                  placeholder="Breve descripción del modelo"
-                />
-              </label>
-              <div className="form-row-check" style={{ gridColumn: '1 / -1' }}>
-                <input
-                  id="activo-mod"
-                  type="checkbox"
-                  checked={form.activo}
-                  onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))}
-                />
-                <label htmlFor="activo-mod" style={{ fontSize: '0.88rem', color: 'var(--app-text)' }}>
-                  Modelo activo
-                </label>
-              </div>
-            </div>
+          {/* ── Modo creación ── */}
+          {editingId == null && (
+            <CreateForm
+              existingNames={existingNames}
+              onCreated={(id) => void handleCreated(id)}
+              onOpenExisting={(id) => { setEditingId(id) }}
+            />
+          )}
 
-            <div className="modal-footer" style={{ paddingTop: '1rem', borderTop: '1px solid var(--app-border)', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <button type="button" className="btn btn-ghost" onClick={closeModal} disabled={saving}>
-                Cancelar
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? <><span className="spin" style={{ marginRight: 6 }} />Guardando…</> : editingId != null ? 'Guardar cambios' : 'Crear modelo'}
-              </button>
-            </div>
-          </form>
-
-          {/* Variaciones — solo disponible después de crear el modelo */}
-          {editingId != null ? (
-            <div className="attr-section">
-              <p className="attr-section-title">
-                Variaciones del modelo
+          {/* ── Modo edición de variaciones ── */}
+          {editingId != null && (
+            <div className="attr-section" style={{ marginTop: 0 }}>
+              <p className="attr-section-title" style={{ marginBottom: '1rem' }}>
+                Variaciones cargadas
                 {attrBusy ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
               </p>
 
-              <div className="toolbar" style={{ marginBottom: '0.75rem', gap: '0.4rem' }}>
-                {!colorExists && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={attrBusy}
-                    onClick={() => void addPresetAtributo(editingId, VARIATION_PRESETS[0])}
-                  >
-                    + Color
-                  </button>
-                )}
-                {!gbExists && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={attrBusy}
-                    onClick={() => void addPresetAtributo(editingId, VARIATION_PRESETS[1])}
-                  >
-                    + Almacenamiento / GB
-                  </button>
-                )}
-                {colorExists && gbExists && editingAttrs.length === 2 && (
-                  <span className="msg-muted" style={{ fontSize: '0.82rem' }}>
-                    Variaciones base agregadas. Sumá opciones a cada una.
-                  </span>
-                )}
-              </div>
-
               {editingAttrs.length === 0 ? (
                 <p className="msg-muted" style={{ fontSize: '0.85rem' }}>
-                  Todavía no hay variaciones. Usá los botones de arriba para agregar Color y/o Almacenamiento.
+                  Sin variaciones. Eliminá y volvé a crear el modelo para regenerarlas.
                 </p>
               ) : (
                 editingAttrs.map((attr) => (
@@ -517,7 +670,7 @@ export function ModelosPage() {
                       <input
                         value={newOptionByAttr[attr.id] ?? ''}
                         onChange={(e) => setNewOptionByAttr((prev) => ({ ...prev, [attr.id]: e.target.value }))}
-                        placeholder={attr.code === 'color' ? 'Ej: Negro, Blanco, Azul…' : 'Ej: 128GB, 256GB, 512GB…'}
+                        placeholder={attr.code === 'color' ? 'Ej: Negro, Blanco…' : 'Ej: 128 GB, 256 GB…'}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addOpcion(editingId, attr) } }}
                         disabled={attrBusy}
                       />
@@ -533,12 +686,19 @@ export function ModelosPage() {
                   </div>
                 ))
               )}
-            </div>
-          ) : (
-            <div className="attr-section" style={{ background: 'var(--app-muted-bg)', border: '1px dashed var(--app-border)' }}>
-              <p className="msg-muted" style={{ fontSize: '0.85rem', margin: 0 }}>
-                Guardá el modelo para empezar a cargar variaciones de color y almacenamiento.
-              </p>
+
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--app-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setEditingId(null)}
+                >
+                  ← Crear otro modelo
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={closeModal}>
+                  Cerrar
+                </button>
+              </div>
             </div>
           )}
         </Modal>

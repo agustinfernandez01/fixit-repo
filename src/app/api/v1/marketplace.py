@@ -27,6 +27,28 @@ from app.schemas.marketplace import (
 
 router = APIRouter()
 
+
+def _ensure_publicaciones_columns() -> None:
+    """Agrega tiene_caja y tiene_cargador a publicaciones si no existen (migración lazy)."""
+    from app.db import engine
+    from sqlalchemy import text as _text
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    with engine.connect() as conn:
+        for col, ddl in [
+            ("tiene_caja", "ALTER TABLE publicaciones ADD COLUMN tiene_caja BOOLEAN NULL DEFAULT FALSE"),
+            ("tiene_cargador", "ALTER TABLE publicaciones ADD COLUMN tiene_cargador BOOLEAN NULL DEFAULT FALSE"),
+        ]:
+            exists = conn.execute(_text(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                f"WHERE TABLE_NAME = 'publicaciones' AND COLUMN_NAME = '{col}'"
+            )).scalar()
+            if not exists:
+                conn.execute(_text(ddl))
+        conn.commit()
+    _log.info("_ensure_publicaciones_columns: OK")
+
+
 _MAX_FOTO_BYTES = 5 * 1024 * 1024
 _FOTO_CT = {
     "image/jpeg": ".jpg",

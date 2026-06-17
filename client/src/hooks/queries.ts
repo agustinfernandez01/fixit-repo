@@ -82,6 +82,17 @@ export function useEliminarPublicacion() {
   })
 }
 
+export function useEditarPublicacion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      marketplaceApi.publicaciones.patch(id, data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.marketplace.publicaciones })
+    },
+  })
+}
+
 // ─── Inventario ──────────────────────────────────────────────────────────────
 
 export function useModelos() {

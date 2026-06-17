@@ -18,7 +18,7 @@ class ProductoBase(BaseModel):
     estado_comercial: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
         
 class ProductoCreate(BaseModel):
     nombre: str
@@ -51,7 +51,7 @@ class ProductoResponse(BaseModel):
     estado_comercial: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ProductoEquipoDetalle(BaseModel):
