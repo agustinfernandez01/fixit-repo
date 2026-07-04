@@ -74,8 +74,13 @@ else:
     DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Mercado Pago (Checkout Pro / API REST). Ver `app.integrations.mercadopago`.
-MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or "").strip()
-MERCADOPAGO_PUBLIC_KEY = (os.getenv("MERCADOPAGO_PUBLIC_KEY") or "").strip()
+# NOTA: credenciales hardcodeadas como default para pruebas. Son PRODUCTIVAS
+# (APP_USR-); rotarlas en el panel de MP y mover a variables de entorno antes
+# de un despliegue real.
+_MP_ACCESS_TOKEN_DEFAULT = "APP_USR-2641766792746315-070323-77a89e86675cb8f5717ba4056732d07c-741153029"
+_MP_PUBLIC_KEY_DEFAULT = "APP_USR-9a5983c2-6e5c-478f-add3-2fccf4e4c839"
+MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or _MP_ACCESS_TOKEN_DEFAULT).strip()
+MERCADOPAGO_PUBLIC_KEY = (os.getenv("MERCADOPAGO_PUBLIC_KEY") or _MP_PUBLIC_KEY_DEFAULT).strip()
 # URL pública del backend (sin barra final): webhooks y, si aplica, back_urls hacia el front.
 APP_PUBLIC_BASE_URL = (os.getenv("APP_PUBLIC_BASE_URL") or "").strip().rstrip("/")
 
