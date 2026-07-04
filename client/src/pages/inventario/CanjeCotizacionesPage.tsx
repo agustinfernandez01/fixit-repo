@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { canjeApi } from '../../services/canjeApi'
 import type { CotizacionCanje, ModeloCanje } from '../../types/canje'
+import { APPLE_CATALOG, composeName } from '../../data/appleCatalog'
 import { compareIphoneModelNames, sortIphoneModelNames } from '../../lib/iphoneModelSort'
 import {
   BATTERY_INTERVAL_PRESETS,
@@ -25,20 +26,21 @@ type EditCotizacionFormState = {
   activo: boolean
 }
 
-const MODEL_OPTIONS_STORAGE_KEY = 'fixit_canje_model_options_v1'
-const MODEL_ORDER_MODE_STORAGE_KEY = 'fixit_canje_model_order_mode_v1'
-
-const defaultModelOptions = [
-  'iPhone 13',
-  'iPhone 13 Pro',
-  'iPhone 13 Pro Max',
-  'iPhone 14',
-  'iPhone 14 Pro',
-  'iPhone 15',
-  'iPhone 16',
-  'iPhone 16 Pro',
-  'iPhone 16 Pro Max',
-]
+// Modelos de canje derivados del catálogo Apple real (familia iPhone), en vez de
+// una lista manual en localStorage. Fuente única con `data/appleCatalog.ts`.
+const CATALOG_MODEL_OPTIONS = sortIphoneModelNames(
+  Array.from(
+    new Set(
+      APPLE_CATALOG.filter((f) => f.label === 'iPhone').flatMap((family) =>
+        family.series.flatMap((serie) =>
+          serie.versions.map((version) =>
+            composeName(family.label, serie.prefix, version.suffix),
+          ),
+        ),
+      ),
+    ),
+  ),
+)
 
 const emptyForm: CanjeFormState = {
   nombre_modelo: '',
@@ -65,51 +67,11 @@ export function CanjeCotizacionesPage() {
   const [tableCurrency, setTableCurrency] = useState<'ars' | 'usd'>('ars')
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<CanjeFormState>(emptyForm)
-  const [newModelOption, setNewModelOption] = useState('')
-  const [modelOptions, setModelOptions] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(MODEL_OPTIONS_STORAGE_KEY)
-      if (!raw) return sortIphoneModelNames(defaultModelOptions)
-      const parsed = JSON.parse(raw) as unknown
-      if (!Array.isArray(parsed)) return sortIphoneModelNames(defaultModelOptions)
-      const cleaned = parsed
-        .map((x) => (typeof x === 'string' ? x.trim() : ''))
-        .filter((x) => x.length > 0)
-      return cleaned.length > 0 ? sortIphoneModelNames(cleaned) : sortIphoneModelNames(defaultModelOptions)
-    } catch {
-      return sortIphoneModelNames(defaultModelOptions)
-    }
-  })
-  const [modelOrderMode, setModelOrderMode] = useState<'auto' | 'manual'>(() => {
-    try {
-      const raw = localStorage.getItem(MODEL_ORDER_MODE_STORAGE_KEY)
-      return raw === 'manual' ? 'manual' : 'auto'
-    } catch {
-      return 'auto'
-    }
-  })
   const [editingCotizacionId, setEditingCotizacionId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<EditCotizacionFormState>(emptyEditForm)
 
-  useEffect(() => {
-    localStorage.setItem(MODEL_OPTIONS_STORAGE_KEY, JSON.stringify(modelOptions))
-  }, [modelOptions])
-
-  useEffect(() => {
-    localStorage.setItem(MODEL_ORDER_MODE_STORAGE_KEY, modelOrderMode)
-  }, [modelOrderMode])
-
   const canEditWithUsd = !loadingDolar && !!dolarRate && dolarRate > 0
-  const displayModelOptions = useMemo(
-    () => (modelOrderMode === 'manual' ? modelOptions : sortIphoneModelNames(modelOptions)),
-    [modelOptions, modelOrderMode],
-  )
-
-  const modelOrderIndex = useMemo(() => {
-    const map = new Map<string, number>()
-    displayModelOptions.forEach((name, index) => map.set(name.trim().toLowerCase(), index))
-    return map
-  }, [displayModelOptions])
+  const displayModelOptions = CATALOG_MODEL_OPTIONS
 
   function fmtArs(value: number) {
     return new Intl.NumberFormat('es-AR', {
@@ -174,19 +136,8 @@ export function CanjeCotizacionesPage() {
         ...value,
         intervals: value.intervals.sort((a, b) => a.bateria_min - b.bateria_min),
       }))
-      .sort((a, b) => {
-        if (modelOrderMode === 'manual') {
-          const aBase = a.modeloLabel.replace(/\s+\d+\s*gb$/i, '').trim().toLowerCase()
-          const bBase = b.modeloLabel.replace(/\s+\d+\s*gb$/i, '').trim().toLowerCase()
-          const ai = modelOrderIndex.get(aBase)
-          const bi = modelOrderIndex.get(bBase)
-          if (ai != null && bi != null && ai !== bi) return ai - bi
-          if (ai != null && bi == null) return -1
-          if (ai == null && bi != null) return 1
-        }
-        return compareIphoneModelNames(a.modeloLabel, b.modeloLabel)
-      })
-  }, [rows, modeloLabelById, modelOrderMode, modelOrderIndex])
+      .sort((a, b) => compareIphoneModelNames(a.modeloLabel, b.modeloLabel))
+  }, [rows, modeloLabelById])
 
   const load = useCallback(async () => {
     setError(null)
@@ -244,37 +195,6 @@ export function CanjeCotizacionesPage() {
 
   function resetForm() {
     setForm(emptyForm)
-  }
-
-  function addModelOption() {
-    const name = newModelOption.trim()
-    if (!name) return
-    const exists = modelOptions.some((m) => m.toLowerCase() === name.toLowerCase())
-    if (exists) {
-      setNewModelOption('')
-      return
-    }
-    setModelOptions((prev) => sortIphoneModelNames([...prev, name]))
-    setForm((prev) => ({ ...prev, nombre_modelo: name }))
-    setNewModelOption('')
-  }
-
-  function removeModelOption(name: string) {
-    setModelOptions((prev) => prev.filter((m) => m !== name))
-    setForm((prev) => (prev.nombre_modelo === name ? { ...prev, nombre_modelo: '' } : prev))
-  }
-
-  function moveModelOption(name: string, direction: -1 | 1) {
-    setModelOptions((prev) => {
-      const idx = prev.findIndex((m) => m === name)
-      if (idx < 0) return prev
-      const next = idx + direction
-      if (next < 0 || next >= prev.length) return prev
-      const clone = [...prev]
-      const [item] = clone.splice(idx, 1)
-      clone.splice(next, 0, item)
-      return clone
-    })
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -417,23 +337,9 @@ export function CanjeCotizacionesPage() {
 
       <div className="panel">
         <h2>Nuevo Cotizacion</h2>
-        <div className="toolbar" style={{ marginTop: '-0.2rem', marginBottom: '0.6rem' }}>
-          <span className="msg-muted">Orden modelos:</span>
-          <button
-            type="button"
-            className={`btn btn-sm ${modelOrderMode === 'auto' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setModelOrderMode('auto')}
-          >
-            Automatico
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${modelOrderMode === 'manual' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setModelOrderMode('manual')}
-          >
-            Manual
-          </button>
-        </div>
+        <p className="msg-muted" style={{ marginTop: '-0.2rem', marginBottom: '0.6rem' }}>
+          Los modelos salen del catálogo Apple. Elegí modelo, capacidad, rango de batería y valor de toma.
+        </p>
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <label>
@@ -497,84 +403,6 @@ export function CanjeCotizacionesPage() {
                 required
               />
             </label>
-          </div>
-
-          <div
-            style={{
-              marginTop: '0.8rem',
-              padding: '0.8rem',
-              border: '1px solid var(--border, #e6e6e6)',
-              borderRadius: '10px',
-              background: 'var(--panelBg, #fafafa)',
-            }}
-          >
-            <label style={{ display: 'block' }}>
-              <span style={{ display: 'block', marginBottom: '0.35rem' }}>Agregar modelo</span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem' }}>
-                <input
-                  value={newModelOption}
-                  onChange={(e) => setNewModelOption(e.target.value)}
-                  placeholder="Ej: iPhone 17 Pro"
-                />
-                <button type="button" className="btn btn-ghost" onClick={addModelOption}>
-                  Agregar
-                </button>
-              </div>
-            </label>
-
-            <div style={{ marginTop: '0.55rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-              {displayModelOptions.map((option) => (
-                <span
-                  key={option}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem',
-                    padding: '0.2rem 0.5rem',
-                    borderRadius: '999px',
-                    border: '1px solid var(--border, #e6e6e6)',
-                    fontSize: '0.8rem',
-                    background: '#fff',
-                  }}
-                >
-                  {option}
-                  {modelOrderMode === 'manual' ? (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: '0 0.25rem' }}
-                        onClick={() => moveModelOption(option, -1)}
-                        aria-label={`Subir ${option}`}
-                        title={`Subir ${option}`}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: '0 0.25rem' }}
-                        onClick={() => moveModelOption(option, 1)}
-                        aria-label={`Bajar ${option}`}
-                        title={`Bajar ${option}`}
-                      >
-                        ↓
-                      </button>
-                    </>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ padding: '0 0.25rem' }}
-                    onClick={() => removeModelOption(option)}
-                    aria-label={`Eliminar ${option}`}
-                    title={`Eliminar ${option}`}
-                  >
-                    x
-                  </button>
-                </span>
-              ))}
-            </div>
           </div>
 
           <p className="msg-muted" style={{ marginTop: '0.75rem' }}>
