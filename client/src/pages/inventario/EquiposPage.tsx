@@ -58,10 +58,18 @@ function friendlyAttrLabel(attr: ModeloAtributo): string {
   return attr.label
 }
 
+function isColorAttr(attr: ModeloAtributo): boolean {
+  return attr.code.trim().toLowerCase() === 'color'
+}
+
 function buildDefaultOpciones(attrs: ModeloAtributo[]): Record<number, number> {
   const d: Record<number, number> = {}
   for (const a of attrs) {
-    const first = (a.opciones ?? []).find((o) => o.activo)
+    const activos = (a.opciones ?? []).filter((o) => o.activo)
+    // Color: se auto-elige solo si el modelo tiene un único color; con varios,
+    // la unidad debe elegir cuál es (no se pre-selecciona).
+    if (isColorAttr(a) && activos.length !== 1) continue
+    const first = activos[0]
     if (first) d[a.id] = first.id
   }
   return d
@@ -274,6 +282,8 @@ export function EquiposPage() {
     precio_ars: '' as string | number,
   })
   const [selectedOpciones, setSelectedOpciones] = useState<Record<number, number>>({})
+  const [fotoFile, setFotoFile] = useState<File | null>(null)
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null)
 
   const [busyIds, setBusyIds] = useState<Set<number>>(new Set())
 
@@ -393,10 +403,21 @@ export function EquiposPage() {
     return opt?.label || opt?.valor || ''
   }, [selectedModeloAtributos, selectedOpciones])
 
+  function clearFoto() {
+    setFotoPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null })
+    setFotoFile(null)
+  }
+
+  function pickFoto(file: File | null) {
+    setFotoPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return file ? URL.createObjectURL(file) : null })
+    setFotoFile(file)
+  }
+
   function openCreate() {
     setEditingId(null)
     setForm({ id_modelo: '', imei: '', color: '', activo: true, precio_ars: '' })
     setSelectedOpciones({})
+    clearFoto()
     setModalOpen(true)
     setError(null)
   }
@@ -419,6 +440,7 @@ export function EquiposPage() {
       if (c.id_atributo && c.id_opcion) configMap[c.id_atributo] = c.id_opcion
     }
     setSelectedOpciones(configMap)
+    clearFoto()
     setModalOpen(true)
     setError(null)
   }
@@ -426,6 +448,7 @@ export function EquiposPage() {
   function closeModal() {
     setModalOpen(false)
     setEditingId(null)
+    clearFoto()
     setError(null)
   }
 
@@ -456,10 +479,15 @@ export function EquiposPage() {
     if (precioUsd !== null && Number.isFinite(precioUsd)) body.precio_usd = precioUsd
     setSaving(true)
     try {
+      let equipoId: number | undefined = editingId ?? undefined
       if (editingId != null) {
         await inventarioApi.equipos.patch(editingId, body)
       } else {
-        await inventarioApi.equipos.create(body)
+        const created = await inventarioApi.equipos.create(body)
+        equipoId = created.id ?? created.id_equipo
+      }
+      if (fotoFile && equipoId != null) {
+        await inventarioApi.equipos.uploadFoto(equipoId, fotoFile, { setPrincipalTienda: true })
       }
       flashSuccess(editingId != null ? 'Equipo actualizado.' : 'Equipo creado.')
       closeModal()
@@ -645,7 +673,11 @@ export function EquiposPage() {
                     </div>
                   )}
                   <div className="form-grid">
-                    {selectedModeloAtributos.map((attr) => (
+                    {selectedModeloAtributos.map((attr) => {
+                      const activos = (attr.opciones ?? []).filter((o) => o.activo)
+                      // Color de un único valor: la unidad lo hereda del modelo, no se pregunta.
+                      if (isColorAttr(attr) && activos.length <= 1) return null
+                      return (
                       <label key={`attr-${attr.id}`}>
                         {friendlyAttrLabel(attr)}
                         <select
@@ -671,8 +703,14 @@ export function EquiposPage() {
                           ))}
                         </select>
                       </label>
-                    ))}
+                      )
+                    })}
                   </div>
+                  {selectedColorLabel && (
+                    <p style={{ margin: '0.6rem 0 0', fontSize: '0.8rem', color: 'var(--app-muted)' }}>
+                      Color: <strong style={{ color: 'var(--app-text-strong)' }}>{selectedColorLabel}</strong>
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -727,6 +765,44 @@ export function EquiposPage() {
                     Blue: {loadingDolar ? 'cargando…' : dolarRate ? fmtArs(dolarRate) : 'no disp.'}
                   </span>
                 </label>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <span style={{ display: 'block', fontSize: '0.88rem', marginBottom: '0.4rem' }}>
+                  Imagen principal de tienda
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {fotoPreview ? (
+                    <img
+                      src={fotoPreview}
+                      alt="Vista previa"
+                      style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }}
+                    />
+                  ) : (
+                    <div style={{ width: 56, height: 56, borderRadius: 8, background: 'var(--app-muted-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--app-muted)" strokeWidth="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+                      </svg>
+                    </div>
+                  )}
+                  <label className="btn btn-ghost btn-sm" style={{ margin: 0, cursor: 'pointer' }}>
+                    {fotoFile ? 'Cambiar imagen' : 'Subir imagen'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => pickFoto(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {fotoFile ? (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={clearFoto}>
+                      Quitar
+                    </button>
+                  ) : null}
+                </div>
+                <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--app-muted)', marginTop: '0.35rem' }}>
+                  Se usará como foto principal del producto en la tienda.
+                </span>
               </div>
 
               <div className="form-row-check" style={{ gridColumn: '1 / -1' }}>

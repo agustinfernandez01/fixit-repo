@@ -74,6 +74,25 @@ function CreateForm({
   const [state, setState] = useState<CreateState>(emptyCreate)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Fotos por color en estado local; se suben tras crear cada opción.
+  const [colorPhotos, setColorPhotos] = useState<Record<string, { file: File; url: string }>>({})
+  const colorPhotosRef = useRef(colorPhotos)
+  colorPhotosRef.current = colorPhotos
+
+  useEffect(() => () => {
+    // Liberar los object URLs al desmontar (ref evita cerrar sobre un valor viejo).
+    Object.values(colorPhotosRef.current).forEach((p) => URL.revokeObjectURL(p.url))
+  }, [])
+
+  function setColorPhoto(color: string, file: File | null) {
+    setColorPhotos((prev) => {
+      const next = { ...prev }
+      if (prev[color]) URL.revokeObjectURL(prev[color].url)
+      if (file) next[color] = { file, url: URL.createObjectURL(file) }
+      else delete next[color]
+      return next
+    })
+  }
 
   const { family, series, version, selectedStorages, selectedColors } = state
 
@@ -155,9 +174,14 @@ function CreateForm({
           requerido: true, orden: 1, activo: true,
         })
         for (let i = 0; i < colorsArr.length; i++) {
-          await inventarioApi.modelos.createOpcion(attr.id, {
-            valor: colorsArr[i], label: colorsArr[i], orden: i, activo: true,
+          const color = colorsArr[i]
+          const opcion = await inventarioApi.modelos.createOpcion(attr.id, {
+            valor: color, label: color, orden: i, activo: true,
           })
+          const photo = colorPhotos[color]
+          if (photo) {
+            await inventarioApi.modelos.uploadOpcionFoto(opcion.id, photo.file)
+          }
         }
       }
 
@@ -281,6 +305,48 @@ function CreateForm({
           </p>
         )}
       </div>
+
+      {/* Fila 4b: Fotos por color (opcional) */}
+      {selectedColors.size > 0 && (
+        <div>
+          <span style={labelStyle}>Fotos por color (opcional)</span>
+          <p className="msg-muted" style={{ fontSize: '0.78rem', margin: '0 0 0.6rem' }}>
+            La foto de cada color se usa como imagen principal en la tienda para los equipos de ese color.
+          </p>
+          <div style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
+            {[...selectedColors].map((color) => {
+              const photo = colorPhotos[color]
+              return (
+                <div key={color} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', width: 84 }}>
+                  {photo ? (
+                    <img
+                      src={photo.url}
+                      alt={color}
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }}
+                    />
+                  ) : (
+                    <div style={{ width: 64, height: 64, borderRadius: 8, background: 'var(--app-muted-bg)', border: '1px solid var(--app-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--app-muted)" strokeWidth="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+                      </svg>
+                    </div>
+                  )}
+                  <span style={{ fontSize: '0.72rem', textAlign: 'center', color: 'var(--app-text)', lineHeight: 1.1 }}>{color}</span>
+                  <label style={{ fontSize: '0.68rem', color: 'var(--app-muted)', cursor: 'pointer', margin: 0 }}>
+                    {photo ? 'Cambiar' : 'Subir foto'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => setColorPhoto(color, e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Fila 5: Preview + acción */}
       <div style={{
