@@ -18,6 +18,7 @@ from app.models.equipos import (
     EquipoConfiguracion,
 )
 from app.models.sesiones_login import SesionesLogin as SesionLogin
+from app.models.password_reset import PasswordResetToken
 from app.models.deposito import Deposito, EquipoDeposito
 from app.models.productos import CategoriaProducto, Productos
 from app.models.accesorios import Accesorios  # noqa: F401 - debe cargarse tras Productos para resolver relationship
@@ -29,6 +30,7 @@ from app.models.publicacion import Publicacion, RevisionPublicacion, InteresPubl
 __all__ = [
     "Rol",
     "Usuario",
+    "PasswordResetToken",
     "Carrito",
     "CarritoDetalle",
     "ModeloEquipo",

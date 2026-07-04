@@ -5,12 +5,15 @@ import { mediaUrl } from '../../services/api'
 import { productosApi } from '../../services/productosApi'
 import type { ProductoCompra } from '../../types/carrito'
 
-const TIPOS_EQUIPO = [
-  { value: 'iphone', label: 'iPhone' },
-  { value: 'ipad', label: 'iPad' },
-  { value: 'macbook', label: 'MacBook' },
-  { value: 'airpods', label: 'AirPods' },
-]
+/** Deriva el tipo de equipo (iphone/ipad/macbook/airpods) desde el nombre del modelo. */
+function deriveTipoEquipo(nombreModelo: string | null | undefined): string {
+  const n = (nombreModelo ?? '').trim().toLowerCase()
+  if (n.startsWith('iphone')) return 'iphone'
+  if (n.startsWith('ipad')) return 'ipad'
+  if (n.startsWith('macbook') || n.startsWith('mac')) return 'macbook'
+  if (n.startsWith('airpods')) return 'airpods'
+  return ''
+}
 
 type ModeloApi = Partial<ModeloEquipo> & { id?: number; id_modelo?: number }
 type EquipoRow = Partial<EquipoConModelo> & {
@@ -267,7 +270,6 @@ export function EquiposPage() {
     id_modelo: '' as string | number,
     imei: '',
     color: '',
-    tipo_equipo: '',
     activo: true,
     precio_ars: '' as string | number,
   })
@@ -391,16 +393,9 @@ export function EquiposPage() {
     return opt?.label || opt?.valor || ''
   }, [selectedModeloAtributos, selectedOpciones])
 
-  const currentTipoEquipo = form.tipo_equipo.trim().toLowerCase()
-  const tipoEquipoOptions = TIPOS_EQUIPO.some((o) => o.value === currentTipoEquipo)
-    ? TIPOS_EQUIPO
-    : currentTipoEquipo
-      ? [...TIPOS_EQUIPO, { value: currentTipoEquipo, label: form.tipo_equipo.trim() }]
-      : TIPOS_EQUIPO
-
   function openCreate() {
     setEditingId(null)
-    setForm({ id_modelo: '', imei: '', color: '', tipo_equipo: '', activo: true, precio_ars: '' })
+    setForm({ id_modelo: '', imei: '', color: '', activo: true, precio_ars: '' })
     setSelectedOpciones({})
     setModalOpen(true)
     setError(null)
@@ -416,7 +411,6 @@ export function EquiposPage() {
       id_modelo: idModelo,
       imei: e.imei ?? '',
       color: e.color ?? '',
-      tipo_equipo: e.tipo_equipo ?? '',
       activo: e.activo ?? true,
       precio_ars: producto?.precio ?? '',
     })
@@ -453,7 +447,7 @@ export function EquiposPage() {
       id_modelo: idModelo,
       imei: form.imei.trim() || null,
       color: form.color.trim() || selectedColorLabel || null,
-      tipo_equipo: form.tipo_equipo.trim().toLowerCase() || null,
+      tipo_equipo: deriveTipoEquipo(selectedModelo?.nombre_modelo) || null,
       activo: form.activo,
       opciones_configuracion_ids: Object.values(selectedOpciones),
     }
@@ -682,55 +676,58 @@ export function EquiposPage() {
                 </div>
               )}
 
-              <label>
-                IMEI
-                <input
-                  value={form.imei}
-                  onChange={(e) => setForm((f) => ({ ...f, imei: e.target.value }))}
-                  placeholder="Opcional"
-                />
-              </label>
-              {!selectedModeloAtributos.some((a) => a.code.trim().toLowerCase() === 'color') ? (
+              <div
+                style={{
+                  gridColumn: '1 / -1',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: '0.65rem 1rem',
+                  alignItems: 'start',
+                }}
+              >
                 <label>
-                  Color
+                  IMEI
                   <input
-                    value={form.color}
-                    onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                    placeholder="Ej: Negro"
+                    value={form.imei}
+                    onChange={(e) => setForm((f) => ({ ...f, imei: e.target.value }))}
+                    placeholder="Opcional"
                   />
                 </label>
-              ) : null}
-              <label>
-                Tipo
-                <select
-                  value={form.tipo_equipo}
-                  onChange={(e) => setForm((f) => ({ ...f, tipo_equipo: e.target.value }))}
-                  required
-                >
-                  <option value="">Seleccionar…</option>
-                  {tipoEquipoOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Precio (ARS)
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.precio_ars}
-                  onChange={(e) => setForm((f) => ({ ...f, precio_ars: e.target.value }))}
-                  placeholder="Ej: 1500000"
-                />
-              </label>
-              <label>
-                Precio (USD) — calculado
-                <input type="text" value={precioUsdCalculado} readOnly placeholder="Automático" />
-                <span style={{ fontSize: '0.72rem', color: 'var(--app-muted)', marginTop: '0.2rem' }}>
-                  Blue: {loadingDolar ? 'cargando…' : dolarRate ? fmtArs(dolarRate) : 'no disp.'}
-                </span>
-              </label>
+                {!selectedModeloAtributos.some((a) => a.code.trim().toLowerCase() === 'color') ? (
+                  <label>
+                    Color
+                    <input
+                      value={form.color}
+                      onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                      placeholder="Ej: Negro"
+                    />
+                  </label>
+                ) : null}
+                <label>
+                  Precio (ARS)
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.precio_ars}
+                    onChange={(e) => setForm((f) => ({ ...f, precio_ars: e.target.value }))}
+                    placeholder="Ej: 1500000"
+                  />
+                </label>
+                <label>
+                  Precio (USD) — calculado
+                  <input
+                    type="text"
+                    value={precioUsdCalculado}
+                    readOnly
+                    placeholder="Automático"
+                    style={{ background: 'var(--app-muted-bg)', cursor: 'default' }}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: 'var(--app-muted)', marginTop: '0.2rem' }}>
+                    Blue: {loadingDolar ? 'cargando…' : dolarRate ? fmtArs(dolarRate) : 'no disp.'}
+                  </span>
+                </label>
+              </div>
 
               <div className="form-row-check" style={{ gridColumn: '1 / -1' }}>
                 <input

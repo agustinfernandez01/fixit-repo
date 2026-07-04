@@ -184,3 +184,22 @@ export async function loginWithFallback(email: string, password: string): Promis
 
   return JSON.parse(text) as LoginResponse
 }
+
+/** Solicita el email de reseteo. Respuesta genérica (no revela si el email existe). */
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return fetchJson<{ message: string }>('/api/v1/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+/** Confirma el reseteo con el token del email y la nueva contraseña. */
+export async function resetPassword(
+  token: string,
+  password: string,
+): Promise<{ message: string }> {
+  return fetchJson<{ message: string }>('/api/v1/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+  })
+}

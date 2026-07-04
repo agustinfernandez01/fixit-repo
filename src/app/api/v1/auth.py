@@ -5,11 +5,18 @@ import bcrypt
 from app.deps.auth import get_optional_user_id_from_access_token
 from app.db import get_db
 from app.schemas.login import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
+from app.schemas.password_reset import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
+)
 from app.schemas.usuarios import UsuarioPerfilResponse
 from app.models.roles import Rol
 from app.models.usuarios import Usuario
 from app.services.login import logueo
 from app.services.logout import logout
+from app.services.password_reset import confirmar_reset, solicitar_reset
 from app.services.refresh_login import refresh_login
 
 router = APIRouter()
@@ -107,6 +114,30 @@ def logout_v1(refresh_token: str, db: Session = Depends(get_db)):
         return logout(db, refresh_token)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password_v1(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Solicita el reseteo de contraseña. Respuesta genérica (no revela si el email existe)."""
+    try:
+        mensaje = solicitar_reset(db, request.email)
+        return {"message": mensaje}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+def reset_password_v1(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Confirma el reseteo: valida el token y establece la nueva contraseña."""
+    try:
+        mensaje = confirmar_reset(db, request.token, request.password)
+        return {"message": mensaje}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

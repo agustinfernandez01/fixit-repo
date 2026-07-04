@@ -94,6 +94,11 @@ export default function LoginPage() {
               className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400"
             />
           </div>
+          <div className="text-right">
+            <Link to="/recuperar" className="text-xs text-gray-500 underline hover:text-gray-900">
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </div>
           <button
             type="submit"
             disabled={loading}

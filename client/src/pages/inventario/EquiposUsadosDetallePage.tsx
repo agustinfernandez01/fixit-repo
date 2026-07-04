@@ -10,16 +10,18 @@ import {
   useEquiposUsadosDetalle,
   useToggleActivoEquipo,
   useEliminarEquipoUsado,
-  useEliminarFotoEquipo,
   useDolarBlue,
 } from '../../hooks/queries'
 
-const TIPOS_EQUIPO = [
-  { value: 'iphone', label: 'iPhone' },
-  { value: 'ipad', label: 'iPad' },
-  { value: 'macbook', label: 'MacBook' },
-  { value: 'airpods', label: 'AirPods' },
-]
+/** Deriva el tipo de equipo (iphone/ipad/macbook/airpods) desde el nombre del modelo. */
+function deriveTipoEquipo(nombreModelo: string | null | undefined): string {
+  const n = (nombreModelo ?? '').trim().toLowerCase()
+  if (n.startsWith('iphone')) return 'iphone'
+  if (n.startsWith('ipad')) return 'ipad'
+  if (n.startsWith('macbook') || n.startsWith('mac')) return 'macbook'
+  if (n.startsWith('airpods')) return 'airpods'
+  return ''
+}
 
 const ESTADO_ESTATICA_OPTIONS = ['Excelente', 'Muy bueno', 'Bueno', 'Detalle leve']
 const ESTADO_FUNCIONAL_OPTIONS = ['Excelente', 'Muy bueno', 'Bueno', 'Con detalle']
@@ -32,6 +34,19 @@ function parseNumberEsAr(input: string | number): number {
   if (!raw) return Number.NaN
   return Number(raw.replace(/\./g, '').replace(',', '.'))
 }
+
+/** Convierte "128 GB" / "1 TB" / "128" / 128 a un entero en GB. Null si no es válido. */
+function parseGbToInt(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? Math.round(value) : null
+  const raw = value.trim().toLowerCase()
+  const num = parseFloat(raw.replace(',', '.'))
+  if (!Number.isFinite(num) || num <= 0) return null
+  return raw.includes('tb') ? Math.round(num * 1024) : Math.round(num)
+}
+
+/** Valores de almacenamiento comunes, para sugerir cuando el modelo no tiene variaciones. */
+const GB_COMUNES = [64, 128, 256, 512, 1024]
 
 function fmtArs(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return '—'
@@ -57,7 +72,6 @@ const EMPTY_FORM = {
   capacidad_gb: '' as string | number,
   imei: '',
   color: '',
-  tipo_equipo: '',
   precio_ars: '' as string | number,
   bateria_porcentaje: '' as string | number,
   estado_estetico: '',
@@ -94,7 +108,6 @@ export function EquiposUsadosDetallePage() {
   const { data: modelosData = [], isLoading: loadingModelos } = useModelos()
   const toggleActivo = useToggleActivoEquipo()
   const eliminarEquipo = useEliminarEquipoUsado()
-  const eliminarFoto = useEliminarFotoEquipo()
 
   const loading = loadingRows || loadingEquipos || loadingModelos
   const error = actionError ?? (rowsError ? (rowsError instanceof Error ? rowsError.message : 'Error al cargar') : null)
@@ -103,17 +116,6 @@ export function EquiposUsadosDetallePage() {
 
   const equipos = equiposData
   const modelos = modelosData.filter((m) => m.activo)
-
-  const eqMap = useMemo(
-    () =>
-      new Map(
-        equipos.map((e) => [
-          e.id ?? e.id_equipo,
-          `${e.modelo?.nombre_modelo ?? 'Equipo'} #${e.id ?? e.id_equipo}${e.imei ? ` · ${e.imei}` : ''}`,
-        ]),
-      ),
-    [equipos],
-  )
 
   const equiposById = useMemo(
     () => new Map(equipos.map((e) => [e.id ?? e.id_equipo, e])),
@@ -188,10 +190,6 @@ export function EquiposUsadosDetallePage() {
         setActionError('Elegí un modelo válido.')
         return
       }
-      if (!form.tipo_equipo.trim()) {
-        setActionError('Elegí un tipo de equipo.')
-        return
-      }
     }
 
     if (!form.bateria_porcentaje) {
@@ -211,8 +209,8 @@ export function EquiposUsadosDetallePage() {
         ? precioArs / dolarRate
         : null
 
-    const capacidadGb = form.capacidad_gb !== '' ? Number(form.capacidad_gb) : null
-    if (!isEditing && (capacidadGb == null || !Number.isFinite(capacidadGb) || capacidadGb <= 0)) {
+    const capacidadGb = parseGbToInt(form.capacidad_gb)
+    if (!isEditing && (capacidadGb == null || capacidadGb <= 0)) {
       setActionError('Seleccioná la capacidad del equipo.')
       return
     }
@@ -246,7 +244,7 @@ export function EquiposUsadosDetallePage() {
           capacidad_gb: capacidadGb,
           imei: form.imei.trim() || null,
           color: form.color.trim() || null,
-          tipo_equipo: form.tipo_equipo.trim().toLowerCase(),
+          tipo_equipo: deriveTipoEquipo(selectedModelo?.nombre_modelo || form.nombre_modelo),
           precio_ars: precioArs,
           precio_usd: precioUsd,
           activo: true,
@@ -303,7 +301,6 @@ export function EquiposUsadosDetallePage() {
       capacidad_gb: equipo.modelo?.capacidad_gb != null ? String(equipo.modelo.capacidad_gb) : '',
       imei: equipo.imei ?? '',
       color: equipo.color ?? '',
-      tipo_equipo: equipo.tipo_equipo ?? '',
       precio_ars: equipo.precio_ars != null ? String(equipo.precio_ars) : '',
       bateria_porcentaje: r.bateria_porcentaje != null ? String(r.bateria_porcentaje) : '',
       estado_estetico: r.estado_estetico ?? '',
@@ -326,19 +323,6 @@ export function EquiposUsadosDetallePage() {
     )
   }
 
-  function handleDeleteFoto(idEquipo: number) {
-    if (!window.confirm('¿Eliminar la foto del equipo?')) return
-    setActionError(null)
-    eliminarFoto.mutate(idEquipo, {
-      onSuccess: () => {
-        if (fotoPreview) URL.revokeObjectURL(fotoPreview)
-        setFotoFile(null)
-        setFotoPreview(null)
-      },
-      onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al eliminar foto'),
-    })
-  }
-
   function handleDelete(r: EquipoUsadoDetalle) {
     if (!window.confirm(`¿Eliminar definitivamente el equipo #${r.id_equipo}? Esta acción no se puede deshacer.`)) return
     setActionError(null)
@@ -348,8 +332,6 @@ export function EquiposUsadosDetallePage() {
       { onError: (err) => setActionError(err instanceof Error ? err.message : 'Error al eliminar') },
     )
   }
-
-  const editingEquipo = editingIds ? equiposById.get(editingIds.idEquipo) : null
 
   return (
     <>
@@ -401,25 +383,43 @@ export function EquiposUsadosDetallePage() {
 
             <label>
               Capacidad (GB)
-              <select
-                value={form.capacidad_gb}
-                onChange={(e) => setForm((f) => ({ ...f, capacidad_gb: e.target.value }))}
-                disabled={isEditing || !form.id_modelo}
-                required={!isEditing}
-              >
-                {!form.id_modelo && !isEditing
-                  ? <option value="">Primero elegí modelo…</option>
-                  : <option value="">Seleccionar…</option>
-                }
-                {gbOpciones.map((op) => (
-                  <option key={op.id} value={op.valor}>
-                    {op.label || op.valor} GB
-                  </option>
-                ))}
-                {isEditing && gbOpciones.length === 0 && form.capacidad_gb !== '' && (
-                  <option value={form.capacidad_gb}>{form.capacidad_gb} GB</option>
-                )}
-              </select>
+              {gbOpciones.length > 0 ? (
+                <select
+                  value={form.capacidad_gb}
+                  onChange={(e) => setForm((f) => ({ ...f, capacidad_gb: e.target.value }))}
+                  disabled={isEditing || !form.id_modelo}
+                  required={!isEditing}
+                >
+                  {!form.id_modelo && !isEditing
+                    ? <option value="">Primero elegí modelo…</option>
+                    : <option value="">Seleccionar…</option>
+                  }
+                  {gbOpciones.map((op) => (
+                    <option key={op.id} value={String(parseGbToInt(op.valor) ?? '')}>
+                      {op.label || op.valor}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    list="gb-comunes"
+                    value={form.capacidad_gb}
+                    onChange={(e) => setForm((f) => ({ ...f, capacidad_gb: e.target.value }))}
+                    disabled={isEditing || (!form.id_modelo && !isEditing)}
+                    required={!isEditing}
+                    placeholder={!form.id_modelo && !isEditing ? 'Primero elegí modelo…' : 'Ej: 128'}
+                  />
+                  <datalist id="gb-comunes">
+                    {GB_COMUNES.map((gb) => (
+                      <option key={gb} value={gb}>{gb === 1024 ? '1 TB' : `${gb} GB`}</option>
+                    ))}
+                  </datalist>
+                </>
+              )}
             </label>
 
             <label>
@@ -505,21 +505,6 @@ export function EquiposUsadosDetallePage() {
                   placeholder="Ej: Negro"
                 />
               )}
-            </label>
-
-            <label>
-              Tipo
-              <select
-                value={form.tipo_equipo}
-                onChange={(e) => setForm((f) => ({ ...f, tipo_equipo: e.target.value }))}
-                disabled={isEditing}
-                required={!isEditing}
-              >
-                <option value="">Seleccionar…</option>
-                {TIPOS_EQUIPO.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
             </label>
 
             <label>

@@ -24,6 +24,14 @@ if len(SECRET_KEY) < 32:
     )
 WHATSAPP_CHECKOUT_PHONE = os.getenv("WHATSAPP_CHECKOUT_PHONE", "5493816226300")
 
+# Reseteo de contraseña por email (Resend). Ver `app.services.email`.
+RESEND_API_KEY = (os.getenv("RESEND_API_KEY") or "").strip()
+RESEND_FROM_EMAIL = (os.getenv("RESEND_FROM_EMAIL") or "onboarding@resend.dev").strip()
+# Base pública del frontend (sin barra final): arma el link de reseteo que se envía por mail.
+FRONTEND_BASE_URL = (os.getenv("FRONTEND_BASE_URL") or "http://localhost:5173").strip().rstrip("/")
+# Minutos de validez del token de reseteo.
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "30"))
+
 
 def _normalize_postgres_url(url: str) -> str:
     """Render/Postgres: dialecto + driver para SQLAlchemy; SSL en conexiones externas."""

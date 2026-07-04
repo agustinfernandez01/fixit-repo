@@ -12,6 +12,8 @@ import MarketplaceDetallePage from './pages/client/MarketplaceDetallePage'
 import CanjePage from './pages/client/CanjePage'
 import PublicarCelularPage from './pages/client/PublicarCelularPage'
 import LoginPage from './pages/client/LoginPage'
+import ForgotPasswordPage from './pages/client/ForgotPasswordPage'
+import ResetPasswordPage from './pages/client/ResetPasswordPage'
 import RegisterPage from './pages/client/RegisterPage'
 import ReparacionesPage from './pages/client/ReparacionesPage'
 import TiendaPage from './pages/client/TiendaPage'
@@ -42,6 +44,8 @@ export default function App() {
         <Route path="reparaciones" element={<ReparacionesPage />} />
         <Route path="publicar" element={<PublicarCelularPage />} />
         <Route path="login" element={<LoginPage />} />
+        <Route path="recuperar" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="registro" element={<RegisterPage />} />
         <Route path="carrito" element={<CarritoPage />} />
         <Route path="perfil" element={<PerfilPage />} />
