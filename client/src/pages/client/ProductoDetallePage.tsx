@@ -296,7 +296,7 @@ export default function ProductoDetallePage() {
     Number.isFinite(precioArsNumber) && dolarRate && dolarRate > 0
       ? precioArsNumber / dolarRate
       : null
-  const fotoActiva = variantForCart?.foto_url ?? producto?.detalle_equipo?.foto_url ?? null
+  const fotoActiva = variantForCart?.foto_url ?? producto?.detalle_equipo?.foto_url ?? producto?.foto_url ?? null
   const missingAttributeLabel = variantAttributes.find((attr) => !selectedAttributes[attr.code])?.label ?? null
 
   const optionEnabled = (code: string, option: string) => {

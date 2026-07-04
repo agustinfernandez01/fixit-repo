@@ -288,7 +288,10 @@ export default function CarritoPage() {
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-start gap-4">
-                        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
+                        <Link
+                          to={`/producto/${item.id_producto}`}
+                          className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50 transition-opacity hover:opacity-80"
+                        >
                           {imageSrc ? (
                             <img
                               src={imageSrc}
@@ -301,7 +304,7 @@ export default function CarritoPage() {
                               Sin foto
                             </div>
                           )}
-                        </div>
+                        </Link>
                         <div>
                         <p className="text-[11px] tracking-widest text-gray-300 uppercase">
                           {producto?.nombre ?? `Producto #${item.id_producto}`}
@@ -310,7 +313,12 @@ export default function CarritoPage() {
                           {tipoLabel(producto?.tipo_producto)}
                         </p>
                         <h2 className="mt-1 text-lg font-bold text-gray-900">
-                          {producto?.nombre ?? 'Producto sin nombre'}
+                          <Link
+                            to={`/producto/${item.id_producto}`}
+                            className="hover:underline"
+                          >
+                            {producto?.nombre ?? 'Producto sin nombre'}
+                          </Link>
                         </h2>
                         <p className="mt-1 text-sm text-gray-400">
                           Unitario: {fmtArs(item.precio_unitario)} · Subtotal: {fmtArs(item.subtotal)}

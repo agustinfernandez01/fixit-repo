@@ -624,6 +624,7 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
                 "stock": stock_val,
                 "disponible": stock_val > 0,
                 "atributos": {},
+                "foto_url": _foto_url_si_existe(accesorio.foto_url),
             }
         ]
         base["atributos_disponibles"] = []

@@ -121,6 +121,27 @@
   color: #fff;
 }
 
+.inv-side-back {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem !important;
+  font-weight: 600;
+  color: var(--app-muted) !important;
+  padding: 0.35rem 0.65rem !important;
+}
+
+.inv-side-back:hover {
+  color: var(--app-text-strong) !important;
+  background: var(--app-muted-bg) !important;
+}
+
+.inv-side-divider {
+  border: none;
+  border-top: 1px solid var(--app-border);
+  margin: 0.25rem 0.65rem;
+}
+
 .inv-content h1 {
   font-size: 1.35rem;
   font-weight: 600;
@@ -484,6 +505,46 @@ table.data tbody tr:hover td {
 .admin-main-inner {
   max-width: 1100px;
   margin: 0 auto;
+}
+
+/* Breadcrumb header admin */
+.admin-breadcrumb {
+  border-top: 1px solid var(--app-border);
+  background: rgba(248, 248, 249, 0.85);
+}
+.admin-breadcrumb-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0.35rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.admin-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.admin-breadcrumb-sep {
+  font-size: 0.75rem;
+  color: var(--app-muted);
+  user-select: none;
+}
+.admin-breadcrumb-link {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--app-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.admin-breadcrumb-link:hover {
+  color: var(--app-text-strong);
+}
+.admin-breadcrumb-current {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--app-text-strong);
 }
 
 /* Breadcrumb / toolbar (inventario anidado) */
