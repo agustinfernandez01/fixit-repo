@@ -77,3 +77,49 @@ The schema is meant to be managed **exclusively via Alembic** — there is no `c
 - Home dedup logic (one representative card per model) is documented in `docs/HOME_DEDUPLICACION.md` and lives in `pages/client/HomeView.tsx` — keep them in sync.
 - Checkout flows through WhatsApp (`WHATSAPP_CHECKOUT_PHONE`) and/or Mercado Pago.
 - Product images: legacy files served from `/uploads` (static mount); new uploads go to Cloudflare R2 (`R2_*` env vars).
+
+## Reglas de rendimiento
+
+Reglas que salieron de una auditoría concreta de este código, no de teoría general. Romperlas
+ya causó problemas medibles en producción, así que respetalas al escribir código nuevo.
+
+- **Toda FK nueva lleva su índice.** Postgres —a diferencia de MySQL— **no** crea índices
+  automáticos sobre las foreign keys. Sin índice, cada filtro por esa columna es un scan
+  secuencial. Poné `index=True` en la columna del modelo y creá el índice en la migración
+  (`alembic/versions/c1d2e3f4a5b6_indices_de_rendimiento.py` es el ejemplo a seguir: usa
+  `CREATE INDEX CONCURRENTLY` dentro de `autocommit_block()` para no bloquear la tabla).
+- **Nunca I/O bloqueante dentro de `async def`.** boto3 (`services/storage.py`), `db.query()`
+  y cualquier cliente HTTP sincrónico congelan el event loop —y con él, el servidor entero
+  para todos los usuarios— mientras corren. Si el endpoint hace I/O sincrónico, definilo con
+  `def`: FastAPI lo deriva solo al threadpool. Los endpoints de subida de fotos usan
+  `foto.file.read()`, no `await foto.read()`, justamente por esto.
+- **Todo endpoint de listado nace paginado**, con `skip`/`limit` que lleguen al SQL. Paginar
+  en Python después de un `.all()` no sirve: el costo ya se pagó.
+- **Nunca consultes dentro de un loop.** Si necesitás datos relacionados, usá `joinedload`
+  para relaciones many-to-one y `selectinload` para colecciones (dos `joinedload` encadenados
+  sobre la misma one-to-many producen un producto cartesiano). Para datos que no son
+  relaciones, resolvelos en batch con un `IN (...)`;
+  `services/carrito.py:disponibilidad_por_productos` es el patrón de referencia.
+- **En el frontend, el estado del servidor va por TanStack Query** (`hooks/queries.ts`), no
+  por `useEffect` + `useState`. El fetch manual no cachea ni deduplica: cada navegación
+  vuelve a pegarle al backend. Registrá la clave nueva en `qk` para que la invalidación
+  después de una mutación sea consistente.
+- **Rutas nuevas van con `React.lazy`** en `App.tsx`, salvo que sean parte de la primera
+  pantalla.
+
+### Cómo medir
+
+- `app/observabilidad.py` mide cada request: devuelve los headers `X-Response-Time` y
+  `X-DB-Query-Count`, y loguea `método · ruta · ms · nº de queries` en el logger `fixit.perf`
+  (sube a WARNING pasando `PERF_UMBRAL_QUERIES`, default 25, o `PERF_UMBRAL_MS`, default 1000).
+  Si un endpoint nuevo aparece con 200 queries, se ve el día que se escribe.
+- `contar_queries()` es el context manager para tests. `src/tests/test_rendimiento_consultas.py`
+  tiene tests de regresión que fallan si un flujo crítico vuelve a escalar con la cantidad de
+  filas. Al tocar carrito o el panel de pedidos, corrélos: `cd src && python -m pytest tests -q`.
+
+### Nota sobre el hosting
+
+El plan gratuito de Render duerme la instancia tras 15 minutos de inactividad y tarda ~50 s en
+despertar. En la lentitud percibida eso pesa más que cualquier optimización de código, y ninguna
+de estas reglas lo corrige: son problemas independientes. No confundas un cold start con una
+regresión de rendimiento.

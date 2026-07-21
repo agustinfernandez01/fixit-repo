@@ -1,0 +1,72 @@
+# Blueprint de Render (Infrastructure as Code).
+#
+# Solo se usa si creás el servicio como "Blueprint" desde este repo. Si lo creás a
+# mano desde el dashboard, este archivo se ignora y sirve como documentación de qué
+# variables espera el backend.
+#
+# Ver docs/DESPLIEGUE.md para el paso a paso.
+
+databases:
+  - name: fixit-db
+    databaseName: fixitdb
+    user: fixit
+    plan: free
+
+services:
+  - type: web
+    name: fixit-api
+    runtime: docker
+    plan: free
+    rootDir: src
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      # Render inyecta la URL interna de la base creada arriba.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fixit-db
+          property: connectionString
+
+      # Clave de firma de JWT. `generateValue` crea una aleatoria en el primer deploy.
+      # OJO: rotarla invalida todos los tokens emitidos (ver docs/OPERACIONES_SEGURIDAD.md).
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Orígenes permitidos por CORS: el dominio de Vercel, separados por coma.
+      # Dejarlo en "*" deshabilita las credenciales y es inseguro en producción.
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # URL pública de este mismo servicio (webhooks de Mercado Pago).
+      - key: APP_PUBLIC_BASE_URL
+        sync: false
+      # URL pública del frontend (arma el link de reseteo de contraseña).
+      - key: FRONTEND_BASE_URL
+        sync: false
+
+      # Mercado Pago
+      - key: MERCADOPAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADOPAGO_PUBLIC_KEY
+        sync: false
+
+      # Cloudflare R2 (imágenes)
+      - key: R2_ENDPOINT_URL
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
+
+      # Envío de mails de reseteo (Resend)
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+
+      - key: WHATSAPP_CHECKOUT_PHONE
+        sync: false

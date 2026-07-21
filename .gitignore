@@ -1,6 +1,9 @@
 .env
 .env.*
 !.env.local
+# Las plantillas *.env.example no llevan secretos y sí van al repo.
+!.env.example
+!client/.env.example
 src/.env
 src/.env.*
 !src/.env.example
