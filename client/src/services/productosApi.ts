@@ -11,19 +11,24 @@ export const productosApi = {
    * Intenta el catálogo agrupado; si falla (p. ej. esquema desactualizado), usa el listado plano.
    */
   async listTiendaCatalogoWithFallback(): Promise<{ data: ProductoCompra[]; agrupado: boolean }> {
+    // El catálogo agrupado incluye solo equipos nuevos; los accesorios salen del
+    // listado plano. Antes las dos descargas eran en paralelo **siempre**, así que
+    // el listado plano completo viajaba dos veces (una entera, otra para filtrar
+    // accesorios). Ahora el plano solo se pide si el agrupado funcionó, y si el
+    // agrupado falla se reusa esa misma respuesta como fallback.
+    let catalogoAgrupado: ProductoCompra[] | null = null
     try {
-      const [catalogoAgrupado, listadoPlano] = await Promise.all([
-        fetchJson<ProductoCompra[]>(`${V1}/catalogo/tienda`),
-        fetchJson<ProductoCompra[]>(V1),
-      ])
-      // El catálogo agrupado incluye solo equipos nuevos.
-      // Sumamos accesorios del listado plano para mantener filtros completos en Tienda.
-      const accesorios = listadoPlano.filter((p) => p.tipo_producto === 'accesorio')
-      return { data: [...catalogoAgrupado, ...accesorios], agrupado: true }
+      catalogoAgrupado = await fetchJson<ProductoCompra[]>(`${V1}/catalogo/tienda`)
     } catch {
-      const data = await fetchJson<ProductoCompra[]>(V1)
-      return { data, agrupado: false }
+      catalogoAgrupado = null
     }
+
+    const listadoPlano = await fetchJson<ProductoCompra[]>(V1)
+    if (catalogoAgrupado === null) {
+      return { data: listadoPlano, agrupado: false }
+    }
+    const accesorios = listadoPlano.filter((p) => p.tipo_producto === 'accesorio')
+    return { data: [...catalogoAgrupado, ...accesorios], agrupado: true }
   },
   get: (idProducto: number) => fetchJson<ProductoDetalle>(`${V1}/${idProducto}`),
 }

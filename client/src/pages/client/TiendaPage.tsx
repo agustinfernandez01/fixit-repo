@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { carritoApi } from '../../services/carritoApi'
-import { productosApi } from '../../services/productosApi'
 import type { ProductoCompra } from '../../types/carrito'
 import { getAccessToken } from '../../lib/auth'
 import { mediaUrl } from '../../services/api'
 import { isRepairProduct, isUsedProduct, normalizeCatalogText } from '../../lib/catalogProductRules'
+import { useCatalogoTienda } from '../../hooks/queries'
 import productosAppleFilterImg from '../../assets/filtradocatalogoimg/productos-apple.svg'
 import accesoriosFilterImg from '../../assets/filtradocatalogoimg/accesorios.svg'
 
@@ -452,10 +452,10 @@ function ProductCardSkeleton() {
 }
 
 export default function TiendaPage() {
-  const [items, setItems] = useState<ProductoCompra[]>([])
-  const [loading, setLoading] = useState(true)
+  // TanStack Query en vez de fetch en useEffect: volver a /tienda desde el detalle
+  // de un producto ya no vuelve a descargar el catálogo entero.
+  const { data: catalogo, isPending: loading, error: errorCatalogo } = useCatalogoTienda()
   const [error, setError] = useState<string | null>(null)
-  const [catalogoPlanoFallback, setCatalogoPlanoFallback] = useState(false)
   const [savingId, setSavingId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [visibleCategory, setVisibleCategory] = useState<VisibleCategory>('apple')
@@ -472,32 +472,27 @@ export default function TiendaPage() {
     { id: 'accesorios', label: 'Accesorios', image: accesoriosFilterImg },
   ]
 
-  const load = useCallback(async () => {
-    setError(null)
-    setCatalogoPlanoFallback(false)
-    setLoading(true)
-    try {
-      const { data, agrupado } = await productosApi.listTiendaCatalogoWithFallback()
-      setCatalogoPlanoFallback(!agrupado)
-      setItems(
-        data.filter(
-          (p) =>
-            p.activo &&
-            (p.tipo_producto === 'equipo' || p.tipo_producto === 'accesorio' || p.tipo_producto == null) &&
-            !isRepairProduct(p) &&
-            !isUsedProduct(p),
-        ),
-      )
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar la tienda')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const catalogoPlanoFallback = catalogo ? !catalogo.agrupado : false
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  const items: ProductoCompra[] = useMemo(
+    () =>
+      (catalogo?.data ?? []).filter(
+        (p) =>
+          p.activo &&
+          (p.tipo_producto === 'equipo' || p.tipo_producto === 'accesorio' || p.tipo_producto == null) &&
+          !isRepairProduct(p) &&
+          !isUsedProduct(p),
+      ),
+    [catalogo],
+  )
+
+  const errorMostrado =
+    error ??
+    (errorCatalogo
+      ? errorCatalogo instanceof Error
+        ? errorCatalogo.message
+        : 'No se pudo cargar la tienda'
+      : null)
 
   async function addToCart(idProducto: number) {
     setSavingId(idProducto)
@@ -635,13 +630,13 @@ export default function TiendaPage() {
           </div>
         </div>
 
-        {error ? (
+        {errorMostrado ? (
           <div className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {error}
+            {errorMostrado}
           </div>
         ) : null}
 
-        {!error && catalogoPlanoFallback ? (
+        {!errorMostrado && catalogoPlanoFallback ? (
           <div className="mb-5 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Mostrando todos los ítems del catálogo (vista sin agrupar). Reiniciá el backend tras actualizar la base para
             volver a la vista por modelo.

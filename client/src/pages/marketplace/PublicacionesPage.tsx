@@ -74,7 +74,7 @@ function PubCard({
       {/* Foto */}
       <div className="relative h-44 bg-gray-100 overflow-hidden">
         {foto ? (
-          <img
+          <img loading="lazy"
             src={mediaUrl(foto)}
             alt="Equipo"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
@@ -171,7 +171,7 @@ function DetalleModal({
           {/* Fotos */}
           {fotos.length > 0 && (
             <div className="flex flex-col gap-2">
-              <img
+              <img loading="lazy"
                 src={fotos[fotoIdx]}
                 alt="Equipo"
                 className="w-full h-56 object-cover rounded-xl bg-gray-100"
@@ -187,7 +187,7 @@ function DetalleModal({
                         i === fotoIdx ? 'border-gray-900' : 'border-transparent opacity-60 hover:opacity-100'
                       }`}
                     >
-                      <img src={url} alt={`Foto ${i + 1}`} className="w-14 h-14 object-cover" />
+                      <img loading="lazy" src={url} alt={`Foto ${i + 1}`} className="w-14 h-14 object-cover" />
                     </button>
                   ))}
                 </div>

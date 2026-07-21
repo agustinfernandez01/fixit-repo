@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { getAccessToken } from '../../lib/auth'
 import { mediaUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
-import { productosApi } from '../../services/productosApi'
+import { useDolarBlue, useProductoDetalle } from '../../hooks/queries'
 import type { ProductoDetalle } from '../../types/carrito'
 
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_CHECKOUT_PHONE ?? '5493816226300'
@@ -123,82 +123,50 @@ function buildVariantAttributes(
 
 export default function ProductoDetallePage() {
   const { id } = useParams<{ id: string }>()
-  const [producto, setProducto] = useState<ProductoDetalle | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [showUsdPrice, setShowUsdPrice] = useState(false)
-  const [dolarRate, setDolarRate] = useState<number | null>(null)
-  const [loadingDolar, setLoadingDolar] = useState(true)
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({})
 
+  const parsedId = Number(id)
+  const idValido = Number.isInteger(parsedId) && parsedId > 0
+
+  // TanStack Query: cachea el detalle entre navegaciones (volver desde el carrito
+  // o desde otra variante ya no re-pega al backend).
+  const {
+    data: producto = null,
+    isPending,
+    error: errorDetalle,
+  } = useProductoDetalle(idValido ? parsedId : null)
+  const loading = idValido && isPending
+
+  const error = !idValido
+    ? 'Producto inválido'
+    : errorDetalle
+      ? errorDetalle instanceof Error
+        ? errorDetalle.message
+        : 'No se pudo cargar el detalle del producto'
+      : null
+
+  // Al cambiar de producto, resetea la variante seleccionada al primer atributo.
   useEffect(() => {
-    let alive = true
+    if (!producto) return
+    const firstVar = producto.variantes_tienda?.[0]
+    setSelectedAttributes(
+      Object.fromEntries(
+        Object.entries(firstVar?.atributos ?? {}).map(([key, value]) => [
+          normalizeAttributeCode(key),
+          value,
+        ]),
+      ),
+    )
+    setShowUsdPrice(false)
+  }, [producto])
 
-    async function load() {
-      setError(null)
-      setLoading(true)
-      const parsedId = Number(id)
-      if (!Number.isInteger(parsedId) || parsedId <= 0) {
-        setError('Producto inválido')
-        setLoading(false)
-        return
-      }
-      try {
-        const data = await productosApi.get(parsedId)
-        if (!alive) return
-        setProducto(data)
-        const firstVar = data.variantes_tienda?.[0]
-        const normalizedInitialAttributes = Object.fromEntries(
-          Object.entries(firstVar?.atributos ?? {}).map(([key, value]) => [normalizeAttributeCode(key), value]),
-        )
-        setSelectedAttributes(normalizedInitialAttributes)
-        setShowUsdPrice(false)
-      } catch (e) {
-        if (!alive) return
-        setError(e instanceof Error ? e.message : 'No se pudo cargar el detalle del producto')
-      } finally {
-        if (alive) {
-          setLoading(false)
-        }
-      }
-    }
-
-    void load()
-    return () => {
-      alive = false
-    }
-  }, [id])
-
-  useEffect(() => {
-    let alive = true
-
-    async function loadDolarRate() {
-      setLoadingDolar(true)
-      try {
-        const res = await fetch('https://dolarapi.com/v1/dolares/blue')
-        if (!res.ok) throw new Error('No se pudo obtener dolar blue')
-        const data = (await res.json()) as { venta?: number }
-        if (!alive) return
-        if (typeof data.venta === 'number' && data.venta > 0) {
-          setDolarRate(data.venta)
-        } else {
-          setDolarRate(1100)
-        }
-      } catch {
-        if (!alive) return
-        setDolarRate(1100)
-      } finally {
-        if (alive) setLoadingDolar(false)
-      }
-    }
-
-    void loadDolarRate()
-    return () => {
-      alive = false
-    }
-  }, [])
+  // `useDolarBlue` ya existía con staleTime de 10 min y nadie la usaba: acá había
+  // un fetch a dolarapi.com en cada montaje.
+  const { data: dolar, isPending: loadingDolar } = useDolarBlue()
+  const dolarRate = dolar?.venta ?? null
 
   async function handleAddToCart() {
     if (!producto || !variantForCart || !canAddToCart) return

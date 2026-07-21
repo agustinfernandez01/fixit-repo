@@ -7,6 +7,7 @@ import {
   regenerateCartToken,
   setCartToken,
 } from '../../lib/cart'
+import { useMercadoPagoEstado } from '../../hooks/queries'
 import { fetchJson, loginWithFallback, mediaUrl } from '../../services/api'
 import { carritoApi } from '../../services/carritoApi'
 import type { CarritoCheckoutResponse, CarritoResumen } from '../../types/carrito'
@@ -38,7 +39,10 @@ export default function CarritoPage() {
   const [busyId, setBusyId] = useState<number | null>(null)
   const [checkoutBusy, setCheckoutBusy] = useState(false)
   const [metodoPago, setMetodoPago] = useState('transferencia')
-  const [mpDisponible, setMpDisponible] = useState(false)
+  // El flag de Mercado Pago es configuración estática: por TanStack Query con
+  // staleTime largo en vez de un fetch en cada montaje del carrito.
+  const { data: mpEstado } = useMercadoPagoEstado()
+  const mpDisponible = Boolean(mpEstado?.mercadopago_configurado)
   const [checkoutInfo, setCheckoutInfo] = useState<CarritoCheckoutResponse | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
@@ -79,19 +83,15 @@ export default function CarritoPage() {
     }
   }, [])
 
+  // Preselecciona Mercado Pago cuando está configurado (y lo desmarca si no).
+  useEffect(() => {
+    if (mpEstado === undefined) return
+    if (mpDisponible) setMetodoPago(MP_METODO)
+    else setMetodoPago((m) => (m === MP_METODO ? 'transferencia' : m))
+  }, [mpEstado, mpDisponible])
+
   useEffect(() => {
     void load()
-    void carritoApi
-      .mercadoPagoEstado()
-      .then((s) => {
-        const ok = Boolean(s.mercadopago_configurado)
-        setMpDisponible(ok)
-        if (ok) setMetodoPago(MP_METODO)
-      })
-      .catch(() => {
-        setMpDisponible(false)
-        setMetodoPago((m) => (m === MP_METODO ? 'transferencia' : m))
-      })
     const onCartChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<CartChangedDetail>).detail
       if (detail?.summary) {
@@ -436,18 +436,6 @@ function AuthPromptModal({ open, onClose, onSuccess }: AuthPromptModalProps) {
   const [registerPassword, setRegisterPassword] = useState('')
 
   if (!open) return null
-
-  async function parseError(res: Response) {
-    const text = await res.text()
-    let detail = res.statusText
-    try {
-      const j = JSON.parse(text) as { detail?: string }
-      if (typeof j.detail === 'string') detail = j.detail
-    } catch {
-      if (text) detail = text
-    }
-    return detail || `HTTP ${res.status}`
-  }
 
   async function login(email: string, password: string) {
     const j = await loginWithFallback(email, password)

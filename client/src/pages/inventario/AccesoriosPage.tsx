@@ -221,7 +221,7 @@ export function AccesoriosPage() {
               {editingId != null && !deleteAllFotosPending && existingFotos.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   {existingFotos.map((url) => (
-                    <img key={url} src={url} alt="Foto actual" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)' }} />
+                    <img loading="lazy" key={url} src={url} alt="Foto actual" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)' }} />
                   ))}
                   <button
                     type="button"
@@ -237,7 +237,7 @@ export function AccesoriosPage() {
               {fotoPreviews.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {fotoPreviews.map((url, i) => (
-                    <img key={i} src={url} alt={`Nueva ${i + 1}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }} />
+                    <img loading="lazy" key={i} src={url} alt={`Nueva ${i + 1}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }} />
                   ))}
                 </div>
               )}

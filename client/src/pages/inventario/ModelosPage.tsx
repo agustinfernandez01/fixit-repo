@@ -319,7 +319,7 @@ function CreateForm({
               return (
                 <div key={color} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', width: 84 }}>
                   {photo ? (
-                    <img
+                    <img loading="lazy"
                       src={photo.url}
                       alt={color}
                       style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }}
@@ -688,7 +688,7 @@ export function ModelosPage() {
                               {attr.code === 'color' && (
                                 <>
                                   {o.foto_url ? (
-                                    <img
+                                    <img loading="lazy"
                                       src={o.foto_url}
                                       alt={o.label}
                                       style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--app-border)' }}

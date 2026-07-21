@@ -4,6 +4,7 @@ import { inventarioApi } from '../../services/inventarioApi'
 import { mediaUrl } from '../../services/api'
 import { productosApi } from '../../services/productosApi'
 import type { ProductoCompra } from '../../types/carrito'
+import { useDolarBlue } from '../../hooks/queries'
 
 /** Deriva el tipo de equipo (iphone/ipad/macbook/airpods) desde el nombre del modelo. */
 function deriveTipoEquipo(nombreModelo: string | null | undefined): string {
@@ -136,7 +137,7 @@ function ImeiRow({ group, busyIds, onEdit, onDelete, onSetFoto, dolarRate, table
       <tr className={busyIds.has(idEquipo ?? -1) ? 'row-busy' : ''}>
         <td>
           {r.foto_url ? (
-            <img
+            <img loading="lazy"
               src={mediaUrl(r.foto_url)}
               alt=""
               style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border,#e8e8ea)', display: 'block' }}
@@ -263,9 +264,11 @@ export function EquiposPage() {
   const [modelos, setModelos] = useState<ModeloEquipo[]>([])
   const [productosById, setProductosById] = useState<Record<number, ProductoCompra>>({})
   const [tableCurrency, setTableCurrency] = useState<'ars' | 'usd'>('ars')
-  const [dolarRate, setDolarRate] = useState<number | null>(null)
-  const [loadingDolar, setLoadingDolar] = useState(true)
-  const [dolarUpdatedAt, setDolarUpdatedAt] = useState<string | null>(null)
+  // `useDolarBlue` (staleTime 10 min) en vez de un fetch a dolarapi.com en cada
+  // montaje; la cotización se comparte con el resto de las páginas que la usan.
+  const { data: dolar, isPending: loadingDolar } = useDolarBlue()
+  const dolarRate = dolar?.venta ?? null
+  const dolarUpdatedAt = dolar?.fechaActualizacion ?? null
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -291,23 +294,6 @@ export function EquiposPage() {
     setSuccessMsg(msg)
     setTimeout(() => setSuccessMsg(null), 2800)
   }
-
-  useEffect(() => {
-    let alive = true
-    async function loadDolar() {
-      setLoadingDolar(true)
-      try {
-        const res = await fetch('https://dolarapi.com/v1/dolares/blue')
-        const data = (await res.json()) as { venta?: number; fechaActualizacion?: string }
-        if (!alive) return
-        setDolarRate(typeof data.venta === 'number' && data.venta > 0 ? data.venta : 1100)
-        setDolarUpdatedAt(data.fechaActualizacion ?? null)
-      } catch { if (alive) { setDolarRate(1100) } }
-      finally { if (alive) setLoadingDolar(false) }
-    }
-    void loadDolar()
-    return () => { alive = false }
-  }, [])
 
   const precioUsdCalculado = useMemo(() => {
     const arsRaw = String(form.precio_ars ?? '').trim()
@@ -773,7 +759,7 @@ export function EquiposPage() {
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   {fotoPreview ? (
-                    <img
+                    <img loading="lazy"
                       src={fotoPreview}
                       alt="Vista previa"
                       style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }}

@@ -6,12 +6,16 @@ import familyIphone17Pro from '../../assets/family-iphone-17-pro.png'
 import familyMacbook from '../../assets/family-macbook.png'
 import familyIpad from '../../assets/family-ipad.png'
 
+// Tupla cubic-bezier tipada: sin esto TS la infiere como number[] y no satisface
+// el tipo `Easing` de framer-motion (rompe `npm run build`).
+const EASE_SUAVE: [number, number, number, number] = [0.25, 0.1, 0.25, 1]
+
 const fadeUp = {
   hidden: { opacity: 0, y: 28 },
   visible: (delay: number = 0) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.55, ease: [0.25, 0.1, 0.25, 1], delay },
+    transition: { duration: 0.55, ease: EASE_SUAVE, delay },
   }),
 }
 
@@ -110,7 +114,7 @@ export default function Home() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
+          transition={{ duration: 0.6, ease: EASE_SUAVE }}
         >
           <span className="mb-5 inline-block rounded-full border border-gray-200 px-3 py-1 text-[11px] font-semibold tracking-[0.2em] text-gray-400 uppercase sm:mb-6">
             Nuevos · usados · reparaciones · marketplace
@@ -144,16 +148,19 @@ export default function Home() {
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1], delay: 0.12 }}
+          transition={{ duration: 0.7, ease: EASE_SUAVE, delay: 0.12 }}
           className="relative min-w-0"
         >
+          {/* preload="metadata" (antes "auto"): con "auto" el navegador descargaba
+              los 410 KB del video compitiendo con el JS y las imágenes del
+              above-the-fold. TODO: exportar un frame como `poster`. */}
           <video
             className="h-[320px] w-full object-cover sm:h-[380px] lg:h-[460px]"
             autoPlay
             muted
             loop
             playsInline
-            preload="auto"
+            preload="metadata"
             aria-label="Fix It"
           >
             <source src={fixitHeroVideo} type="video/mp4" />

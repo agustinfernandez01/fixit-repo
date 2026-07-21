@@ -11,6 +11,22 @@ const proxyTarget = { target: BACKEND, changeOrigin: true }
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Vendor en su propio chunk: un cambio de página no invalida el cache del
+        // navegador para React/Router/Query, que es lo más pesado y lo que menos cambia.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('react-router')) return 'vendor-router'
+          if (id.includes('@tanstack')) return 'vendor-query'
+          if (id.includes('/react-dom/') || id.includes('/react/') || id.includes('/scheduler/')) {
+            return 'vendor-react'
+          }
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api':      proxyTarget,

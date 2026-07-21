@@ -61,7 +61,7 @@ export function EquipoCard({
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-gray-50 to-gray-100">
           <div className="aspect-[4/5] w-full flex items-center justify-center overflow-hidden">
             {equipo.foto_url ? (
-              <img src={mediaUrl(equipo.foto_url)} alt={title} className="h-full w-full object-cover" />
+              <img loading="lazy" src={mediaUrl(equipo.foto_url)} alt={title} className="h-full w-full object-cover" />
             ) : (
               <PhoneMockup dark={dark} />
             )}

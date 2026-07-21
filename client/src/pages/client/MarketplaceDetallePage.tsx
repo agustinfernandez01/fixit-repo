@@ -112,7 +112,7 @@ export default function MarketplaceDetallePage() {
                   onClick={() => setSelectedImg(idx)}
                   className={`overflow-hidden rounded-xl border ${idx === selectedImg ? 'border-gray-900' : 'border-gray-200'}`}
                 >
-                  <img src={mediaUrl(url)} alt={`Foto ${idx + 1}`} className="h-16 w-full object-cover" />
+                  <img loading="lazy" src={mediaUrl(url)} alt={`Foto ${idx + 1}`} className="h-16 w-full object-cover" />
                 </button>
               ))}
             </div>

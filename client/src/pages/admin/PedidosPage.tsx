@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { clearAuthTokens, getAccessToken } from '../../lib/auth'
+import { qk } from '../../hooks/queries'
 import { fetchJson } from '../../services/api'
 
 type Pedido = {
@@ -137,10 +139,8 @@ function ItemDetalleList({ pedido }: { pedido: Pedido }) {
 export default function PedidosPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<AdminTab>('pendientes')
-  const [pedidosPendientes, setPedidosPendientes] = useState<Pedido[]>([])
-  const [pedidosEntrega, setPedidosEntrega] = useState<Pedido[]>([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionInfo, setActionInfo] = useState<{
@@ -169,33 +169,48 @@ export default function PedidosPage() {
     return true
   }
 
-  const loadPedidos = useCallback(async (opts?: { showSpinner?: boolean }) => {
-    const showSpinner = opts?.showSpinner !== false
-    if (showSpinner) setLoading(true)
-    setError(null)
-    try {
-      const headers = { Authorization: `Bearer ${getAccessToken()}` }
-      const [pend, ent] = await Promise.all([
-        fetchJson<Pedido[]>('/api/v1/carrito/pedidos-pendientes', { headers }),
-        fetchJson<Pedido[]>('/api/v1/carrito/pedidos-confirmados-pendientes-entrega', { headers }),
-      ])
-      setPedidosPendientes(pend)
-      setPedidosEntrega(ent)
-      setExpandedKey(null)
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'No se pudieron cargar los pedidos'
-      if (!handleAuthError(message)) {
-        setError(message)
-      }
-    } finally {
-      if (showSpinner) setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga inicial y recargas manuales
-  }, [])
+  // TanStack Query en vez de useEffect + useState: cachea entre navegaciones y
+  // deduplica; las mutaciones invalidan en vez de recargar los dos listados a mano.
+  const [qPendientes, qEntrega] = useQueries({
+    queries: [
+      {
+        queryKey: qk.pedidos.pendientes,
+        queryFn: () =>
+          fetchJson<Pedido[]>('/api/v1/carrito/pedidos-pendientes', {
+            headers: { Authorization: `Bearer ${getAccessToken()}` },
+          }),
+      },
+      {
+        queryKey: qk.pedidos.entrega,
+        queryFn: () =>
+          fetchJson<Pedido[]>('/api/v1/carrito/pedidos-confirmados-pendientes-entrega', {
+            headers: { Authorization: `Bearer ${getAccessToken()}` },
+          }),
+      },
+    ],
+  })
 
+  const pedidosPendientes = qPendientes.data ?? []
+  const pedidosEntrega = qEntrega.data ?? []
+  const loading = qPendientes.isPending || qEntrega.isPending
+
+  const loadPedidos = useCallback(async () => {
+    setExpandedKey(null)
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: qk.pedidos.pendientes }),
+      queryClient.invalidateQueries({ queryKey: qk.pedidos.entrega }),
+    ])
+  }, [queryClient])
+
+  // Errores de carga: los de auth redirigen al login, el resto se muestran en pantalla.
+  const errorCarga = qPendientes.error ?? qEntrega.error
   useEffect(() => {
-    void loadPedidos()
-  }, [loadPedidos])
+    if (!errorCarga) return
+    const message =
+      errorCarga instanceof Error ? errorCarga.message : 'No se pudieron cargar los pedidos'
+    if (!handleAuthError(message)) setError(message)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleAuthError usa navigate/location estables
+  }, [errorCarga])
 
   const displayPedidos = tab === 'pendientes' ? pedidosPendientes : pedidosEntrega
 
@@ -281,7 +296,7 @@ export default function PedidosPage() {
           kind: forcedResult.estado === 'confirmado' ? 'confirmado' : 'cancelado',
           message: forcedResult.mensaje,
         })
-        await loadPedidos({ showSpinner: false })
+        await loadPedidos()
         return
       }
 
@@ -290,7 +305,7 @@ export default function PedidosPage() {
         kind: result.estado === 'confirmado' ? 'confirmado' : 'cancelado',
         message: result.mensaje,
       })
-      await loadPedidos({ showSpinner: false })
+      await loadPedidos()
     } catch (e) {
       const message = e instanceof Error ? e.message : 'No se pudo confirmar el pedido'
       if (!handleAuthError(message)) {
@@ -322,7 +337,7 @@ export default function PedidosPage() {
         kind: 'cancelado',
         message: result.mensaje,
       })
-      await loadPedidos({ showSpinner: false })
+      await loadPedidos()
     } catch (e) {
       const message = e instanceof Error ? e.message : 'No se pudo cancelar el pedido'
       if (!handleAuthError(message)) {
@@ -347,7 +362,7 @@ export default function PedidosPage() {
         headers: { Authorization: `Bearer ${getAccessToken()}` },
       })
       setActionInfo({ id: id_pedido, kind: 'entrega', message: result.mensaje })
-      await loadPedidos({ showSpinner: false })
+      await loadPedidos()
     } catch (e) {
       const message = e instanceof Error ? e.message : 'No se pudo finalizar la entrega'
       if (!handleAuthError(message)) setError(message)
@@ -373,7 +388,7 @@ export default function PedidosPage() {
         },
       )
       setActionInfo({ id: id_pedido, kind: 'cancelado', message: result.mensaje })
-      await loadPedidos({ showSpinner: false })
+      await loadPedidos()
     } catch (e) {
       const message = e instanceof Error ? e.message : 'No se pudo anular el pedido'
       if (!handleAuthError(message)) setError(message)
@@ -429,7 +444,7 @@ export default function PedidosPage() {
         },
       )
       setActionInfo({ id: pedido.id_pedido, kind: 'confirmado', message: result.mensaje })
-      await loadPedidos({ showSpinner: false })
+      await loadPedidos()
     } catch (e) {
       const message = e instanceof Error ? e.message : 'No se pudo reasignar el IMEI'
       if (!handleAuthError(message)) setError(message)

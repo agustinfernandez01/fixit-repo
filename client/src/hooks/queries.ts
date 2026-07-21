@@ -5,11 +5,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { marketplaceApi } from '../services/marketplaceApi'
 import { inventarioApi } from '../services/inventarioApi'
+import { productosApi } from '../services/productosApi'
+import { carritoApi } from '../services/carritoApi'
 
 // ─── Query keys ──────────────────────────────────────────────────────────────
 
 export const qk = {
   dolar: ['dolar', 'blue'] as const,
+
+  productos: {
+    catalogoTienda: ['productos', 'catalogoTienda'] as const,
+    detalle: (id: number) => ['productos', 'detalle', id] as const,
+  },
+
+  carrito: {
+    mercadoPagoEstado: ['carrito', 'mercadoPagoEstado'] as const,
+  },
+
+  pedidos: {
+    pendientes: ['pedidos', 'pendientes'] as const,
+    entrega:    ['pedidos', 'entrega'] as const,
+  },
 
   marketplace: {
     publicaciones: ['marketplace', 'publicaciones'] as const,
@@ -45,12 +61,48 @@ export function useDolarBlue() {
   })
 }
 
+// ─── Catálogo / productos ────────────────────────────────────────────────────
+
+/** Catálogo de tienda. Cachea entre navegaciones: volver a /tienda no re-pega al backend. */
+export function useCatalogoTienda() {
+  return useQuery({
+    queryKey: qk.productos.catalogoTienda,
+    queryFn: () => productosApi.listTiendaCatalogoWithFallback(),
+    staleTime: 2 * 60 * 1000, // el catálogo cambia poco entre visitas
+  })
+}
+
+/** Detalle de producto. `enabled` evita disparar la query con un id inválido. */
+export function useProductoDetalle(idProducto: number | null) {
+  return useQuery({
+    queryKey: qk.productos.detalle(idProducto ?? -1),
+    queryFn: () => productosApi.get(idProducto as number),
+    enabled: idProducto !== null && Number.isFinite(idProducto),
+    staleTime: 2 * 60 * 1000,
+  })
+}
+
+/** Flag de configuración de Mercado Pago: es estático, no tiene sentido pedirlo en cada montaje. */
+export function useMercadoPagoEstado() {
+  return useQuery({
+    queryKey: qk.carrito.mercadoPagoEstado,
+    queryFn: () => carritoApi.mercadoPagoEstado(),
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+  })
+}
+
+// Nota: las queries de pedidos admin viven en `pages/admin/PedidosPage` porque su
+// tipo `Pedido` es local a esa página; acá quedan solo las claves (`qk.pedidos`)
+// para que la invalidación sea consistente.
+
 // ─── Marketplace ─────────────────────────────────────────────────────────────
 
 export function usePublicaciones() {
   return useQuery({
     queryKey: qk.marketplace.publicaciones,
     queryFn: () => marketplaceApi.publicaciones.list(0, 100, null),
+    staleTime: 60 * 1000,
   })
 }
 
@@ -58,6 +110,7 @@ export function useIntereses() {
   return useQuery({
     queryKey: qk.marketplace.intereses,
     queryFn: () => marketplaceApi.intereses.list(0, 100),
+    staleTime: 60 * 1000,
   })
 }
 
@@ -107,6 +160,7 @@ export function useEquipos() {
   return useQuery({
     queryKey: qk.inventario.equipos,
     queryFn: () => inventarioApi.equipos.list(0, 100),
+    staleTime: 60 * 1000,
   })
 }
 
@@ -114,6 +168,7 @@ export function useEquiposUsadosDetalle() {
   return useQuery({
     queryKey: qk.inventario.equiposUsados,
     queryFn: () => inventarioApi.equiposUsadosDetalle.list(0, 100),
+    staleTime: 60 * 1000,
   })
 }
 

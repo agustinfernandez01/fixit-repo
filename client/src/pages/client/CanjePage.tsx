@@ -531,7 +531,7 @@ export default function CanjePage() {
                     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                       {equipoFotoPreviews.map(({ file, url }, idx) => (
                         <div key={`${file.name}-${idx}`} className="overflow-hidden rounded-xl border border-gray-200">
-                          <img src={url} alt={`Foto equipo ${idx + 1}`} className="h-20 w-full object-cover" />
+                          <img loading="lazy" src={url} alt={`Foto equipo ${idx + 1}`} className="h-20 w-full object-cover" />
                         </div>
                       ))}
                     </div>

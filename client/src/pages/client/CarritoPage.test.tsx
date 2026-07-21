@@ -1,9 +1,23 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CarritoPage from './CarritoPage'
+
+/** CarritoPage usa `useMercadoPagoEstado`, así que necesita un QueryClient. */
+function conProviders(ui: ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>
+  )
+}
 
 const mockEnsure = vi.fn()
 const mockSummary = vi.fn()
@@ -81,11 +95,7 @@ describe('CarritoPage checkout', () => {
   it('redirige a WhatsApp al confirmar compra', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
 
-    render(
-      <MemoryRouter>
-        <CarritoPage />
-      </MemoryRouter>,
-    )
+    render(conProviders(<CarritoPage />))
 
     const button = await screen.findByRole('button', { name: /confirmar compra/i })
     await userEvent.click(button)

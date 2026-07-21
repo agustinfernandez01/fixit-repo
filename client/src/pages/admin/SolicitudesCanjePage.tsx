@@ -237,7 +237,7 @@ export default function SolicitudesCanjePage() {
                             onClick={() => setPreviewImages(row.equipo_fotos_urls.map((url) => mediaUrl(url)))}
                             className="mt-2 overflow-hidden rounded-xl border border-gray-200"
                           >
-                            <img
+                            <img loading="lazy"
                               src={mediaUrl(row.equipo_fotos_urls[0])}
                               alt="Equipo ofrecido"
                               className="h-16 w-16 object-cover"
@@ -249,7 +249,7 @@ export default function SolicitudesCanjePage() {
                             onClick={() => setPreviewImages([mediaUrl(row.equipo_foto_url as string)])}
                             className="mt-2 overflow-hidden rounded-xl border border-gray-200"
                           >
-                            <img
+                            <img loading="lazy"
                               src={mediaUrl(row.equipo_foto_url)}
                               alt="Equipo ofrecido"
                               className="h-16 w-16 object-cover"
@@ -343,7 +343,7 @@ export default function SolicitudesCanjePage() {
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {previewImages.map((img, idx) => (
-                <img
+                <img loading="lazy"
                   key={`${img}-${idx}`}
                   src={img}
                   alt={`Equipo ${idx + 1}`}

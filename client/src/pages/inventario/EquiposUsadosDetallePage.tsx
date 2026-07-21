@@ -442,7 +442,7 @@ export function EquiposUsadosDetallePage() {
               {isEditing && !deleteAllFotosPending && existingFotos.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   {existingFotos.map((url) => (
-                    <img key={url} src={url} alt="Foto actual" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }} />
+                    <img loading="lazy" key={url} src={url} alt="Foto actual" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)' }} />
                   ))}
                   <button
                     type="button"
@@ -458,7 +458,7 @@ export function EquiposUsadosDetallePage() {
               {fotoPreviews.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {fotoPreviews.map((url, i) => (
-                    <img key={i} src={url} alt={`Nueva ${i + 1}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }} />
+                    <img loading="lazy" key={i} src={url} alt={`Nueva ${i + 1}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--app-accent,#111)' }} />
                   ))}
                 </div>
               )}
@@ -702,7 +702,7 @@ export function EquiposUsadosDetallePage() {
                       {/* Foto */}
                       <td>
                         {equipo?.foto_url ? (
-                          <img
+                          <img loading="lazy"
                             src={mediaUrl(equipo.foto_url)}
                             alt=""
                             style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--app-border)', display: 'block' }}
