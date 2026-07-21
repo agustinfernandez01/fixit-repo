@@ -7,12 +7,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.services.storage import upload_file, delete_file, list_files, key_from_url
 from app.deps.auth import require_admin_user_id
-from app.db import get_db, engine
+from app.db import get_db
 from app.models import ModeloCanje, EquipoOfrecidoCanje, SolicitudCanje, CotizacionCanje, Productos
 from app.schemas.canje import (
     ModeloCanjeCreate,
@@ -44,49 +43,12 @@ from app.services.canje import (
 router = APIRouter()
 
 
-def _ensure_solicitudes_canje_columns() -> None:
-    """Asegura columnas nuevas en entornos con esquema desfasado."""
-    insp = inspect(engine)
-    tablas = set(insp.get_table_names())
-    if "solicitudes_canje" not in tablas:
-        return
-
-    cols = {c.get("name") for c in insp.get_columns("solicitudes_canje")}
-    dialect = engine.dialect.name.lower()
-
-    with engine.begin() as conn:
-        if "metodo_pago" not in cols:
-            conn.execute(text("ALTER TABLE solicitudes_canje ADD COLUMN metodo_pago VARCHAR(50) NULL"))
-
-        if "fecha_respuesta" not in cols:
-            if dialect == "postgresql":
-                conn.execute(text("ALTER TABLE solicitudes_canje ADD COLUMN fecha_respuesta TIMESTAMP NULL"))
-            else:
-                conn.execute(text("ALTER TABLE solicitudes_canje ADD COLUMN fecha_respuesta DATETIME NULL"))
-
-
-def _ensure_equipos_ofrecidos_columns() -> None:
-    """Asegura columnas nuevas de equipos ofrecidos en entornos desfasados."""
-    insp = inspect(engine)
-    tablas = set(insp.get_table_names())
-    if "equipos_ofrecidos_canje" not in tablas:
-        return
-
-    cols = {c.get("name") for c in insp.get_columns("equipos_ofrecidos_canje")}
-    if "foto_url" in cols:
-        return
-
-    with engine.begin() as conn:
-        conn.execute(
-            text("ALTER TABLE equipos_ofrecidos_canje ADD COLUMN foto_url VARCHAR(255) NULL")
-        )
-
 
 def _listar_fotos_equipo_ofrecido(id_equipo_ofrecido: int) -> list[str]:
     return list_files(f"canje_equipos/{id_equipo_ofrecido}/")
 
 
-async def _guardar_fotos_equipo_ofrecido(
+def _guardar_fotos_equipo_ofrecido(
     *,
     obj: EquipoOfrecidoCanje,
     fotos: list[UploadFile],
@@ -111,7 +73,7 @@ async def _guardar_fotos_equipo_ofrecido(
         if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
             ext = ".jpg"
 
-        content = await foto.read()
+        content = foto.file.read()
         if not content:
             raise HTTPException(status_code=400, detail="Uno de los archivos está vacío.")
         if len(content) > 10 * 1024 * 1024:
@@ -386,7 +348,7 @@ def borrar_modelo_canje(id_modelo_canje: int, db: Session = Depends(get_db)):
 
 
 @router.post("/modelos/{id_modelo_canje}/foto", response_model=ModeloCanjeResponse)
-async def subir_foto_modelo_canje(
+def subir_foto_modelo_canje(
     id_modelo_canje: int,
     foto: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -402,7 +364,7 @@ async def subir_foto_modelo_canje(
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         ext = ".jpg"
 
-    content = await foto.read()
+    content = foto.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="El archivo está vacío.")
     if len(content) > 10 * 1024 * 1024:
@@ -478,7 +440,6 @@ def listar_equipos_ofrecidos(
     activo: bool | None = Query(None, description="Filtrar por activo"),
     db: Session = Depends(get_db),
 ):
-    _ensure_equipos_ofrecidos_columns()
     q = db.query(EquipoOfrecidoCanje)
     if activo is not None:
         q = q.filter(EquipoOfrecidoCanje.activo == activo)
@@ -497,7 +458,6 @@ def listar_equipos_ofrecidos(
     status_code=status.HTTP_201_CREATED,
 )
 def crear_equipo_ofrecido(payload: EquipoOfrecidoCanjeCreate, db: Session = Depends(get_db)):
-    _ensure_equipos_ofrecidos_columns()
     data = payload.model_dump()
     if data.get("fecha_registro") is None:
         data["fecha_registro"] = datetime.now(timezone.utc)
@@ -511,12 +471,11 @@ def crear_equipo_ofrecido(payload: EquipoOfrecidoCanjeCreate, db: Session = Depe
 
 
 @router.post("/equipos-ofrecidos/{id_equipo_ofrecido}/foto", response_model=EquipoOfrecidoCanjeResponse)
-async def subir_foto_equipo_ofrecido_canje(
+def subir_foto_equipo_ofrecido_canje(
     id_equipo_ofrecido: int,
     foto: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -525,7 +484,7 @@ async def subir_foto_equipo_ofrecido_canje(
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo ofrecido no encontrado")
 
-    obj.foto_url = await _guardar_fotos_equipo_ofrecido(
+    obj.foto_url = _guardar_fotos_equipo_ofrecido(
         obj=obj,
         fotos=[foto],
         reemplazar=True,
@@ -538,12 +497,11 @@ async def subir_foto_equipo_ofrecido_canje(
 
 
 @router.post("/equipos-ofrecidos/{id_equipo_ofrecido}/fotos", response_model=EquipoOfrecidoCanjeResponse)
-async def subir_fotos_equipo_ofrecido_canje(
+def subir_fotos_equipo_ofrecido_canje(
     id_equipo_ofrecido: int,
     fotos: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
-    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -552,7 +510,7 @@ async def subir_fotos_equipo_ofrecido_canje(
     if not obj:
         raise HTTPException(status_code=404, detail="Equipo ofrecido no encontrado")
 
-    obj.foto_url = await _guardar_fotos_equipo_ofrecido(
+    obj.foto_url = _guardar_fotos_equipo_ofrecido(
         obj=obj,
         fotos=fotos,
         reemplazar=True,
@@ -569,7 +527,6 @@ async def subir_fotos_equipo_ofrecido_canje(
     response_model=EquipoOfrecidoCanjeResponse,
 )
 def obtener_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_db)):
-    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -591,7 +548,6 @@ def actualizar_equipo_ofrecido(
     payload: EquipoOfrecidoCanjeUpdate,
     db: Session = Depends(get_db),
 ):
-    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -615,7 +571,6 @@ def actualizar_equipo_ofrecido(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def borrar_equipo_ofrecido(id_equipo_ofrecido: int, db: Session = Depends(get_db)):
-    _ensure_equipos_ofrecidos_columns()
     obj = (
         db.query(EquipoOfrecidoCanje)
         .filter(EquipoOfrecidoCanje.id_equipo_ofrecido == id_equipo_ofrecido)
@@ -763,7 +718,6 @@ def listar_solicitudes_canje(
     estado: str | None = Query(None, description="Filtrar por estado"),
     db: Session = Depends(get_db),
 ):
-    _ensure_solicitudes_canje_columns()
     q = db.query(SolicitudCanje)
     if estado:
         q = q.filter(SolicitudCanje.estado == estado)
@@ -776,7 +730,6 @@ def listar_solicitudes_canje(
     status_code=status.HTTP_201_CREATED,
 )
 def crear_solicitud_canje(payload: SolicitudCanjeCreate, db: Session = Depends(get_db)):
-    _ensure_solicitudes_canje_columns()
     data = payload.model_dump()
     if data.get("fecha_solicitud") is None:
         data["fecha_solicitud"] = datetime.now(timezone.utc)
@@ -814,11 +767,8 @@ def listar_solicitudes_canje_admin(
     _id_admin: int = Depends(require_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    _ensure_solicitudes_canje_columns()
-    solicitudes = listar_solicitudes_admin(db)
-    if estado:
-        solicitudes = [s for s in solicitudes if (s.get("estado") or "").lower() == estado.lower()]
-    return solicitudes[skip : skip + limit]
+    # skip/limit/estado van al SQL; antes se traía la tabla entera y se recortaba acá.
+    return listar_solicitudes_admin(db, skip=skip, limit=limit, estado=estado)
 
 
 @router.post(
@@ -831,7 +781,6 @@ def completar_solicitud_canje_admin(
     _id_admin: int = Depends(require_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    _ensure_solicitudes_canje_columns()
     try:
         solicitud = completar_solicitud_canje(db, id_solicitud_canje, metodo_pago=payload.metodo_pago)
         data = listar_solicitudes_admin(db)
@@ -852,7 +801,6 @@ def rechazar_solicitud_canje_admin(
     _id_admin: int = Depends(require_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    _ensure_solicitudes_canje_columns()
     try:
         solicitud = rechazar_solicitud_canje(db, id_solicitud_canje, metodo_pago=payload.metodo_pago)
         data = listar_solicitudes_admin(db)
@@ -869,7 +817,6 @@ def borrar_historial_solicitud_canje_admin(
     _id_admin: int = Depends(require_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    _ensure_solicitudes_canje_columns()
     obj = (
         db.query(SolicitudCanje)
         .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)
@@ -891,7 +838,6 @@ def borrar_historial_solicitud_canje_admin(
 
 @router.get("/solicitudes/{id_solicitud_canje}", response_model=SolicitudCanjeResponse)
 def obtener_solicitud_canje(id_solicitud_canje: int, db: Session = Depends(get_db)):
-    _ensure_solicitudes_canje_columns()
     obj = (
         db.query(SolicitudCanje)
         .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)
@@ -908,7 +854,6 @@ def actualizar_solicitud_canje(
     payload: SolicitudCanjeUpdate,
     db: Session = Depends(get_db),
 ):
-    _ensure_solicitudes_canje_columns()
     obj = (
         db.query(SolicitudCanje)
         .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)
@@ -927,7 +872,6 @@ def actualizar_solicitud_canje(
 
 @router.delete("/solicitudes/{id_solicitud_canje}", status_code=status.HTTP_204_NO_CONTENT)
 def borrar_solicitud_canje(id_solicitud_canje: int, db: Session = Depends(get_db)):
-    _ensure_solicitudes_canje_columns()
     obj = (
         db.query(SolicitudCanje)
         .filter(SolicitudCanje.id_solicitud_canje == id_solicitud_canje)

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy.exc import IntegrityError, ProgrammingError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.config import UPLOAD_DIR
 from app.services.storage import upload_file, list_files, delete_file, key_from_url
@@ -54,24 +54,6 @@ from app.schemas.inventario import (
 
 router = APIRouter()
 
-
-def _ensure_opcion_foto_url_column() -> None:
-    """Agrega foto_url a modelo_atributo_opcion si todavía no existe (migración lazy)."""
-    from app.db import engine
-    from sqlalchemy import text as _text
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
-    with engine.connect() as conn:
-        row = conn.execute(_text(
-            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
-            "WHERE TABLE_NAME = 'modelo_atributo_opcion' AND COLUMN_NAME = 'foto_url'"
-        )).scalar()
-        if not row:
-            conn.execute(_text(
-                "ALTER TABLE modelo_atributo_opcion ADD COLUMN foto_url VARCHAR(255) NULL"
-            ))
-            conn.commit()
-        _log.info("_ensure_opcion_foto_url_column: OK")
 
 
 def _is_missing_variaciones_table(exc: Exception) -> bool:
@@ -467,13 +449,12 @@ def actualizar_modelo_atributo_opcion(
 
 
 @router.post("/modelos/opciones/{id_opcion}/foto", response_model=ModeloAtributoOpcionResponse)
-async def subir_foto_opcion(
+def subir_foto_opcion(
     id_opcion: int,
     foto: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     """Sube o reemplaza la imagen de una opción de color de modelo."""
-    _ensure_opcion_foto_url_column()
     obj = db.query(ModeloAtributoOpcion).filter(ModeloAtributoOpcion.id == id_opcion).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Opción no encontrada")
@@ -485,7 +466,7 @@ async def subir_foto_opcion(
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         ext = ".jpg"
 
-    content = await foto.read()
+    content = foto.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="El archivo está vacío.")
     if len(content) > 10 * 1024 * 1024:
@@ -528,8 +509,8 @@ def listar_equipos(
             .options(
                 joinedload(Equipo.modelo),
                 joinedload(Equipo.producto),
-                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
-                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+                selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+                selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
             )
             .offset(skip)
             .limit(limit)
@@ -757,8 +738,8 @@ def _crear_equipo_con_estado(payload: EquipoCreate, db: Session, *, estado_forza
     obj = (
         db.query(Equipo)
         .options(
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
             joinedload(Equipo.modelo),
         )
         .filter(Equipo.id == int(obj.id))
@@ -777,8 +758,8 @@ def obtener_equipo(id_equipo: int, db: Session = Depends(get_db)):
             db.query(Equipo)
             .options(
                 joinedload(Equipo.modelo),
-                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
-                joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+                selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+                selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
             )
             .filter(Equipo.id == id_equipo)
             .first()
@@ -1006,8 +987,8 @@ def actualizar_equipo(id_equipo: int, payload: EquipoUpdate, db: Session = Depen
         db.query(Equipo)
         .options(
             joinedload(Equipo.modelo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(Equipo.id == id_equipo)
         .first()
@@ -1039,7 +1020,7 @@ def borrar_equipo(id_equipo: int, db: Session = Depends(get_db)):
 
 
 @router.post("/equipos/{id_equipo}/foto", response_model=EquipoResponse)
-async def subir_foto_equipo(
+def subir_foto_equipo(
     id_equipo: int,
     foto: UploadFile = File(...),
     set_principal_tienda: bool = Query(False),
@@ -1056,7 +1037,7 @@ async def subir_foto_equipo(
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         ext = ".jpg"
 
-    content = await foto.read()
+    content = foto.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="El archivo está vacío.")
     if len(content) > 10 * 1024 * 1024:
@@ -1075,8 +1056,8 @@ async def subir_foto_equipo(
         db.query(Equipo)
         .options(
             joinedload(Equipo.modelo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(Equipo.id == id_equipo)
         .first()
@@ -1087,7 +1068,7 @@ async def subir_foto_equipo(
 
 
 @router.post("/equipos/{id_equipo}/fotos", response_model=EquipoResponse)
-async def subir_fotos_equipo(
+def subir_fotos_equipo(
     id_equipo: int,
     fotos: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -1111,7 +1092,7 @@ async def subir_fotos_equipo(
         if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
             ext = ".jpg"
 
-        content = await foto.read()
+        content = foto.file.read()
         if not content:
             raise HTTPException(status_code=400, detail="Uno de los archivos está vacío.")
         if len(content) > 10 * 1024 * 1024:
@@ -1128,8 +1109,8 @@ async def subir_fotos_equipo(
         db.query(Equipo)
         .options(
             joinedload(Equipo.modelo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(Equipo.id == id_equipo)
         .first()
@@ -1157,8 +1138,8 @@ def usar_foto_equipo_como_principal_tienda(
         db.query(Equipo)
         .options(
             joinedload(Equipo.modelo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipo.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(Equipo.id == id_equipo)
         .first()

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import WHATSAPP_CHECKOUT_PHONE
 from app.services.storage import upload_file
@@ -27,26 +27,6 @@ from app.schemas.marketplace import (
 
 router = APIRouter()
 
-
-def _ensure_publicaciones_columns() -> None:
-    """Agrega tiene_caja y tiene_cargador a publicaciones si no existen (migración lazy)."""
-    from app.db import engine
-    from sqlalchemy import text as _text
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
-    with engine.connect() as conn:
-        for col, ddl in [
-            ("tiene_caja", "ALTER TABLE publicaciones ADD COLUMN tiene_caja BOOLEAN NULL DEFAULT FALSE"),
-            ("tiene_cargador", "ALTER TABLE publicaciones ADD COLUMN tiene_cargador BOOLEAN NULL DEFAULT FALSE"),
-        ]:
-            exists = conn.execute(_text(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
-                f"WHERE TABLE_NAME = 'publicaciones' AND COLUMN_NAME = '{col}'"
-            )).scalar()
-            if not exists:
-                conn.execute(_text(ddl))
-        conn.commit()
-    _log.info("_ensure_publicaciones_columns: OK")
 
 
 _MAX_FOTO_BYTES = 5 * 1024 * 1024
@@ -71,7 +51,9 @@ def _build_publicacion_titulo(modelo: str | None, capacidad_gb: int | None, colo
 
 
 def _publicacion_response_payload(db: Session, obj: Publicacion) -> dict:
-    vendedor = db.query(Usuario).filter(Usuario.id == obj.id_usuario).first()
+    # Usa la relación en vez de una query suelta: si el llamador precargó con
+    # joinedload (ver `listar_publicaciones`), esto no toca la base.
+    vendedor = obj.usuario
     vendedor_nombre = None
     vendedor_telefono = None
     if vendedor:
@@ -140,7 +122,7 @@ def _build_marketplace_whatsapp_url(
 
 
 @router.post("/upload-foto")
-async def subir_foto_marketplace(file: UploadFile = File(...)):
+def subir_foto_marketplace(file: UploadFile = File(...)):
     """Sube una imagen a Cloudflare R2 y devuelve la URL pública."""
     ct = file.content_type or ""
     if ct not in _FOTO_CT:
@@ -148,7 +130,7 @@ async def subir_foto_marketplace(file: UploadFile = File(...)):
             status_code=400,
             detail="Solo se permiten imágenes JPEG, PNG o WebP.",
         )
-    raw = await file.read()
+    raw = file.file.read()
     if len(raw) > _MAX_FOTO_BYTES:
         raise HTTPException(
             status_code=400,
@@ -166,7 +148,9 @@ def listar_publicaciones(
     estado: str | None = Query(None, description="Filtrar por estado"),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Publicacion)
+    # joinedload del vendedor: sin esto, cada fila dispara una query de Usuario
+    # (con limit=50 eran 51 queries; ahora es 1).
+    q = db.query(Publicacion).options(joinedload(Publicacion.usuario))
     if estado:
         q = q.filter(Publicacion.estado == estado)
     rows = q.offset(skip).limit(limit).all()
@@ -326,8 +310,14 @@ def listar_intereses(
     _id_admin: int = Depends(require_admin_user_id),
     db: Session = Depends(get_db),
 ):
+    # joinedload de comprador y publicación: antes eran 2 queries por fila
+    # (con limit=50, 101 queries en total).
     rows = (
         db.query(InteresPublicacion)
+        .options(
+            joinedload(InteresPublicacion.usuario_interesado),
+            joinedload(InteresPublicacion.publicacion),
+        )
         .order_by(InteresPublicacion.fecha_interes.desc(), InteresPublicacion.id_interes.desc())
         .offset(skip)
         .limit(limit)
@@ -335,8 +325,8 @@ def listar_intereses(
     )
     result: list[InteresPublicacionResponse] = []
     for row in rows:
-        comprador = db.query(Usuario).filter(Usuario.id == row.id_usuario_interesado).first()
-        publicacion = db.query(Publicacion).filter(Publicacion.id_publicacion == row.id_publicacion).first()
+        comprador = row.usuario_interesado
+        publicacion = row.publicacion
         result.append(
             InteresPublicacionResponse(
                 id_interes=row.id_interes,

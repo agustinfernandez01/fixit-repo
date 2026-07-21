@@ -73,7 +73,7 @@ def borrar_accesorio(id_accesorio: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{id_accesorio}/foto", response_model=AccesoriosResponse)
-async def subir_foto_accesorio(
+def subir_foto_accesorio(
     id_accesorio: int,
     foto: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -90,7 +90,7 @@ async def subir_foto_accesorio(
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         ext = ".jpg"
 
-    content = await foto.read()
+    content = foto.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="El archivo está vacío.")
     if len(content) > 10 * 1024 * 1024:
@@ -119,7 +119,7 @@ def eliminar_todas_fotos_accesorio(id_accesorio: int, db: Session = Depends(get_
 
 
 @router.post("/{id_accesorio}/fotos", response_model=AccesoriosResponse)
-async def subir_fotos_accesorio(
+def subir_fotos_accesorio(
     id_accesorio: int,
     fotos: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -146,7 +146,7 @@ async def subir_fotos_accesorio(
         if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
             ext = ".jpg"
 
-        content = await foto.read()
+        content = foto.file.read()
         if not content:
             raise HTTPException(status_code=400, detail="Uno de los archivos está vacío.")
         if len(content) > 10 * 1024 * 1024:
