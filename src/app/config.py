@@ -33,8 +33,19 @@ FRONTEND_BASE_URL = (os.getenv("FRONTEND_BASE_URL") or "http://localhost:5173").
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "30"))
 
 
+_HOSTS_LOCALES = {"localhost", "127.0.0.1", "::1", "db", "postgres"}
+
+
+def _es_host_local(host: str) -> bool:
+    return host in _HOSTS_LOCALES or host.endswith(".local")
+
+
 def _normalize_postgres_url(url: str) -> str:
-    """Render/Postgres: dialecto + driver para SQLAlchemy; SSL en conexiones externas."""
+    """Postgres gestionado: dialecto + driver para SQLAlchemy; SSL en conexiones externas.
+
+    El SSL se aplica a cualquier host remoto (Render, Supabase, Neon, RDS…), no solo
+    a `render.com`: con Supabase la rama vieja nunca se activaba.
+    """
     u = url.strip()
     if u.startswith("postgres://"):
         u = u.replace("postgres://", "postgresql+psycopg2://", 1)
@@ -42,7 +53,7 @@ def _normalize_postgres_url(url: str) -> str:
         u = u.replace("postgresql://", "postgresql+psycopg2://", 1)
     parsed = urlparse(u)
     host = (parsed.hostname or "").lower()
-    if "render.com" in host and "sslmode" not in (parsed.query or ""):
+    if host and not _es_host_local(host) and "sslmode" not in (parsed.query or ""):
         q = parsed.query
         extra = "sslmode=require"
         new_query = f"{q}&{extra}" if q else extra
@@ -61,7 +72,7 @@ def _build_postgres_url_from_parts() -> str | None:
     user_q = quote_plus(user)
     pass_q = quote_plus(password)
     base = f"postgresql+psycopg2://{user_q}:{pass_q}@{host}:{port}/{name}"
-    if "render.com" in host.lower():
+    if not _es_host_local(host.lower()):
         base = f"{base}?sslmode=require"
     return base
 
@@ -82,13 +93,12 @@ else:
     DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Mercado Pago (Checkout Pro / API REST). Ver `app.integrations.mercadopago`.
-# NOTA: credenciales hardcodeadas como default para pruebas. Son PRODUCTIVAS
-# (APP_USR-); rotarlas en el panel de MP y mover a variables de entorno antes
-# de un despliegue real.
-_MP_ACCESS_TOKEN_DEFAULT = "APP_USR-2641766792746315-070323-77a89e86675cb8f5717ba4056732d07c-741153029"
-_MP_PUBLIC_KEY_DEFAULT = "APP_USR-9a5983c2-6e5c-478f-add3-2fccf4e4c839"
-MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or _MP_ACCESS_TOKEN_DEFAULT).strip()
-MERCADOPAGO_PUBLIC_KEY = (os.getenv("MERCADOPAGO_PUBLIC_KEY") or _MP_PUBLIC_KEY_DEFAULT).strip()
+# Las credenciales van SIEMPRE por variable de entorno. No hardcodear defaults acá:
+# este archivo está en un repo público, y un access token `APP_USR-` es productivo
+# (permite cobrar y leer pagos de la cuenta real). Para probar en local, usá
+# credenciales de prueba `TEST-` en tu `.env`.
+MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or "").strip()
+MERCADOPAGO_PUBLIC_KEY = (os.getenv("MERCADOPAGO_PUBLIC_KEY") or "").strip()
 # URL pública del backend (sin barra final): webhooks y, si aplica, back_urls hacia el front.
 APP_PUBLIC_BASE_URL = (os.getenv("APP_PUBLIC_BASE_URL") or "").strip().rstrip("/")
 
