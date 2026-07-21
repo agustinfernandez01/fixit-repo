@@ -3,7 +3,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import UPLOAD_DIR
@@ -51,21 +51,40 @@ def _aplicar_descuento_stock(db: Session, id_producto: int) -> None:
     producto.activo = False
 
 
-def listar_solicitudes_admin(db: Session) -> list[dict[str, Any]]:
-    solicitudes = (
-        db.query(SolicitudCanje)
-        .options(
-            joinedload(SolicitudCanje.usuario),
-            joinedload(SolicitudCanje.equipo_ofrecido),
-            joinedload(SolicitudCanje.producto_interes),
-        )
-        .order_by(
-            case((SolicitudCanje.fecha_solicitud.is_(None), 1), else_=0),
-            SolicitudCanje.fecha_solicitud.desc(),
-            SolicitudCanje.id_solicitud_canje.desc(),
-        )
-        .all()
+def listar_solicitudes_admin(
+    db: Session,
+    *,
+    skip: int = 0,
+    limit: int | None = None,
+    estado: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Solicitudes de canje para el panel admin.
+
+    El filtro y la paginación van en SQL. Antes el router traía **todas** las
+    solicitudes y recortaba en Python, así que el `limit` nunca llegaba al SQL: se
+    pagaba el listado de fotos en disco (`_listar_fotos_equipo_ofrecido`, un
+    `iterdir()` por fila) de toda la tabla para devolver 50 filas.
+    """
+    q = db.query(SolicitudCanje).options(
+        joinedload(SolicitudCanje.usuario),
+        joinedload(SolicitudCanje.equipo_ofrecido),
+        joinedload(SolicitudCanje.producto_interes),
     )
+    if estado:
+        q = q.filter(func.lower(SolicitudCanje.estado) == estado.strip().lower())
+
+    q = q.order_by(
+        case((SolicitudCanje.fecha_solicitud.is_(None), 1), else_=0),
+        SolicitudCanje.fecha_solicitud.desc(),
+        SolicitudCanje.id_solicitud_canje.desc(),
+    )
+    if skip:
+        q = q.offset(skip)
+    if limit is not None:
+        q = q.limit(limit)
+
+    solicitudes = q.all()
 
     data: list[dict[str, Any]] = []
     for solicitud in solicitudes:

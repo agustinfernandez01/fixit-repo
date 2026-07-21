@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import List, Optional, Tuple
+from typing import Iterable, List, NamedTuple, Optional, Tuple
 from urllib.parse import quote
 
-from sqlalchemy import String, and_, cast, func
+from sqlalchemy import String, and_, case, cast, func
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
@@ -245,14 +245,112 @@ def _equipo_es_vendible(equipo: Equipo) -> bool:
     return True
 
 
+def _equipo_vendible_sql_filter():
+    """Traducción a SQL de `_equipo_es_vendible`, para filtrar sin traer las filas."""
+    estado_norm = func.lower(func.trim(func.coalesce(Equipo.estado_comercial, "")))
+    return and_(Equipo.activo.is_(True), estado_norm.notin_(list(BLOCKED_STATES)))
+
+
 def list_equipos_vendibles_por_producto(db: Session, id_producto: int) -> List[Equipo]:
-    equipos_producto = (
+    """Unidades vendibles del producto. El filtro va en SQL, no en Python."""
+    return (
         db.query(Equipo)
-        .filter(Equipo.id_producto == id_producto)
+        .filter(Equipo.id_producto == id_producto, _equipo_vendible_sql_filter())
         .order_by(Equipo.id.asc())
         .all()
     )
-    return [eq for eq in equipos_producto if _equipo_es_vendible(eq)]
+
+
+class DisponibilidadProducto(NamedTuple):
+    """Resultado del cálculo de stock para un producto."""
+
+    hay_accesorio: bool
+    hay_equipo: bool
+    unidades: int
+
+
+def disponibilidad_por_productos(
+    db: Session, ids_producto: Iterable[int]
+) -> dict[int, DisponibilidadProducto]:
+    """
+    Versión batch del cálculo de stock: resuelve N productos en 2-3 queries en vez
+    de 3-4 por producto.
+
+    La lógica de decisión es idéntica a la de `unidades_vendibles_por_producto`
+    (no se combinan fuentes de stock):
+
+    - Si hay fila en `accesorios` → `productos.stock` (si el accesorio está activo).
+    - Si no hay accesorios pero sí `equipo` → cantidad de equipos vendibles.
+    - Si no hay ninguna de las dos → 0.
+    """
+    ids = sorted({int(i) for i in ids_producto if i is not None})
+    if not ids:
+        return {}
+
+    # Query 1 — accesorios: nos quedamos con la primera fila por producto (id asc),
+    # que es la que tomaba el `.first()` del código original.
+    accesorio_estado: dict[int, bool] = {}
+    for id_producto, estado in (
+        db.query(Accesorios.id_producto, Accesorios.estado)
+        .filter(Accesorios.id_producto.in_(ids))
+        .order_by(Accesorios.id.asc())
+        .all()
+    ):
+        accesorio_estado.setdefault(int(id_producto), bool(estado))
+
+    # Query 2 — equipos: existencia y conteo de vendibles, agregados en la base.
+    equipos_agg: dict[int, tuple[int, int]] = {}
+    ids_sin_accesorio = [i for i in ids if i not in accesorio_estado]
+    if ids_sin_accesorio:
+        for id_producto, total, vendibles in (
+            db.query(
+                Equipo.id_producto,
+                func.count(Equipo.id),
+                func.coalesce(
+                    func.sum(case((_equipo_vendible_sql_filter(), 1), else_=0)), 0
+                ),
+            )
+            .filter(Equipo.id_producto.in_(ids_sin_accesorio))
+            .group_by(Equipo.id_producto)
+            .all()
+        ):
+            equipos_agg[int(id_producto)] = (int(total or 0), int(vendibles or 0))
+
+    # Query 3 — stock de los productos que sí son accesorios.
+    stock_producto: dict[int, int] = {}
+    if accesorio_estado:
+        stock_producto = {
+            int(pid): int(stock or 0)
+            for pid, stock in db.query(Productos.id, Productos.stock)
+            .filter(Productos.id.in_(list(accesorio_estado)))
+            .all()
+        }
+
+    out: dict[int, DisponibilidadProducto] = {}
+    for id_producto in ids:
+        if id_producto in accesorio_estado:
+            activo = accesorio_estado[id_producto]
+            unidades = max(0, stock_producto.get(id_producto, 0)) if activo else 0
+            # `stock_accesorio_producto` devolvía 0 si el producto no existía.
+            if id_producto not in stock_producto:
+                unidades = 0
+            out[id_producto] = DisponibilidadProducto(True, False, unidades)
+            continue
+
+        total, vendibles = equipos_agg.get(id_producto, (0, 0))
+        out[id_producto] = DisponibilidadProducto(False, total > 0, vendibles)
+
+    return out
+
+
+def unidades_vendibles_por_productos(
+    db: Session, ids_producto: Iterable[int]
+) -> dict[int, int]:
+    """Stock vendible de varios productos en 2-3 queries."""
+    return {
+        pid: disp.unidades
+        for pid, disp in disponibilidad_por_productos(db, ids_producto).items()
+    }
 
 
 def _hay_equipo_para_producto(db: Session, id_producto: int) -> bool:
@@ -275,32 +373,19 @@ def _hay_accesorio_para_producto(db: Session, id_producto: int) -> bool:
 
 def stock_accesorio_producto(db: Session, id_producto: int) -> int:
     """Unidades disponibles de accesorio: `productos.stock` con accesorio de catálogo activo."""
-    acc = (
-        db.query(Accesorios)
-        .filter(Accesorios.id_producto == id_producto)
-        .first()
-    )
-    if not acc or not acc.estado:
+    disp = disponibilidad_por_productos(db, [id_producto]).get(id_producto)
+    if disp is None or not disp.hay_accesorio:
         return 0
-    p = db.query(Productos).filter(Productos.id == id_producto).first()
-    if not p:
-        return 0
-    return max(0, int(p.stock or 0))
+    return disp.unidades
 
 
 def unidades_vendibles_por_producto(db: Session, id_producto: int) -> int:
     """
-    Stock vendible según el tipo de vínculo del producto (no se combinan fuentes):
-
-    - Si hay fila en `accesorios` para este `id_producto` → `productos.stock` (accesorio activo).
-    - Si no hay accesorios pero sí `equipo` → equipos elegibles.
-    - Si no hay ninguna de las dos → 0.
+    Stock vendible según el tipo de vínculo del producto (no se combinan fuentes).
+    Wrapper de la versión batch; se mantiene por sus otros usos.
     """
-    if _hay_accesorio_para_producto(db, id_producto):
-        return stock_accesorio_producto(db, id_producto)
-    if _hay_equipo_para_producto(db, id_producto):
-        return len(list_equipos_vendibles_por_producto(db, id_producto))
-    return 0
+    disp = disponibilidad_por_productos(db, [id_producto]).get(id_producto)
+    return disp.unidades if disp else 0
 
 
 def _validar_cantidad_contra_stock_vendible(
@@ -312,16 +397,15 @@ def _validar_cantidad_contra_stock_vendible(
     producto = db.query(Productos).filter(Productos.id == id_producto).first()
     if producto and _es_reparacion(producto.nombre, producto.descripcion):
         return
-    if not _hay_equipo_para_producto(db, id_producto) and not _hay_accesorio_para_producto(
-        db, id_producto
-    ):
+
+    disp = disponibilidad_por_productos(db, [id_producto]).get(id_producto)
+    if disp is None or (not disp.hay_equipo and not disp.hay_accesorio):
         raise ValueError(
             f"El producto {id_producto} no tiene unidades físicas asociadas para vender en línea."
         )
-    n = unidades_vendibles_por_producto(db, id_producto)
-    if cantidad > n:
+    if cantidad > disp.unidades:
         raise ValueError(
-            f"Stock insuficiente: pedís {cantidad} unidad(es) y hay {n} disponible(s)."
+            f"Stock insuficiente: pedís {cantidad} unidad(es) y hay {disp.unidades} disponible(s)."
         )
 
 
@@ -453,16 +537,24 @@ def clear_carrito(db: Session, token: str) -> None:
         raise ValueError("Ocurrió un error al vaciar el carrito")
 
 
-def _carrito_detalle_con_stock(db: Session, d: CarritoDetalle) -> CarritoDetalleBase:
-    parsed = CarritoDetalleBase.model_validate(d)
-    stock = unidades_vendibles_por_producto(db, d.id_producto)
-    return parsed.model_copy(update={"stock_disponible": stock})
-
-
 def map_carrito_detalles_con_stock(
     db: Session, items: List[CarritoDetalle]
 ) -> List[CarritoDetalleBase]:
-    return [_carrito_detalle_con_stock(db, d) for d in items]
+    """
+    Adjunta `stock_disponible` a cada línea. El stock de todas las líneas se
+    resuelve en un solo batch (2-3 queries) en vez de 3-4 queries por ítem.
+    """
+    if not items:
+        return []
+    stock_por_producto = unidades_vendibles_por_productos(
+        db, [d.id_producto for d in items]
+    )
+    return [
+        CarritoDetalleBase.model_validate(d).model_copy(
+            update={"stock_disponible": stock_por_producto.get(d.id_producto, 0)}
+        )
+        for d in items
+    ]
 
 
 def carrito_resumen(db: Session, token: str) -> CarritoResumen:
@@ -600,173 +692,158 @@ def count_items_in_carrito(db: Session, id_carrito: int) -> int:
     return int(result or 0)
 
 
+def _cliente_payload_admin(usuario: Optional[Usuario]) -> Optional[dict]:
+    if usuario is None:
+        return None
+    nombre = " ".join(
+        parte
+        for parte in [(usuario.nombre or "").strip(), (usuario.apellido or "").strip()]
+        if parte
+    )
+    return {
+        "id": usuario.id,
+        "nombre": nombre or None,
+        "email": usuario.email,
+        "telefono": usuario.telefono,
+    }
+
+
+def _serializar_pedidos_admin(db: Session, pedidos: list[Pedido]) -> list[dict]:
+    """
+    Serializa pedidos para el panel admin con un número fijo de queries.
+
+    Antes, cada uno de los dos endpoints hacía `1 + 2·pedidos + 2·detalles` queries
+    (~401 con limit=50). Acá se cargan usuario y detalles con joinedload y se
+    resuelven equipos y accesorios con dos queries batch por `IN (...)`.
+
+    Los dos endpoints de admin compartían este código copiado literal; vive acá una
+    sola vez para que una corrección no haya que hacerla dos veces.
+    """
+    if not pedidos:
+        return []
+
+    ids_pedido = [int(p.id) for p in pedidos]
+
+    detalles = (
+        db.query(DetallePedido)
+        .options(joinedload(DetallePedido.producto))
+        .filter(DetallePedido.id_pedido.in_(ids_pedido))
+        .order_by(DetallePedido.id.asc())
+        .all()
+    )
+    detalles_por_pedido: dict[int, list[DetallePedido]] = {pid: [] for pid in ids_pedido}
+    for d in detalles:
+        detalles_por_pedido.setdefault(int(d.id_pedido), []).append(d)
+
+    ids_producto = sorted({int(d.id_producto) for d in detalles})
+
+    # Primer equipo por producto (id asc), que es el que tomaba el `.first()` original.
+    equipo_por_producto: dict[int, tuple[int, Optional[str], Optional[str]]] = {}
+    accesorios_ids: set[int] = set()
+    if ids_producto:
+        for id_equipo, id_producto, imei, estado in (
+            db.query(Equipo.id, Equipo.id_producto, Equipo.imei, Equipo.estado_comercial)
+            .filter(Equipo.id_producto.in_(ids_producto))
+            .order_by(Equipo.id.asc())
+            .all()
+        ):
+            equipo_por_producto.setdefault(int(id_producto), (int(id_equipo), imei, estado))
+
+        accesorios_ids = {
+            int(row[0])
+            for row in db.query(Accesorios.id_producto)
+            .filter(Accesorios.id_producto.in_(ids_producto))
+            .distinct()
+            .all()
+        }
+
+    resultado: list[dict] = []
+    for p in pedidos:
+        items: list[dict] = []
+        for d in detalles_por_pedido.get(int(p.id), []):
+            prod = d.producto
+            nombre = prod.nombre if prod is not None else f"Producto {d.id_producto}"
+            eq = equipo_por_producto.get(int(d.id_producto))
+            es_accesorio = int(d.id_producto) in accesorios_ids
+            sub = (
+                d.subtotal
+                if d.subtotal is not None
+                else Decimal(str(d.precio_unitario)) * d.cantidad
+            )
+            items.append(
+                {
+                    "id_detalle_pedido": int(d.id),
+                    "id_producto": d.id_producto,
+                    "producto_nombre": nombre,
+                    "cantidad": d.cantidad,
+                    "precio_unitario": str(d.precio_unitario),
+                    "subtotal": str(sub),
+                    "tipo_producto": "accesorio" if es_accesorio else "equipo",
+                    "id_equipo": eq[0] if eq else None,
+                    "imei": eq[1] if eq and eq[1] else None,
+                    "estado_equipo": eq[2] if eq else None,
+                }
+            )
+        resultado.append(
+            {
+                "id_pedido": p.id,
+                "id_usuario": p.id_usuario,
+                "fecha_pedido": p.fecha_pedido,
+                "estado": p.estado,
+                "total": str(p.total) if p.total else "0",
+                "observaciones": p.observaciones,
+                "cliente": _cliente_payload_admin(p.usuario),
+                "items": items,
+                "resumen": {
+                    "total_items": len(items),
+                    "total_unidades": sum(int(i["cantidad"]) for i in items),
+                },
+            }
+        )
+    return resultado
+
+
 def list_pedidos_pendientes_admin(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
     """Pedidos pendientes con ítems, cliente e IMEI de la unidad vinculada al producto (si existe)."""
     pedidos = (
         db.query(Pedido)
+        .options(joinedload(Pedido.usuario))
         .filter(Pedido.estado == "pendiente_confirmacion")
         .order_by(Pedido.id.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
-    resultado: list[dict] = []
-    for p in pedidos:
-        usuario = db.query(Usuario).filter(Usuario.id == p.id_usuario).first()
-        detalles = (
-            db.query(DetallePedido)
-            .filter(DetallePedido.id_pedido == p.id)
-            .options(joinedload(DetallePedido.producto))
-            .all()
-        )
-        items: list[dict] = []
-        for d in detalles:
-            prod = d.producto
-            nombre = prod.nombre if prod is not None else f"Producto {d.id_producto}"
-            eq = db.query(Equipo).filter(Equipo.id_producto == d.id_producto).first()
-            es_accesorio = _hay_accesorio_para_producto(db, d.id_producto)
-            sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
-            items.append(
-                {
-                    "id_detalle_pedido": int(d.id),
-                    "id_producto": d.id_producto,
-                    "producto_nombre": nombre,
-                    "cantidad": d.cantidad,
-                    "precio_unitario": str(d.precio_unitario),
-                    "subtotal": str(sub),
-                    "tipo_producto": "accesorio" if es_accesorio else "equipo",
-                    "id_equipo": int(eq.id) if eq else None,
-                    "imei": eq.imei if eq and eq.imei else None,
-                    "estado_equipo": eq.estado_comercial if eq else None,
-                }
-            )
-        total_unidades = sum(int(i["cantidad"]) for i in items)
-        resultado.append(
-            {
-                "id_pedido": p.id,
-                "id_usuario": p.id_usuario,
-                "fecha_pedido": p.fecha_pedido,
-                "estado": p.estado,
-                "total": str(p.total) if p.total else "0",
-                "observaciones": p.observaciones,
-                "cliente": (
-                    {
-                        "id": usuario.id,
-                        "nombre": (
-                            " ".join(
-                                p
-                                for p in [
-                                    (usuario.nombre or "").strip(),
-                                    (usuario.apellido or "").strip(),
-                                ]
-                                if p
-                            )
-                            or None
-                        ),
-                        "email": usuario.email,
-                        "telefono": usuario.telefono,
-                    }
-                    if usuario
-                    else None
-                ),
-                "items": items,
-                "resumen": {"total_items": len(items), "total_unidades": total_unidades},
-            }
-        )
-    return resultado
+    return _serializar_pedidos_admin(db, pedidos)
 
 
 def list_pedidos_confirmados_pendientes_entrega_admin(
     db: Session, skip: int = 0, limit: int = 50
 ) -> list[dict]:
     """Pedidos ya confirmados (pago aprobado) con unidades aún en reserva hasta cerrar entrega."""
-    id_list = [
-        row[0]
-        for row in (
-            db.query(DetallePedido.id_pedido)
-            .join(Equipo, Equipo.id_producto == DetallePedido.id_producto)
-            .filter(
-                func.lower(func.trim(func.coalesce(Equipo.estado_comercial, ""))) == RESERVADO_VENTA
-            )
-            .distinct()
-            .all()
+    subq_con_reserva = (
+        db.query(DetallePedido.id_pedido)
+        .join(Equipo, Equipo.id_producto == DetallePedido.id_producto)
+        .filter(
+            func.lower(func.trim(func.coalesce(Equipo.estado_comercial, ""))) == RESERVADO_VENTA
         )
-    ]
-    if not id_list:
-        return []
+        .distinct()
+        .subquery()
+    )
 
-    filtrados = (
+    pedidos = (
         db.query(Pedido)
-        .filter(Pedido.estado == "confirmado", Pedido.id.in_(id_list))
+        .options(joinedload(Pedido.usuario))
+        .filter(
+            Pedido.estado == "confirmado",
+            Pedido.id.in_(db.query(subq_con_reserva.c.id_pedido)),
+        )
         .order_by(Pedido.id.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
-    resultado: list[dict] = []
-    for p in filtrados:
-        usuario = db.query(Usuario).filter(Usuario.id == p.id_usuario).first()
-        detalles = (
-            db.query(DetallePedido)
-            .filter(DetallePedido.id_pedido == p.id)
-            .options(joinedload(DetallePedido.producto))
-            .all()
-        )
-        items: list[dict] = []
-        for d in detalles:
-            prod = d.producto
-            nombre = prod.nombre if prod is not None else f"Producto {d.id_producto}"
-            eq = db.query(Equipo).filter(Equipo.id_producto == d.id_producto).first()
-            es_accesorio = _hay_accesorio_para_producto(db, d.id_producto)
-            sub = d.subtotal if d.subtotal is not None else Decimal(str(d.precio_unitario)) * d.cantidad
-            items.append(
-                {
-                    "id_detalle_pedido": int(d.id),
-                    "id_producto": d.id_producto,
-                    "producto_nombre": nombre,
-                    "cantidad": d.cantidad,
-                    "precio_unitario": str(d.precio_unitario),
-                    "subtotal": str(sub),
-                    "tipo_producto": "accesorio" if es_accesorio else "equipo",
-                    "id_equipo": int(eq.id) if eq else None,
-                    "imei": eq.imei if eq and eq.imei else None,
-                    "estado_equipo": eq.estado_comercial if eq else None,
-                }
-            )
-        total_unidades = sum(int(i["cantidad"]) for i in items)
-        resultado.append(
-            {
-                "id_pedido": p.id,
-                "id_usuario": p.id_usuario,
-                "fecha_pedido": p.fecha_pedido,
-                "estado": p.estado,
-                "total": str(p.total) if p.total else "0",
-                "observaciones": p.observaciones,
-                "cliente": (
-                    {
-                        "id": usuario.id,
-                        "nombre": (
-                            " ".join(
-                                pr
-                                for pr in [
-                                    (usuario.nombre or "").strip(),
-                                    (usuario.apellido or "").strip(),
-                                ]
-                                if pr
-                            )
-                            or None
-                        ),
-                        "email": usuario.email,
-                        "telefono": usuario.telefono,
-                    }
-                    if usuario
-                    else None
-                ),
-                "items": items,
-                "resumen": {"total_items": len(items), "total_unidades": total_unidades},
-            }
-        )
-    return resultado
+    return _serializar_pedidos_admin(db, pedidos)
 
 
 def _checkout_transaccion_core(

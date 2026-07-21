@@ -1,11 +1,20 @@
 import re
 from collections import defaultdict
+from functools import lru_cache
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.config import UPLOAD_DIR
 from app.models.accesorios import Accesorios
-from app.models.equipos import Equipos, ModeloAtributo, ModeloAtributoOpcion, EquipoConfiguracion, EquipoUsadoDetalle
+from app.models.equipos import (
+    Equipos,
+    ModeloAtributo,
+    ModeloAtributoOpcion,
+    ModeloEquipo,
+    EquipoConfiguracion,
+    EquipoUsadoDetalle,
+)
 from app.models.productos import Productos
 from app.schemas.productos import ProductoBase, ProductoCreate, ProductoPatch
 
@@ -118,8 +127,8 @@ def _coleccion_variantes_mismo_modelo_nuevos(db: Session, id_modelo: int) -> lis
         .join(Equipos, Equipos.id_producto == Productos.id)
         .options(
             joinedload(Equipos.modelo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(
             Equipos.id_modelo == id_modelo,
@@ -153,25 +162,56 @@ def _coleccion_variantes_mismo_modelo_nuevos(db: Session, id_modelo: int) -> lis
             if prev.get("precio_usd") is None and item.get("precio_usd") is not None:
                 prev["precio_usd"] = item.get("precio_usd")
     out = list(agg.values())
+    cache_fotos = CacheFotosCanonicas(
+        db, {int(item["id_producto"]) for item in out}, set()
+    )
     for item in out:
         item["disponible"] = int(item.get("stock", 0)) > 0
-        item["foto_url"] = item.get("foto_url") or _foto_canonica_variante(
-            db, int(item["id_producto"]), item.get("color")
+        item["foto_url"] = item.get("foto_url") or cache_fotos.foto_variante(
+            int(item["id_producto"]), item.get("color")
         )
     out.sort(key=lambda v: ((v.get("color") or ""), v["id_producto"]))
     return out
 
 
+def _ids_modelo_de_familia(db: Session, familia_key: str) -> list[int]:
+    """
+    Modelos cuya clave de familia coincide, para poder filtrar en SQL.
+
+    `_clave_familia_catalogo` normaliza con regex en Python, así que no se puede
+    expresar como WHERE. Pero cuando el modelo tiene `nombre_modelo`, la clave
+    depende *solo* de ese nombre: resolvemos la correspondencia sobre la tabla de
+    modelos (chica) y filtramos la query grande por `id_modelo IN (...)`.
+
+    Los modelos sin `nombre_modelo` se incluyen igual, porque ahí la clave se calcula
+    desde `tipo_equipo`/`producto.nombre` y hay que filtrarlos en Python.
+    """
+    ids: list[int] = []
+    for id_modelo, nombre_modelo in db.query(ModeloEquipo.id, ModeloEquipo.nombre_modelo).all():
+        if not (nombre_modelo or "").strip():
+            ids.append(int(id_modelo))  # fallback: se filtra en Python
+        elif _titulo_familia_sin_capacidad(nombre_modelo).lower() == familia_key:
+            ids.append(int(id_modelo))
+    return ids
+
+
 def _coleccion_variantes_misma_familia_nuevos(db: Session, familia_key: str) -> list[dict]:
+    ids_modelo = _ids_modelo_de_familia(db, familia_key)
+    if not ids_modelo:
+        return []
+
     rows = (
         db.query(Productos, Equipos)
         .join(Equipos, Equipos.id_producto == Productos.id)
         .options(
             joinedload(Equipos.modelo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            # selectinload sobre la colección: dos joinedload encadenados sobre la
+            # misma one-to-many producen un producto cartesiano de filas.
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(
+            Equipos.id_modelo.in_(ids_modelo),
             Productos.activo.is_(True),
             Equipos.activo.is_(True),
         )
@@ -202,10 +242,14 @@ def _coleccion_variantes_misma_familia_nuevos(db: Session, familia_key: str) -> 
                 prev["precio_usd"] = item.get("precio_usd")
 
     out = list(agg.values())
+    # Una sola query para las fotos canónicas de todas las variantes, en vez de una por variante.
+    cache_fotos = CacheFotosCanonicas(
+        db, {int(item["id_producto"]) for item in out}, set()
+    )
     for item in out:
         item["disponible"] = int(item.get("stock", 0)) > 0
-        item["foto_url"] = item.get("foto_url") or _foto_canonica_variante(
-            db, int(item["id_producto"]), item.get("color")
+        item["foto_url"] = item.get("foto_url") or cache_fotos.foto_variante(
+            int(item["id_producto"]), item.get("color")
         )
     out.sort(
         key=lambda v: (
@@ -217,6 +261,23 @@ def _coleccion_variantes_misma_familia_nuevos(db: Session, familia_key: str) -> 
     return out
 
 
+@lru_cache(maxsize=4096)
+def _existe_en_uploads(rel: str) -> bool:
+    """
+    Cachea el `stat()` de disco de las imágenes legacy de /uploads.
+
+    Sin caché, el catálogo hacía cientos de accesos a disco por request. Las fotos
+    nuevas van a R2 (no pasan por acá) y los archivos legacy no se borran en caliente,
+    así que cachear el resultado es seguro. `limpiar_cache_fotos_uploads()` lo purga
+    si alguna vez hace falta.
+    """
+    return (UPLOAD_DIR / rel).exists()
+
+
+def limpiar_cache_fotos_uploads() -> None:
+    _existe_en_uploads.cache_clear()
+
+
 def _foto_url_si_existe(foto_url: str | None) -> str | None:
     if not foto_url:
         return None
@@ -224,8 +285,7 @@ def _foto_url_si_existe(foto_url: str | None) -> str | None:
     if not path.startswith("/uploads/"):
         return path
     rel = path[len("/uploads/") :]
-    abs_path = UPLOAD_DIR / rel
-    return path if abs_path.exists() else None
+    return path if _existe_en_uploads(rel) else None
 
 
 def _foto_principal_producto(p: Productos | None) -> str | None:
@@ -253,30 +313,87 @@ def _foto_canonica_modelo(db: Session, id_modelo: int) -> str | None:
     return None
 
 
-def _foto_canonica_variante(db: Session, id_producto: int, color: str | None) -> str | None:
-    """
-    Foto estable por variante (producto+color).
-    No depende de `Equipos.activo` para evitar "saltos" al vender/reservar una unidad.
-    """
+def _foto_canonica_variante_desde_filas(
+    filas: list[tuple[str | None, str | None]], color: str | None
+) -> str | None:
+    """Resuelve la foto canónica de una variante sobre filas (foto_url, color) ya cargadas."""
     color_norm = (color or "").strip().lower()
-    equipos = (
-        db.query(Equipos.id, Equipos.foto_url, Equipos.color)
-        .filter(Equipos.id_producto == id_producto)
-        .order_by(Equipos.id.asc())
-        .all()
-    )
-    for _, foto_url, eq_color in equipos:
+    for foto_url, eq_color in filas:
         eq_color_norm = (eq_color or "").strip().lower()
         if color_norm and eq_color_norm and eq_color_norm != color_norm:
             continue
         fu = _foto_url_si_existe(foto_url)
         if fu:
             return fu
-    for _, foto_url, _ in equipos:
+    for foto_url, _ in filas:
         fu = _foto_url_si_existe(foto_url)
         if fu:
             return fu
     return None
+
+
+class CacheFotosCanonicas:
+    """
+    Precarga en UNA query las fotos de todos los equipos de los productos/modelos
+    pedidos, para resolver `_foto_canonica_variante` y `_foto_canonica_modelo` en
+    memoria.
+
+    Antes, el catálogo hacía una query por variante y otra por familia: ~200 queries
+    por request.
+    """
+
+    def __init__(self, db: Session, ids_producto: set[int], ids_modelo: set[int]):
+        self._por_producto: dict[int, list[tuple[str | None, str | None]]] = defaultdict(list)
+        self._por_modelo: dict[int, list[str | None]] = defaultdict(list)
+
+        if not ids_producto and not ids_modelo:
+            return
+
+        condiciones = []
+        if ids_producto:
+            condiciones.append(Equipos.id_producto.in_(sorted(ids_producto)))
+        if ids_modelo:
+            condiciones.append(Equipos.id_modelo.in_(sorted(ids_modelo)))
+
+        # Deliberadamente sin filtro de `activo`: la foto debe ser estable aunque se
+        # venda o reserve una unidad.
+        filas = (
+            db.query(Equipos.id_producto, Equipos.id_modelo, Equipos.foto_url, Equipos.color)
+            .filter(or_(*condiciones))
+            .order_by(Equipos.id.asc())
+            .all()
+        )
+        for id_producto, id_modelo, foto_url, color in filas:
+            if id_producto is not None:
+                self._por_producto[int(id_producto)].append((foto_url, color))
+            if id_modelo is not None:
+                self._por_modelo[int(id_modelo)].append(foto_url)
+
+    def foto_variante(self, id_producto: int, color: str | None) -> str | None:
+        return _foto_canonica_variante_desde_filas(
+            self._por_producto.get(int(id_producto), []), color
+        )
+
+    def foto_modelo(self, id_modelo: int) -> str | None:
+        for foto_url in self._por_modelo.get(int(id_modelo), []):
+            fu = _foto_url_si_existe(foto_url)
+            if fu:
+                return fu
+        return None
+
+
+def _foto_canonica_variante(db: Session, id_producto: int, color: str | None) -> str | None:
+    """
+    Foto estable por variante (producto+color).
+    No depende de `Equipos.activo` para evitar "saltos" al vender/reservar una unidad.
+    """
+    filas = (
+        db.query(Equipos.foto_url, Equipos.color)
+        .filter(Equipos.id_producto == id_producto)
+        .order_by(Equipos.id.asc())
+        .all()
+    )
+    return _foto_canonica_variante_desde_filas([(f, c) for f, c in filas], color)
 
 
 def _valor_especificacion_por_regex(texto: str, patron: str) -> str | None:
@@ -539,8 +656,8 @@ def get_producto_detalle(db: Session, id_producto: int) -> dict | None:
         db.query(Equipos)
         .options(
             joinedload(Equipos.modelo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(Equipos.id_producto == producto.id)
         .first()
@@ -650,8 +767,10 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
         .join(Equipos, Equipos.id_producto == Productos.id)
         .options(
             joinedload(Equipos.modelo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
-            joinedload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
+            # selectinload sobre la colección: dos joinedload encadenados sobre la
+            # misma one-to-many producen un producto cartesiano de filas.
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.atributo),
+            selectinload(Equipos.configuraciones).joinedload(EquipoConfiguracion.opcion),
         )
         .filter(Productos.activo.is_(True), Equipos.activo.is_(True))
         .all()
@@ -665,6 +784,14 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
         if not e.modelo:
             continue
         by_family[_clave_familia_catalogo(p, e)].append((p, e))
+
+    # Precarga de fotos canónicas: una query para todo el catálogo en lugar de una
+    # por variante (`_foto_canonica_variante`) y una por familia (`_foto_canonica_modelo`).
+    cache_fotos = CacheFotosCanonicas(
+        db,
+        {int(p.id) for pares in by_family.values() for p, _ in pares},
+        {int(e.id_modelo) for pares in by_family.values() for _, e in pares},
+    )
 
     catalogo: list[dict] = []
     for family_key, pairs in by_family.items():
@@ -689,8 +816,8 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
         variantes = list(agg_var.values())
         for item in variantes:
             item["disponible"] = int(item.get("stock", 0)) > 0
-            item["foto_url"] = _foto_canonica_variante(
-                db, int(item["id_producto"]), item.get("color")
+            item["foto_url"] = cache_fotos.foto_variante(
+                int(item["id_producto"]), item.get("color")
             ) or item.get("foto_url")
         variantes.sort(
             key=lambda v: (
@@ -707,7 +834,7 @@ def get_catalogo_tienda_agrupado(db: Session) -> list[dict]:
         titulo = _titulo_familia_sin_capacidad(m0.nombre_modelo)
 
         id_modelo_ref = min(int(eq.id_modelo) for _, eq in pairs)
-        foto_grupo = _foto_principal_producto(p0) or _foto_canonica_modelo(db, id_modelo_ref)
+        foto_grupo = _foto_principal_producto(p0) or cache_fotos.foto_modelo(id_modelo_ref)
         if foto_grupo is None:
             for _, eq in pairs:
                 fu = _foto_url_si_existe(eq.foto_url)
